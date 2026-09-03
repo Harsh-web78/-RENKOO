@@ -1,0 +1,795 @@
+﻿import {
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+
+import { PrismaService } from '../prisma/prisma.service';
+import { ComparisonService } from '../comparison/comparison.service';
+
+type Priority = 'HIGH' | 'MEDIUM' | 'LOW';
+
+@Injectable()
+export class RecommendationsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly comparisonService: ComparisonService,
+  ) {}
+
+  async getRecommendations(
+    organizationId: string,
+    competitorId: string,
+  ) {
+    const competitor =
+      await this.prisma.competitor.findFirst({
+        where: {
+          id: competitorId,
+          organizationId,
+        },
+      });
+
+    if (!competitor) {
+      throw new NotFoundException(
+        'Competitor not found',
+      );
+    }
+
+    const comparison =
+      await this.comparisonService.compare(
+        organizationId,
+        competitorId,
+      );
+
+    const recommendations: any[] = [];
+
+    for (const opportunity of comparison.opportunities) {
+      const priority =
+        opportunity.priority as Priority;
+
+      const existing =
+        await this.prisma.recommendation.findFirst({
+          where: {
+            organizationId,
+            competitorId,
+            source: 'COMPETITOR_COMPARISON',
+            type: opportunity.type,
+            title: opportunity.title,
+          },
+        });
+
+      const data = {
+        organizationId,
+        websiteId: competitor.websiteId,
+        competitorId: competitor.id,
+        source: 'COMPETITOR_COMPARISON',
+        type: opportunity.type,
+        title: opportunity.title,
+        description: opportunity.description,
+        priority,
+        impact: this.getImpact(priority),
+        effort: this.getEffort(opportunity.type),
+        actionText: this.buildAction(opportunity),
+        metadata: opportunity,
+      };
+
+      const saved =
+        existing
+          ? await this.prisma.recommendation.update({
+              where: { id: existing.id },
+              data,
+            })
+          : await this.prisma.recommendation.create({
+              data,
+            });
+
+      recommendations.push(saved);
+    }
+
+    const crawl =
+      await this.prisma.crawl.findFirst({
+        where: {
+          websiteId: competitor.websiteId,
+          status: 'COMPLETED',
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        include: {
+          pages: {
+            include: {
+              issues: true,
+            },
+          },
+        },
+      });
+
+    if (crawl) {
+      for (const page of crawl.pages) {
+        for (const issue of page.issues) {
+          const priority =
+            issue.severity as Priority;
+
+          const existing =
+            await this.prisma.recommendation.findFirst({
+              where: {
+                organizationId,
+                websiteId: competitor.websiteId,
+                source: 'SEO_AUDIT',
+                type: issue.code,
+                title: issue.title,
+                pageUrl: page.url,
+              },
+            });
+
+          const data = {
+            organizationId,
+            websiteId: competitor.websiteId,
+            competitorId: competitor.id,
+            source: 'SEO_AUDIT',
+            type: issue.code,
+            title: issue.title,
+            description: issue.description,
+            priority,
+            impact: this.getImpact(priority),
+            effort: 'MEDIUM',
+            actionText: issue.recommendation,
+            pageUrl: page.url,
+            metadata: {
+              crawlId: crawl.id,
+              pageId: page.id,
+            },
+          };
+
+          const saved =
+            existing
+              ? await this.prisma.recommendation.update({
+                  where: { id: existing.id },
+                  data,
+                })
+              : await this.prisma.recommendation.create({
+                  data,
+                });
+
+          recommendations.push(saved);
+        }
+      }
+    }
+
+    const sorted =
+      recommendations.sort(
+        (a, b) =>
+          this.priorityValue(b.priority) -
+          this.priorityValue(a.priority),
+      );
+
+    return {
+      competitor: {
+        id: competitor.id,
+        name: competitor.name,
+        url: competitor.url,
+      },
+      summary: {
+        total: sorted.length,
+        high: sorted.filter(
+          r => r.priority === 'HIGH',
+        ).length,
+        medium: sorted.filter(
+          r => r.priority === 'MEDIUM',
+        ).length,
+        low: sorted.filter(
+          r => r.priority === 'LOW',
+        ).length,
+      },
+      recommendations: sorted.slice(0, 100),
+    };
+  }
+
+  private buildAction(opportunity: any): string {
+    if (opportunity.type === 'METRIC_GAP') {
+      const metric =
+        opportunity.metric ?? '';
+
+      if (
+        metric.toLowerCase().includes('title')
+      ) {
+        return 'Audit missing and weak title tags, then create unique intent-focused titles.';
+      }
+
+      if (
+        metric.toLowerCase().includes('meta')
+      ) {
+        return 'Add and improve unique meta descriptions for important pages.';
+      }
+
+      if (
+        metric.toLowerCase().includes('structured')
+      ) {
+        return 'Identify relevant Schema.org types and add valid structured data.';
+      }
+
+      if (
+        metric.toLowerCase().includes('internal')
+      ) {
+        return 'Add contextual internal links from relevant pages to priority pages.';
+      }
+
+      if (
+        metric.toLowerCase().includes('word')
+      ) {
+        return 'Expand thin pages with useful search-intent-focused content.';
+      }
+    }
+
+    return opportunity.description;
+  }
+
+  private getImpact(
+    priority: Priority,
+  ): Priority {
+    return priority;
+  }
+
+  private getEffort(
+    type: string,
+  ): Priority {
+    return type === 'PAGE_GAP'
+      ? 'MEDIUM'
+      : 'LOW';
+  }
+
+  private priorityValue(
+    priority: Priority,
+  ): number {
+    if (priority === 'HIGH') return 3;
+    if (priority === 'MEDIUM') return 2;
+    return 1;
+  }
+
+  async generateAeoRecommendations(
+    organizationId: string,
+    websiteId: string,
+  ) {
+    const website = await this.prisma.website.findFirst({
+      where: {
+        id: websiteId,
+        organizationId,
+        isActive: true,
+      },
+    });
+
+    if (!website) {
+      throw new NotFoundException('Website not found');
+    }
+
+    const audit = await this.prisma.aeoAudit.findFirst({
+      where: { websiteId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        AeoIssue: {
+          where: { status: 'OPEN' },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+
+    if (!audit) {
+      throw new NotFoundException(
+        'Run an AEO audit before generating recommendations',
+      );
+    }
+
+    const recommendations: any[] = [];
+
+    const createOrUpdate = async (
+      type: string,
+      title: string,
+      description: string,
+      priority: Priority,
+      actionText: string,
+      metadata: any,
+    ) => {
+      const existing =
+        await this.prisma.recommendation.findFirst({
+          where: {
+            organizationId,
+            websiteId,
+            source: 'AEO_AUDIT',
+            type,
+            title,
+          },
+        });
+
+      const data = {
+        organizationId,
+        websiteId,
+        source: 'AEO_AUDIT',
+        type,
+        title,
+        description,
+        priority,
+        impact: this.getImpact(priority),
+        effort: 'MEDIUM' as Priority,
+        actionText,
+        metadata,
+      };
+
+      return existing
+        ? this.prisma.recommendation.update({
+            where: { id: existing.id },
+            data,
+          })
+        : this.prisma.recommendation.create({ data });
+    };
+
+    const issuesByType = new Map<string, number>();
+
+    for (const issue of audit.AeoIssue) {
+      issuesByType.set(
+        issue.checkType,
+        (issuesByType.get(issue.checkType) ?? 0) + 1,
+      );
+    }
+
+    for (const [checkType, count] of issuesByType) {
+      const issue =
+        audit.AeoIssue.find(
+          (item) => item.checkType === checkType,
+        );
+
+      if (!issue) continue;
+
+      const priority: Priority =
+        issue.severity === 'CRITICAL'
+          ? 'HIGH'
+          : issue.severity === 'HIGH'
+            ? 'HIGH'
+            : issue.severity === 'MEDIUM'
+              ? 'MEDIUM'
+              : 'LOW';
+
+      let title = '';
+      let description = '';
+      let actionText = '';
+
+      switch (checkType) {
+        case 'STRUCTURED_DATA':
+          title = 'Improve structured data for answer engines';
+          description =
+            'Important pages have substantial content but lack detected structured data that can help machines understand page entities and content context.';
+          actionText =
+            'Add accurate, relevant structured data to important pages and validate the implementation.';
+          break;
+
+        case 'ENTITY':
+          title = 'Strengthen entity clarity for answer engines';
+          description =
+            'Important pages are missing one or more basic entity signals such as title, meta description or primary H1.';
+          actionText =
+            'Improve titles, meta descriptions and primary headings so each important page clearly communicates its entity and intent.';
+          break;
+
+        case 'CONTENT_DEPTH':
+          title = 'Improve content depth for answer readiness';
+          description =
+            'Some pages do not contain enough substantive content to provide strong answer-oriented coverage.';
+          actionText =
+            'Expand useful, intent-focused content where additional depth genuinely helps users.';
+          break;
+
+        case 'FAQ':
+          title = 'Add useful question-based content';
+          description =
+            'Substantial pages lack question-oriented heading structures that can make relevant answers easier to discover.';
+          actionText =
+            'Add genuinely useful question-based sections and concise answers where they match user intent.';
+          break;
+
+        case 'ANSWER_READINESS':
+          title = 'Improve answer-oriented page structure';
+          description =
+            'Some substantial pages do not expose a clear structure for answer-oriented discovery.';
+          actionText =
+            'Organize important content into clear questions, sections and concise direct answers.';
+          break;
+
+        case 'DIRECT_ANSWER':
+          title = 'Improve direct-answer coverage';
+          description =
+            'Some pages lack a clear question-and-answer structure suitable for direct answer extraction.';
+          actionText =
+            'Add concise, direct answers beneath relevant question headings.';
+          break;
+
+        default:
+          title = `Resolve ${checkType.toLowerCase()} AEO issues`;
+          description =
+            `${count} open AEO issue${count === 1 ? '' : 's'} of type ${checkType} were detected.`;
+          actionText =
+            'Review and resolve the detected AEO issues on affected pages.';
+      }
+
+      recommendations.push(
+        await createOrUpdate(
+          `AEO_${checkType}`,
+          title,
+          description,
+          priority,
+          actionText,
+          {
+            auditId: audit.id,
+            checkType,
+            issueCount: count,
+            score: audit.score,
+          },
+        ),
+      );
+    }
+
+    const sorted = recommendations.sort(
+      (a, b) =>
+        this.priorityValue(b.priority) -
+        this.priorityValue(a.priority),
+    );
+
+    return {
+      website: {
+        id: website.id,
+        name: website.name,
+        url: website.url,
+      },
+      audit: {
+        id: audit.id,
+        score: audit.score,
+        pagesChecked: audit.pagesChecked,
+        issuesCount: audit.issuesCount,
+      },
+      summary: {
+        total: sorted.length,
+        high: sorted.filter(
+          (item) => item.priority === 'HIGH',
+        ).length,
+        medium: sorted.filter(
+          (item) => item.priority === 'MEDIUM',
+        ).length,
+        low: sorted.filter(
+          (item) => item.priority === 'LOW',
+        ).length,
+      },
+      recommendations: sorted,
+    };
+  }
+  async generateGeoRecommendations(
+    organizationId: string,
+    websiteId: string,
+  ) {
+    const website = await this.prisma.website.findFirst({
+      where: {
+        id: websiteId,
+        organizationId,
+        isActive: true,
+      },
+    });
+
+    if (!website) {
+      throw new NotFoundException('Website not found');
+    }
+
+    const audit = await this.prisma.geoAudit.findFirst({
+      where: { websiteId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!audit) {
+      throw new NotFoundException(
+        'Run a GEO audit before generating recommendations',
+      );
+    }
+
+    const recommendations: any[] = [];
+
+    const createOrUpdate = async (
+      type: string,
+      title: string,
+      description: string,
+      priority: Priority,
+      actionText: string,
+      metadata: any,
+    ) => {
+      const existing =
+        await this.prisma.recommendation.findFirst({
+          where: {
+            organizationId,
+            websiteId,
+            source: 'GEO_AUDIT',
+            type,
+            title,
+          },
+        });
+
+      const data = {
+        organizationId,
+        websiteId,
+        source: 'GEO_AUDIT',
+        type,
+        title,
+        description,
+        priority,
+        impact: this.getImpact(priority),
+        effort: 'MEDIUM' as Priority,
+        actionText,
+        metadata,
+      };
+
+      return existing
+        ? this.prisma.recommendation.update({
+            where: { id: existing.id },
+            data,
+          })
+        : this.prisma.recommendation.create({ data });
+    };
+
+    if (audit.entityScore < 70) {
+      recommendations.push(
+        await createOrUpdate(
+          'GEO_ENTITY',
+          'Strengthen entity clarity for AI discovery',
+          'Important business and page-level entity signals are incomplete. Improve titles, descriptions, headings, structured data, and business identity signals.',
+          audit.entityScore < 40 ? 'HIGH' : 'MEDIUM',
+          'Improve entity-defining content and structured data across important pages.',
+          {
+            auditId: audit.id,
+            entityScore: audit.entityScore,
+          },
+        ),
+      );
+    }
+
+    if (audit.contentScore < 70) {
+      recommendations.push(
+        await createOrUpdate(
+          'GEO_CONTENT',
+          'Improve content readiness for AI answers',
+          'Important pages are missing one or more content signals required for strong machine understanding.',
+          audit.contentScore < 40 ? 'HIGH' : 'MEDIUM',
+          'Improve page titles, meta descriptions, headings, and useful substantive content.',
+          {
+            auditId: audit.id,
+            contentScore: audit.contentScore,
+          },
+        ),
+      );
+    }
+
+    if (audit.authorityScore < 50) {
+      recommendations.push(
+        await createOrUpdate(
+          'GEO_AUTHORITY',
+          'Strengthen authority signals',
+          'The current backlink authority profile is not strong enough to support competitive AI-search visibility.',
+          audit.authorityScore < 25 ? 'HIGH' : 'MEDIUM',
+          'Acquire relevant authoritative backlinks and reduce harmful link signals.',
+          {
+            auditId: audit.id,
+            authorityScore: audit.authorityScore,
+          },
+        ),
+      );
+    }
+
+    if (audit.citationScore < 50) {
+      recommendations.push(
+        await createOrUpdate(
+          'GEO_CITATION',
+          'Increase AI citation coverage',
+          'Current GEO observations show limited citation coverage. Connect real AI query observations before treating citation performance as strong.',
+          audit.citationScore === 0 ? 'MEDIUM' : 'HIGH',
+          'Run real AI visibility queries and improve authoritative source coverage for target topics.',
+          {
+            auditId: audit.id,
+            citationScore: audit.citationScore,
+          },
+        ),
+      );
+    }
+
+    const sorted = recommendations.sort(
+      (a, b) =>
+        this.priorityValue(b.priority) -
+        this.priorityValue(a.priority),
+    );
+
+    return {
+      website: {
+        id: website.id,
+        name: website.name,
+        url: website.url,
+      },
+      audit,
+      summary: {
+        total: sorted.length,
+        high: sorted.filter(
+          (r) => r.priority === 'HIGH',
+        ).length,
+        medium: sorted.filter(
+          (r) => r.priority === 'MEDIUM',
+        ).length,
+        low: sorted.filter(
+          (r) => r.priority === 'LOW',
+        ).length,
+      },
+      recommendations: sorted,
+    };
+  }
+
+  async generateBusinessBrainRecommendations(
+    organizationId: string,
+    websiteId: string,
+  ) {
+    const website =
+      await this.prisma.website.findFirst({
+        where: {
+          id: websiteId,
+          organizationId,
+          isActive: true,
+        },
+      });
+
+    if (!website) {
+      throw new NotFoundException(
+        'Website not found',
+      );
+    }
+
+    const businessBrain =
+      await this.prisma.businessBrain.findUnique({
+        where: {
+          websiteId,
+        },
+        select: {
+          businessScore: true,
+          lastAnalyzedAt: true,
+        },
+      });
+
+    if (!businessBrain) {
+      throw new NotFoundException(
+        'Run Business Brain analysis before generating recommendations',
+      );
+    }
+
+    const recommendations =
+      await this.prisma.recommendation.findMany({
+        where: {
+          organizationId,
+          websiteId,
+          source: 'BUSINESS_BRAIN',
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+    const sorted =
+      recommendations.sort(
+        (a, b) =>
+          this.priorityValue(
+            b.priority as Priority,
+          ) -
+          this.priorityValue(
+            a.priority as Priority,
+          ),
+      );
+
+    return {
+      website: {
+        id: website.id,
+        name: website.name,
+        url: website.url,
+      },
+
+      businessScore:
+        businessBrain.businessScore,
+
+      analyzedAt:
+        businessBrain.lastAnalyzedAt,
+
+      summary: {
+        total: sorted.length,
+
+        high: sorted.filter(
+          (r) =>
+            r.priority === 'HIGH',
+        ).length,
+
+        medium: sorted.filter(
+          (r) =>
+            r.priority === 'MEDIUM',
+        ).length,
+
+        low: sorted.filter(
+          (r) =>
+            r.priority === 'LOW',
+        ).length,
+      },
+
+      recommendations:
+        sorted,
+    };
+  }
+  async createActionFromRecommendation(
+    organizationId: string,
+    recommendationId: string,
+  ) {
+    if (!organizationId) {
+      throw new NotFoundException(
+        'Organization not found',
+      );
+    }
+
+    if (!recommendationId) {
+      throw new NotFoundException(
+        'Recommendation ID is required',
+      );
+    }
+
+    const recommendation =
+      await this.prisma.recommendation.findFirst({
+        where: {
+          id: recommendationId,
+          organizationId,
+        },
+      });
+
+    if (!recommendation) {
+      throw new NotFoundException(
+        'Recommendation not found',
+      );
+    }
+
+    const existing =
+      await this.prisma.action.findFirst({
+        where: {
+          organizationId,
+          recommendationId,
+        },
+      });
+
+    if (existing) {
+      return existing;
+    }
+
+    const action =
+      await this.prisma.$transaction(
+        async (tx) => {
+          const created =
+            await tx.action.create({
+              data: {
+                organizationId,
+                websiteId:
+                  recommendation.websiteId,
+                recommendationId:
+                  recommendation.id,
+                type:
+                  recommendation.type,
+                title:
+                  recommendation.title,
+                description:
+                  recommendation.description,
+                url:
+                  recommendation.pageUrl ??
+                  undefined,
+                priority:
+                  recommendation.priority,
+                status: 'TODO',
+                metadata:
+                  recommendation.metadata ??
+                  undefined,
+              },
+            });
+
+          return created;
+        },
+      );
+
+    return action;
+  }
+}

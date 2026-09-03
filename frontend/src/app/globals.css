@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #fff;
+  color: #0f172a;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* =========================================================
+ * FORM INPUTS
+ * ========================================================= */
+
+.input {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid rgb(226 232 240);
+  background: #fff;
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  color: #0f172a;
+  outline: none;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.input::placeholder {
+  color: rgb(148 163 184);
+}
+
+.input:hover {
+  border-color: rgb(203 213 225);
+}
+
+.input:focus {
+  border-color: rgb(59 130 246);
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 0.1);
+}
+
+.input:disabled {
+  cursor: not-allowed;
+  background: rgb(248 250 252);
+  opacity: 0.7;
+}
+
+/* =========================================================
+ * TEXTAREA
+ * ========================================================= */
+
+textarea.input {
+  min-height: 100px;
+  line-height: 1.5;
+}
+
+/* =========================================================
+ * SELECT
+ * ========================================================= */
+
+select.input {
+  cursor: pointer;
+}
+
+select.input:disabled {
+  cursor: not-allowed;
+}

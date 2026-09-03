@@ -1,0 +1,77 @@
+﻿import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Query,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RecommendationsService } from './recommendations.service';
+
+@Controller('recommendations')
+@UseGuards(JwtAuthGuard)
+export class RecommendationsController {
+  constructor(
+    private readonly recommendationsService: RecommendationsService,
+  ) {}
+
+  @Get('competitors/:competitorId')
+  getRecommendations(
+    @Req() req: any,
+    @Param('competitorId') competitorId: string,
+  ): Promise<any> {
+    return this.recommendationsService.getRecommendations(
+      req.user.organizationId,
+      competitorId,
+    );
+  }
+
+  @Get('geo')
+  getGeoRecommendations(
+    @Req() req: any,
+    @Query('websiteId') websiteId: string,
+  ): Promise<any> {
+    return this.recommendationsService.generateGeoRecommendations(
+      req.user.organizationId,
+      websiteId,
+    );
+  }
+
+  @Get('aeo')
+  getAeoRecommendations(
+    @Req() req: any,
+    @Query('websiteId') websiteId: string,
+  ): Promise<any> {
+    return this.recommendationsService.generateAeoRecommendations(
+      req.user.organizationId,
+      websiteId,
+    );
+  }
+  @Get('business-brain')
+  getBusinessBrainRecommendations(
+    @Req() req: any,
+    @Query('websiteId') websiteId: string,
+  ): Promise<any> {
+    return this.recommendationsService.generateBusinessBrainRecommendations(
+      req.user.organizationId,
+      websiteId,
+    );
+  }
+  @Post(':id/action')
+  createAction(
+    @Req() req: any,
+    @Param('id') id: string,
+  ) {
+    return this.recommendationsService.createActionFromRecommendation(
+      req.user.organizationId,
+      id,
+    );
+  }
+}
+
+
+

@@ -1,0 +1,1656 @@
+import {
+  BadRequestException,
+  Injectable,
+} from '@nestjs/common';
+
+import { Prisma } from '@prisma/client';
+
+import { PrismaService } from '../prisma/prisma.service';
+import { SeoAuditService } from './seo-audit.service';
+
+import {
+  chromium,
+  Browser,
+  Page,
+} from 'playwright';
+
+import * as cheerio from 'cheerio';
+
+@Injectable()
+export class CrawlService {
+  private readonly MAX_PAGES = 50;
+  private readonly PAGE_TIMEOUT = 30000;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly seoAuditService: SeoAuditService,
+  ) {}
+
+  /*
+   * =========================================================
+   * MAIN WEBSITE CRAWLER
+   * =========================================================
+   */
+
+  async crawlWebsite(
+    organizationId: string,
+    websiteId: string,
+  ) {
+    let browser: Browser | undefined;
+
+    const website =
+      await this.prisma.website.findFirst({
+        where: {
+          id: websiteId,
+          organizationId,
+        },
+      });
+
+    if (!website) {
+      throw new BadRequestException(
+        'Website not found',
+      );
+    }
+
+    const startUrl =
+      this.normalizeUrl(website.url);
+
+    if (!startUrl) {
+      throw new BadRequestException(
+        'Invalid website URL',
+      );
+    }
+
+    const crawl =
+      await this.prisma.crawl.create({
+        data: {
+          websiteId,
+          status: 'RUNNING',
+        },
+      });
+
+    try {
+      /*
+       * =======================================================
+       * BROWSER
+       * =======================================================
+       */
+
+      browser =
+        await chromium.launch({
+          headless: true,
+        });
+
+      const context =
+        await browser.newContext({
+          userAgent:
+            'Mozilla/5.0 (compatible; RENKOOBot/1.0; +https://renkoo.ai)',
+        });
+
+      /*
+       * =======================================================
+       * CRAWL STATE
+       * =======================================================
+       */
+
+      const queue: string[] = [];
+
+      const discovered =
+        new Set<string>();
+
+      const processed =
+        new Set<string>();
+
+      const saved =
+        new Set<string>();
+
+      /*
+       * =======================================================
+       * INITIAL URL
+       * =======================================================
+       */
+
+      queue.push(startUrl);
+      discovered.add(startUrl);
+
+      const websiteHost =
+        new URL(startUrl).hostname.toLowerCase();
+
+      /*
+       * =======================================================
+       * ROBOTS.TXT + SITEMAP DISCOVERY
+       * =======================================================
+       */
+
+      const robotsData =
+        await this.fetchRobotsTxt(
+          startUrl,
+        );
+
+      /*
+       * Sitemap URLs discovered from robots.txt.
+       */
+
+      const sitemapUrls =
+        [...robotsData.sitemapUrls];
+
+      /*
+       * Also try standard sitemap.xml.
+       */
+
+      const standardSitemap =
+        this.normalizeUrl(
+          `${new URL(startUrl).origin}/sitemap.xml`,
+        );
+
+      if (
+        standardSitemap &&
+        !sitemapUrls.includes(
+          standardSitemap,
+        )
+      ) {
+        sitemapUrls.push(
+          standardSitemap,
+        );
+      }
+
+      /*
+       * =======================================================
+       * LOAD SITEMAP URLS
+       * =======================================================
+       */
+
+      for (
+        const sitemapUrl of sitemapUrls
+      ) {
+        if (
+          discovered.size >=
+          this.MAX_PAGES
+        ) {
+          break;
+        }
+
+        const sitemapResult =
+          await this.fetchSitemap(
+            sitemapUrl,
+          );
+
+        if (!sitemapResult.exists) {
+          continue;
+        }
+
+        for (
+          const sitemapPageUrl of
+          sitemapResult.urls
+        ) {
+          if (
+            discovered.size >=
+            this.MAX_PAGES
+          ) {
+            break;
+          }
+
+          const normalized =
+            this.normalizeUrl(
+              sitemapPageUrl,
+            );
+
+          if (!normalized) {
+            continue;
+          }
+
+          try {
+            const hostname =
+              new URL(
+                normalized,
+              ).hostname.toLowerCase();
+
+            if (
+              hostname !==
+              websiteHost
+            ) {
+              continue;
+            }
+          } catch {
+            continue;
+          }
+
+          if (
+            discovered.has(
+              normalized,
+            )
+          ) {
+            continue;
+          }
+
+          discovered.add(
+            normalized,
+          );
+
+          queue.push(
+            normalized,
+          );
+        }
+      }
+
+      /*
+       * =======================================================
+       * CRAWL PAGES
+       * =======================================================
+       */
+
+      let pagesCrawled = 0;
+
+      while (
+        queue.length > 0 &&
+        pagesCrawled < this.MAX_PAGES
+      ) {
+        const currentUrl =
+          queue.shift();
+
+        if (!currentUrl) {
+          continue;
+        }
+
+        if (
+          processed.has(
+            currentUrl,
+          )
+        ) {
+          continue;
+        }
+
+        processed.add(
+          currentUrl,
+        );
+
+        let page:
+          | Page
+          | undefined;
+
+        try {
+          page =
+            await context.newPage();
+
+          const result =
+            await this.crawlSinglePage(
+              page,
+              currentUrl,
+              websiteHost,
+              crawl.id,
+            );
+
+          /*
+           * Count successfully saved pages.
+           */
+
+          if (
+            !saved.has(
+              result.crawlPage.url,
+            )
+          ) {
+            saved.add(
+              result.crawlPage.url,
+            );
+
+            pagesCrawled++;
+          }
+
+          /*
+           * ===================================================
+           * DISCOVER INTERNAL LINKS
+           * ===================================================
+           */
+
+          for (
+            const link of
+            result.internalUrls
+          ) {
+            if (
+              discovered.size >=
+              this.MAX_PAGES
+            ) {
+              break;
+            }
+
+            const normalized =
+              this.normalizeUrl(
+                link,
+              );
+
+            if (!normalized) {
+              continue;
+            }
+
+            try {
+              const linkHost =
+                new URL(
+                  normalized,
+                ).hostname.toLowerCase();
+
+              if (
+                linkHost !==
+                websiteHost
+              ) {
+                continue;
+              }
+            } catch {
+              continue;
+            }
+
+            if (
+              discovered.has(
+                normalized,
+              )
+            ) {
+              continue;
+            }
+
+            if (
+              processed.has(
+                normalized,
+              )
+            ) {
+              continue;
+            }
+
+            discovered.add(
+              normalized,
+            );
+
+            queue.push(
+              normalized,
+            );
+          }
+        } catch (error) {
+          console.error(
+            `Failed to crawl ${currentUrl}:`,
+            error instanceof Error
+              ? error.message
+              : error,
+          );
+        } finally {
+          if (page) {
+            try {
+              await page.close();
+            } catch {
+              // Ignore page close errors.
+            }
+          }
+        }
+      }
+
+      /*
+       * =======================================================
+       * CLOSE CONTEXT
+       * =======================================================
+       */
+
+      try {
+        await context.close();
+      } catch {
+        // Ignore context close errors.
+      }
+
+      /*
+       * =======================================================
+       * COMPLETE CRAWL
+       * =======================================================
+       */
+
+      const completedCrawl =
+        await this.prisma.crawl.update({
+          where: {
+            id: crawl.id,
+          },
+          data: {
+            status: 'COMPLETED',
+            completedAt:
+              new Date(),
+          },
+        });
+
+      /*
+       * =======================================================
+       * SUMMARY
+       * =======================================================
+       */
+
+      const summary =
+        await this.getCrawlSummary(
+          organizationId,
+          crawl.id,
+        );
+
+      return {
+        crawl:
+          completedCrawl,
+
+        pagesCrawled,
+
+        pagesDiscovered:
+          discovered.size,
+
+        summary,
+      };
+    } catch (error) {
+      /*
+       * =======================================================
+       * FAILED CRAWL
+       * =======================================================
+       */
+
+      await this.prisma.crawl.update({
+        where: {
+          id: crawl.id,
+        },
+        data: {
+          status: 'FAILED',
+          completedAt:
+            new Date(),
+        },
+      });
+
+      if (
+        error instanceof
+        BadRequestException
+      ) {
+        throw error;
+      }
+
+      throw new BadRequestException(
+        `Website crawl failed: ${
+          error instanceof Error
+            ? error.message
+            : 'Unknown error'
+        }`,
+      );
+    } finally {
+      if (browser) {
+        try {
+          await browser.close();
+        } catch {
+          // Ignore browser close errors.
+        }
+      }
+    }
+  }
+
+  /*
+   * =========================================================
+   * CRAWL SINGLE PAGE
+   * =========================================================
+   */
+
+  private async crawlSinglePage(
+    page: Page,
+    url: string,
+    websiteHost: string,
+    crawlId: string,
+  ) {
+    const startedAt =
+      Date.now();
+
+    /*
+     * =======================================================
+     * PAGE REQUEST
+     * =======================================================
+     */
+
+    const response =
+      await page.goto(url, {
+        waitUntil:
+          'domcontentloaded',
+        timeout:
+          this.PAGE_TIMEOUT,
+      });
+
+    if (!response) {
+      throw new Error(
+        'Unable to load website',
+      );
+    }
+
+    const loadTimeMs =
+      Date.now() - startedAt;
+
+    const statusCode =
+      response.status();
+
+    /*
+     * =======================================================
+     * RESPONSE HEADERS
+     * =======================================================
+     */
+
+    const responseHeaders =
+      await response.allHeaders();
+
+    const contentType =
+      responseHeaders[
+        'content-type'
+      ] ?? null;
+
+    /*
+     * =======================================================
+     * FINAL URL
+     * =======================================================
+     */
+
+    const finalUrl =
+      this.normalizeUrl(
+        page.url(),
+      );
+
+    if (!finalUrl) {
+      throw new Error(
+        'Unable to normalize final URL',
+      );
+    }
+
+    /*
+     * =======================================================
+     * HTML
+     * =======================================================
+     */
+
+    const html =
+      await page.content();
+
+    const $ =
+      cheerio.load(html);
+
+    /*
+     * =======================================================
+     * TITLE
+     * =======================================================
+     */
+
+    const title =
+      $('title')
+        .first()
+        .text()
+        .trim() || null;
+
+    /*
+     * =======================================================
+     * META DESCRIPTION
+     * =======================================================
+     */
+
+    const metaDescription =
+      $(
+        'meta[name="description"]',
+      )
+        .first()
+        .attr('content')
+        ?.trim() || null;
+
+    /*
+     * =======================================================
+     * CANONICAL
+     * =======================================================
+     */
+
+    const canonical =
+      $('link[rel="canonical"]')
+        .first()
+        .attr('href')
+        ?.trim() || null;
+
+    /*
+     * =======================================================
+     * ABSOLUTE CANONICAL
+     * =======================================================
+     */
+
+    let canonicalAbsolute:
+      string | null = null;
+
+    if (canonical) {
+      try {
+        canonicalAbsolute =
+          this.normalizeUrl(
+            new URL(
+              canonical,
+              finalUrl,
+            ).toString(),
+          ) || null;
+      } catch {
+        canonicalAbsolute = null;
+      }
+    }
+
+    /*
+     * =======================================================
+     * H1
+     * =======================================================
+     */
+
+    const h1 =
+      $('h1')
+        .map(
+          (_, el) =>
+            $(el)
+              .text()
+              .trim(),
+        )
+        .get()
+        .filter(Boolean);
+
+    /*
+     * =======================================================
+     * H2
+     * =======================================================
+     */
+
+    const h2 =
+      $('h2')
+        .map(
+          (_, el) =>
+            $(el)
+              .text()
+              .trim(),
+        )
+        .get()
+        .filter(Boolean);
+
+    /*
+     * =======================================================
+     * IMAGES
+     * =======================================================
+     */
+
+    const images =
+      $('img').length;
+
+    /*
+     * =======================================================
+     * IMAGES WITHOUT ALT
+     * =======================================================
+     */
+
+    const imagesWithoutAlt =
+      $('img')
+        .filter((_, el) => {
+          const alt =
+            $(el).attr('alt');
+
+          return (
+            !alt ||
+            !alt.trim()
+          );
+        })
+        .length;
+
+    /*
+     * =======================================================
+     * LINKS
+     * =======================================================
+     */
+
+    const allHrefs =
+      $('a')
+        .map(
+          (_, el) =>
+            $(el).attr('href'),
+        )
+        .get()
+        .filter(Boolean);
+
+    const internalUrls: string[] =
+      [];
+
+    let internalLinks = 0;
+    let externalLinks = 0;
+
+    for (
+      const href of allHrefs
+    ) {
+      try {
+        const link =
+          new URL(
+            href,
+            finalUrl,
+          );
+
+        if (
+          link.protocol !==
+            'http:' &&
+          link.protocol !==
+            'https:'
+        ) {
+          continue;
+        }
+
+        link.hash = '';
+
+        const normalized =
+          this.normalizeUrl(
+            link.toString(),
+          );
+
+        if (!normalized) {
+          continue;
+        }
+
+        const linkHost =
+          new URL(
+            normalized,
+          ).hostname.toLowerCase();
+
+        if (
+          linkHost ===
+          websiteHost
+        ) {
+          internalLinks++;
+
+          if (
+            normalized !==
+            finalUrl
+          ) {
+            internalUrls.push(
+              normalized,
+            );
+          }
+        } else {
+          externalLinks++;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    const uniqueInternalUrls =
+      Array.from(
+        new Set(
+          internalUrls,
+        ),
+      );
+
+    /*
+     * =======================================================
+     * VISIBLE BODY TEXT
+     * =======================================================
+     */
+
+    const bodyText =
+      $('body')
+        .text()
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    /*
+     * =======================================================
+     * WORD COUNT
+     * =======================================================
+     */
+
+    const wordCount =
+      bodyText
+        ? bodyText
+            .split(/\s+/)
+            .filter(Boolean)
+            .length
+        : 0;
+
+    /*
+     * =======================================================
+     * ROBOTS META
+     * =======================================================
+     */
+
+    const robots =
+      $(
+        'meta[name="robots"]',
+      )
+        .first()
+        .attr('content')
+        ?.trim() || null;
+
+    const robotsLower =
+      robots?.toLowerCase() ?? '';
+
+    const robotsIndexable =
+      !robotsLower.includes(
+        'noindex',
+      );
+
+    const robotsFollow =
+      !robotsLower.includes(
+        'nofollow',
+      );
+
+    /*
+     * =======================================================
+     * VIEWPORT
+     * =======================================================
+     */
+
+    const viewport =
+      $(
+        'meta[name="viewport"]',
+      )
+        .first()
+        .attr('content')
+        ?.trim() || null;
+
+    /*
+     * =======================================================
+     * LANGUAGE
+     * =======================================================
+     */
+
+    const lang =
+      $('html')
+        .first()
+        .attr('lang')
+        ?.trim() || null;
+
+    /*
+     * =======================================================
+     * CHARSET
+     * =======================================================
+     */
+
+    let charset:
+      string | null = null;
+
+    const charsetMeta =
+      $('meta[charset]')
+        .first()
+        .attr('charset')
+        ?.trim();
+
+    if (charsetMeta) {
+      charset =
+        charsetMeta;
+    } else {
+      const contentTypeMeta =
+        $(
+          'meta[http-equiv="Content-Type"]',
+        )
+          .first()
+          .attr('content')
+          ?.trim();
+
+      if (contentTypeMeta) {
+        const match =
+          contentTypeMeta.match(
+            /charset\s*=\s*([^\s;]+)/i,
+          );
+
+        charset =
+          match?.[1] ?? null;
+      }
+    }
+
+    /*
+     * =======================================================
+     * OPEN GRAPH
+     * =======================================================
+     */
+
+    const ogTitle =
+      $(
+        'meta[property="og:title"]',
+      )
+        .first()
+        .attr('content')
+        ?.trim() || null;
+
+    const ogDescription =
+      $(
+        'meta[property="og:description"]',
+      )
+        .first()
+        .attr('content')
+        ?.trim() || null;
+
+    let ogImage =
+      $(
+        'meta[property="og:image"]',
+      )
+        .first()
+        .attr('content')
+        ?.trim() || null;
+
+    if (ogImage) {
+      try {
+        ogImage =
+          new URL(
+            ogImage,
+            finalUrl,
+          ).toString();
+      } catch {
+        // Keep original value.
+      }
+    }
+
+    /*
+     * =======================================================
+     * TWITTER CARD
+     * =======================================================
+     */
+
+    const twitterCard =
+      $(
+        'meta[name="twitter:card"]',
+      )
+        .first()
+        .attr('content')
+        ?.trim() || null;
+
+    /*
+     * =======================================================
+     * JSON-LD / STRUCTURED DATA
+     * =======================================================
+     */
+
+    const jsonLdValues: Prisma.InputJsonValue[] =
+      [];
+
+    let invalidJsonLdCount = 0;
+
+    $(
+      'script[type="application/ld+json"]',
+    ).each((_, el) => {
+      const raw =
+        $(el)
+          .text()
+          .trim();
+
+      if (!raw) {
+        return;
+      }
+
+      try {
+        const parsed: unknown =
+          JSON.parse(raw);
+
+        if (
+          Array.isArray(parsed)
+        ) {
+          for (
+            const item of parsed
+          ) {
+            try {
+              jsonLdValues.push(
+                item as Prisma.InputJsonValue,
+              );
+            } catch {
+              invalidJsonLdCount++;
+            }
+          }
+        } else {
+          jsonLdValues.push(
+            parsed as Prisma.InputJsonValue,
+          );
+        }
+      } catch {
+        invalidJsonLdCount++;
+      }
+    });
+
+    const structuredDataCount =
+      jsonLdValues.length;
+
+    /*
+     * Prisma JSONB accepts Prisma.JsonNull
+     * when there is no JSON-LD.
+     */
+
+    const jsonLd:
+      | Prisma.InputJsonValue
+      | Prisma.NullableJsonNullValueInput =
+      jsonLdValues.length > 0
+        ? jsonLdValues
+        : Prisma.JsonNull;
+
+    /*
+     * =======================================================
+     * REDIRECT COUNT
+     * =======================================================
+     */
+
+    let redirectCount = 0;
+
+    try {
+      let currentRequest =
+        response.request();
+
+      while (true) {
+        const redirectedFrom =
+          currentRequest.redirectedFrom();
+
+        if (!redirectedFrom) {
+          break;
+        }
+
+        redirectCount++;
+
+        currentRequest =
+          redirectedFrom;
+      }
+    } catch {
+      redirectCount = 0;
+    }
+
+    /*
+     * =======================================================
+     * SAVE CRAWL PAGE
+     * =======================================================
+     */
+
+    const crawlPage =
+      await this.prisma.crawlPage.create({
+        data: {
+          crawlId,
+
+          url: finalUrl,
+
+          statusCode,
+
+          title,
+
+          metaDescription,
+
+          canonical,
+
+          h1,
+
+          h2,
+
+          images,
+
+          imagesWithoutAlt,
+
+          internalLinks,
+
+          externalLinks,
+
+          wordCount,
+
+          robots,
+
+          robotsIndexable,
+
+          robotsFollow,
+
+          viewport,
+
+          lang,
+
+          charset,
+
+          ogTitle,
+
+          ogDescription,
+
+          ogImage,
+
+          twitterCard,
+
+          structuredDataCount,
+
+          jsonLd,
+
+          canonicalAbsolute,
+
+          redirectCount,
+
+          finalUrl,
+
+          contentType,
+
+          loadTimeMs,
+        },
+      });
+
+    /*
+     * =======================================================
+     * SEO AUDIT
+     * =======================================================
+     */
+
+    await this.seoAuditService.auditPage(
+      crawlPage.id,
+    );
+
+    return {
+      crawlPage,
+
+      internalUrls:
+        uniqueInternalUrls,
+
+      invalidJsonLdCount,
+    };
+  }
+
+  /*
+   * =========================================================
+   * ROBOTS.TXT
+   * =========================================================
+   */
+
+  private async fetchRobotsTxt(
+    websiteUrl: string,
+  ): Promise<{
+    exists: boolean;
+    content: string | null;
+    sitemapUrls: string[];
+  }> {
+    try {
+      const baseUrl =
+        new URL(websiteUrl);
+
+      const robotsUrl =
+        `${baseUrl.protocol}//${baseUrl.host}/robots.txt`;
+
+      const response =
+        await fetch(
+          robotsUrl,
+          {
+            method: 'GET',
+            signal:
+              AbortSignal.timeout(
+                10000,
+              ),
+          },
+        );
+
+      if (!response.ok) {
+        return {
+          exists: false,
+          content: null,
+          sitemapUrls: [],
+        };
+      }
+
+      const content =
+        await response.text();
+
+      const sitemapUrls: string[] =
+        [];
+
+      for (
+        const line of
+        content.split(/\r?\n/)
+      ) {
+        const trimmed =
+          line.trim();
+
+        if (
+          trimmed
+            .toLowerCase()
+            .startsWith(
+              'sitemap:',
+            )
+        ) {
+          const sitemap =
+            trimmed
+              .substring(
+                'sitemap:'.length,
+              )
+              .trim();
+
+          if (sitemap) {
+            sitemapUrls.push(
+              sitemap,
+            );
+          }
+        }
+      }
+
+      return {
+        exists: true,
+        content,
+        sitemapUrls:
+          Array.from(
+            new Set(
+              sitemapUrls,
+            ),
+          ),
+      };
+    } catch {
+      return {
+        exists: false,
+        content: null,
+        sitemapUrls: [],
+      };
+    }
+  }
+
+  /*
+   * =========================================================
+   * SITEMAP
+   * =========================================================
+   */
+
+  private async fetchSitemap(
+    sitemapUrl: string,
+  ): Promise<{
+    exists: boolean;
+    urls: string[];
+  }> {
+    try {
+      const response =
+        await fetch(
+          sitemapUrl,
+          {
+            method: 'GET',
+            signal:
+              AbortSignal.timeout(
+                15000,
+              ),
+          },
+        );
+
+      if (!response.ok) {
+        return {
+          exists: false,
+          urls: [],
+        };
+      }
+
+      const xml =
+        await response.text();
+
+      const urls: string[] =
+        [];
+
+      const matches =
+        xml.matchAll(
+          /<loc>\s*([\s\S]*?)\s*<\/loc>/gi,
+        );
+
+      for (
+        const match of matches
+      ) {
+        const value =
+          match[1]?.trim();
+
+        if (value) {
+          urls.push(value);
+        }
+      }
+
+      return {
+        exists: true,
+        urls:
+          Array.from(
+            new Set(urls),
+          ),
+      };
+    } catch {
+      return {
+        exists: false,
+        urls: [],
+      };
+    }
+  }
+
+  /*
+   * =========================================================
+   * NORMALIZE URL
+   * =========================================================
+   *
+   * Rules:
+   *
+   * 1. HTTP/HTTPS only.
+   * 2. Remove hash.
+   * 3. Remove tracking parameters.
+   * 4. Remove remaining query parameters.
+   * 5. Remove trailing slash except root.
+   * 6. Lowercase hostname.
+   * 7. Remove default ports.
+   */
+
+  private normalizeUrl(
+    input: string,
+  ): string {
+    try {
+      const url =
+        new URL(input);
+
+      if (
+        url.protocol !==
+          'http:' &&
+        url.protocol !==
+          'https:'
+      ) {
+        return '';
+      }
+
+      url.hostname =
+        url.hostname.toLowerCase();
+
+      url.hash = '';
+
+      const trackingParams = [
+        'utm_source',
+        'utm_medium',
+        'utm_campaign',
+        'utm_term',
+        'utm_content',
+        'gclid',
+        'fbclid',
+        'msclkid',
+        'dclid',
+        'ref',
+        'referrer',
+      ];
+
+      for (
+        const param of
+        trackingParams
+      ) {
+        url.searchParams.delete(
+          param,
+        );
+      }
+
+      /*
+       * Current crawler intentionally
+       * normalizes away remaining
+       * query parameters.
+       */
+
+      url.search = '';
+
+      if (
+        url.pathname.length > 1 &&
+        url.pathname.endsWith('/')
+      ) {
+        url.pathname =
+          url.pathname.slice(
+            0,
+            -1,
+          );
+      }
+
+      if (
+        url.protocol ===
+          'http:' &&
+        url.port === '80'
+      ) {
+        url.port = '';
+      }
+
+      if (
+        url.protocol ===
+          'https:' &&
+        url.port === '443'
+      ) {
+        url.port = '';
+      }
+
+      return url.toString();
+    } catch {
+      return '';
+    }
+  }
+
+  /*
+   * =========================================================
+   * GET COMPLETE CRAWL
+   * =========================================================
+   */
+
+  async getCrawl(
+    organizationId: string,
+    crawlId: string,
+  ) {
+    const crawl =
+      await this.prisma.crawl.findFirst({
+        where: {
+          id: crawlId,
+
+          website: {
+            organizationId,
+          },
+        },
+
+        include: {
+          website: true,
+
+          pages: {
+            include: {
+              issues: true,
+            },
+
+            orderBy: {
+              createdAt: 'asc',
+            },
+          },
+        },
+      });
+
+    if (!crawl) {
+      throw new BadRequestException(
+        'Crawl not found',
+      );
+    }
+
+    return crawl;
+  }
+
+  /*
+   * =========================================================
+   * GET CRAWL SUMMARY
+   * =========================================================
+   */
+
+  async getCrawlSummary(
+    organizationId: string,
+    crawlId: string,
+  ) {
+    const crawl =
+      await this.prisma.crawl.findFirst({
+        where: {
+          id: crawlId,
+
+          website: {
+            organizationId,
+          },
+        },
+
+        include: {
+          website: true,
+
+          pages: {
+            include: {
+              issues: true,
+            },
+          },
+        },
+      });
+
+    if (!crawl) {
+      throw new BadRequestException(
+        'Crawl not found',
+      );
+    }
+
+    const issues =
+      crawl.pages.flatMap(
+        (page) =>
+          page.issues,
+      );
+
+    /*
+     * =======================================================
+     * ISSUE COUNTS
+     * =======================================================
+     */
+
+    const totalIssues =
+      issues.length;
+
+    const critical =
+      issues.filter(
+        (issue) =>
+          issue.severity ===
+            'CRITICAL' &&
+          issue.status ===
+            'OPEN',
+      ).length;
+
+    const high =
+      issues.filter(
+        (issue) =>
+          issue.severity ===
+            'HIGH' &&
+          issue.status ===
+            'OPEN',
+      ).length;
+
+    const medium =
+      issues.filter(
+        (issue) =>
+          issue.severity ===
+            'MEDIUM' &&
+          issue.status ===
+            'OPEN',
+      ).length;
+
+    const low =
+      issues.filter(
+        (issue) =>
+          issue.severity ===
+            'LOW' &&
+          issue.status ===
+            'OPEN',
+      ).length;
+
+    const open =
+      issues.filter(
+        (issue) =>
+          issue.status ===
+          'OPEN',
+      ).length;
+
+    const fixed =
+      issues.filter(
+        (issue) =>
+          issue.status ===
+          'FIXED',
+      ).length;
+
+    const ignored =
+      issues.filter(
+        (issue) =>
+          issue.status ===
+          'IGNORED',
+      ).length;
+
+    /*
+     * =======================================================
+     * PRODUCTION SEO HEALTH SCORE
+     * =======================================================
+     *
+     * Only OPEN issues affect the score.
+     *
+     * CRITICAL -> 35
+     * HIGH     -> 25
+     * MEDIUM   -> 20
+     * LOW      -> 10
+     *
+     * Impact is normalized against page count so that
+     * repeated issues don't immediately destroy the score.
+     */
+
+    const pageCount =
+      Math.max(
+        crawl.pages.length,
+        1,
+      );
+
+    const normalizedImpact = (
+      issueCount: number,
+    ): number => {
+      return (
+        issueCount /
+        (issueCount + pageCount)
+      );
+    };
+
+    const criticalImpact =
+      normalizedImpact(
+        critical,
+      ) * 35;
+
+    const highImpact =
+      normalizedImpact(
+        high,
+      ) * 25;
+
+    const mediumImpact =
+      normalizedImpact(
+        medium,
+      ) * 20;
+
+    const lowImpact =
+      normalizedImpact(
+        low,
+      ) * 10;
+
+    const penalty =
+      criticalImpact +
+      highImpact +
+      mediumImpact +
+      lowImpact;
+
+    const score =
+      Math.round(
+        Math.max(
+          0,
+          Math.min(
+            100,
+            100 - penalty,
+          ),
+        ),
+      );
+
+    /*
+     * =======================================================
+     * RESULT
+     * =======================================================
+     */
+
+    return {
+      crawlId:
+        crawl.id,
+
+      websiteId:
+        crawl.websiteId,
+
+      website:
+        crawl.website,
+
+      score,
+
+      pages:
+        crawl.pages.length,
+
+      totalIssues,
+
+      critical,
+
+      high,
+
+      medium,
+
+      low,
+
+      open,
+
+      resolved:
+        fixed,
+
+      ignored,
+
+      fixed,
+    };
+  }
+}

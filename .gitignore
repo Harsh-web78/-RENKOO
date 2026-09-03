@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.next/
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+coverage/
+
+# Local database backups
+*.sql
+*.dump

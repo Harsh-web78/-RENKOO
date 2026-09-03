@@ -1,0 +1,1 @@
+import type {Config} from 'tailwindcss'; const config:Config={content:['./src/**/*.{js,ts,jsx,tsx,mdx}'],theme:{extend:{colors:{renkoo:{blue:'#2563EB',purple:'#7C3AED',ink:'#0F172A'}}}},plugins:[]}; export default config;

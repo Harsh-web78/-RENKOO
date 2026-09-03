@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String               @id @default(cuid())
+  email        String               @unique
+  name         String?
+  passwordHash String?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  memberships  OrganizationMember[]
+}
+
+model Organization {
+  id          String               @id @default(cuid())
+  name        String
+  slug        String               @unique
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  memberships OrganizationMember[]
+  websites    Website[]
+}
+
+model OrganizationMember {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  role           MemberRole   @default(MEMBER)
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+}
+
+model Website {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  url            String
+  industry       String?
+  country        String?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  crawls         Crawl[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model Crawl {
+  id          String      @id @default(cuid())
+  websiteId   String
+  status      String      @default("COMPLETED")
+  startedAt   DateTime    @default(now())
+  completedAt DateTime?
+  createdAt   DateTime    @default(now())
+  website     Website     @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  pages       CrawlPage[]
+
+  @@index([websiteId])
+  @@index([createdAt])
+}
+
+model CrawlPage {
+  id               String     @id @default(cuid())
+  crawlId          String
+  url              String
+  statusCode       Int?
+  title            String?
+  metaDescription  String?
+  canonical        String?
+  h1               String[]
+  h2               String[]
+  images           Int        @default(0)
+  imagesWithoutAlt Int        @default(0)
+  internalLinks    Int        @default(0)
+  externalLinks    Int        @default(0)
+  wordCount        Int        @default(0)
+  robots           String?
+  createdAt        DateTime   @default(now())
+  crawl            Crawl      @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+  issues           SeoIssue[]
+
+  @@index([crawlId])
+  @@index([url])
+}
+
+model SeoIssue {
+  id             String           @id @default(cuid())
+  crawlPageId    String
+  code           String
+  category       String
+  severity       SeoIssueSeverity
+  title          String
+  description    String
+  recommendation String
+  status         SeoIssueStatus   @default(OPEN)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  crawlPage      CrawlPage        @relation(fields: [crawlPageId], references: [id], onDelete: Cascade)
+
+  @@index([crawlPageId])
+  @@index([code])
+  @@index([severity])
+  @@index([status])
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum SeoIssueSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum SeoIssueStatus {
+  OPEN
+  FIXED
+  IGNORED
+}

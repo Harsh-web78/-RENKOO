@@ -1,0 +1,822 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String               @id @default(cuid())
+  email        String               @unique
+  name         String?
+  passwordHash String?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  memberships  OrganizationMember[]
+}
+
+model Organization {
+  id               String               @id @default(cuid())
+  name             String
+  slug             String               @unique
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  googleConnection GoogleConnection?
+  memberships      OrganizationMember[]
+  websites         Website[]
+  Subscription     Subscription?
+  BillingEvent     BillingEvent[]
+  invites          OrganizationInvite[]
+  Recommendation   Recommendation[]
+  Action           Action[]
+}
+
+model OrganizationMember {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  role           MemberRole   @default(MEMBER)
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([userId])
+  @@index([organizationId])
+}
+
+model Website {
+  id                  String                @id @default(cuid())
+  organizationId      String
+  name                String
+  url                 String
+  industry            String?
+  country             String?
+  isActive            Boolean               @default(true)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  AeoAudit            AeoAudit[]
+  AiVisibilityCheck   AiVisibilityCheck[]
+  AiVisibilityQuery   AiVisibilityQuery[]
+  AiVisibilitySummary AiVisibilitySummary[]
+  Backlink            Backlink[]
+  BacklinkDomain      BacklinkDomain[]
+  BacklinkOpportunity BacklinkOpportunity[]
+  BacklinkSnapshot    BacklinkSnapshot[]
+  businessBrain       BusinessBrain?
+  competitors         Competitor[]
+  crawls              Crawl[]
+  GeoAudit            GeoAudit[]
+  GeoQuery            GeoQuery[]
+  Lead                Lead[]
+  Revenue             Revenue[]
+  organization        Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Recommendation      Recommendation[]
+  Action              Action[]
+
+  @@index([organizationId])
+  @@index([url])
+}
+
+model Competitor {
+  id             String            @id @default(cuid())
+  organizationId String
+  websiteId      String
+  name           String
+  url            String
+  domain         String
+  isActive       Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  website        Website           @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  crawls         CompetitorCrawl[]
+  Recommendation Recommendation[]
+
+  @@index([organizationId])
+  @@index([websiteId])
+  @@index([domain])
+  @@index([url])
+}
+
+model CompetitorCrawl {
+  id              String                @id @default(cuid())
+  competitorId    String
+  status          String                @default("RUNNING")
+  pagesCrawled    Int                   @default(0)
+  pagesDiscovered Int                   @default(0)
+  score           Int                   @default(0)
+  totalIssues     Int                   @default(0)
+  critical        Int                   @default(0)
+  high            Int                   @default(0)
+  medium          Int                   @default(0)
+  low             Int                   @default(0)
+  startedAt       DateTime              @default(now())
+  completedAt     DateTime?
+  createdAt       DateTime              @default(now())
+  competitor      Competitor            @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  pages           CompetitorCrawlPage[]
+
+  @@index([competitorId])
+  @@index([createdAt])
+  @@index([status])
+}
+
+model CompetitorCrawlPage {
+  id                  String          @id @default(cuid())
+  competitorCrawlId   String
+  url                 String
+  statusCode          Int?
+  title               String?
+  metaDescription     String?
+  canonical           String?
+  canonicalAbsolute   String?
+  h1                  String[]
+  h2                  String[]
+  images              Int             @default(0)
+  imagesWithoutAlt    Int             @default(0)
+  internalLinks       Int             @default(0)
+  externalLinks       Int             @default(0)
+  wordCount           Int             @default(0)
+  robots              String?
+  robotsIndexable     Boolean?
+  robotsFollow        Boolean?
+  viewport            String?
+  lang                String?
+  charset             String?
+  ogTitle             String?
+  ogDescription       String?
+  ogImage             String?
+  twitterCard         String?
+  structuredDataCount Int             @default(0)
+  jsonLd              Json?
+  redirectCount       Int             @default(0)
+  finalUrl            String?
+  contentType         String?
+  loadTimeMs          Int?
+  createdAt           DateTime        @default(now())
+  competitorCrawl     CompetitorCrawl @relation(fields: [competitorCrawlId], references: [id], onDelete: Cascade)
+
+  @@index([competitorCrawlId])
+  @@index([url])
+  @@index([statusCode])
+  @@index([wordCount])
+}
+
+model Crawl {
+  id          String      @id @default(cuid())
+  websiteId   String
+  status      String      @default("COMPLETED")
+  startedAt   DateTime    @default(now())
+  completedAt DateTime?
+  createdAt   DateTime    @default(now())
+  website     Website     @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  pages       CrawlPage[]
+
+  @@index([websiteId])
+  @@index([createdAt])
+}
+
+model CrawlPage {
+  id                  String     @id @default(cuid())
+  crawlId             String
+  url                 String
+  statusCode          Int?
+  title               String?
+  metaDescription     String?
+  canonical           String?
+  h1                  String[]
+  h2                  String[]
+  images              Int        @default(0)
+  imagesWithoutAlt    Int        @default(0)
+  internalLinks       Int        @default(0)
+  externalLinks       Int        @default(0)
+  wordCount           Int        @default(0)
+  robots              String?
+  createdAt           DateTime   @default(now())
+  robotsIndexable     Boolean?
+  robotsFollow        Boolean?
+  viewport            String?
+  lang                String?
+  charset             String?
+  ogTitle             String?
+  ogDescription       String?
+  ogImage             String?
+  twitterCard         String?
+  structuredDataCount Int        @default(0)
+  jsonLd              Json?
+  canonicalAbsolute   String?
+  redirectCount       Int        @default(0)
+  finalUrl            String?
+  contentType         String?
+  loadTimeMs          Int?
+  crawl               Crawl      @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+  issues              SeoIssue[]
+
+  @@index([crawlId])
+  @@index([url])
+}
+
+model SeoIssue {
+  id             String           @id @default(cuid())
+  crawlPageId    String
+  code           String
+  category       String
+  severity       SeoIssueSeverity
+  title          String
+  description    String
+  recommendation String
+  status         SeoIssueStatus   @default(OPEN)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  crawlPage      CrawlPage        @relation(fields: [crawlPageId], references: [id], onDelete: Cascade)
+
+  @@index([crawlPageId])
+  @@index([code])
+  @@index([severity])
+  @@index([status])
+}
+
+model GoogleConnection {
+  id                        String       @id @default(cuid())
+  organizationId            String       @unique
+  googleEmail               String?
+  accessToken               String?
+  refreshToken              String
+  tokenExpiry               DateTime?
+  selectedProperty          String?
+  createdAt                 DateTime     @default(now())
+  updatedAt                 DateTime     @updatedAt
+  googleName                String?
+  googlePicture             String?
+  googleUserId              String
+  scope                     String?
+  selectedAnalyticsProperty String?
+  organization              Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([googleUserId])
+}
+
+model AeoAudit {
+  id           String     @id
+  websiteId    String
+  score        Int        @default(0)
+  pagesChecked Int        @default(0)
+  issuesCount  Int        @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime
+  Website      Website    @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  AeoIssue     AeoIssue[]
+
+  @@index([createdAt])
+  @@index([websiteId])
+}
+
+model AeoIssue {
+  id             String           @id
+  auditId        String
+  pageUrl        String?
+  checkType      AeoCheckType
+  status         AeoIssueStatus   @default(OPEN)
+  severity       SeoIssueSeverity
+  title          String
+  description    String
+  recommendation String
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  AeoAudit       AeoAudit         @relation(fields: [auditId], references: [id], onDelete: Cascade)
+
+  @@index([auditId])
+  @@index([severity])
+  @@index([status])
+}
+
+model AiVisibilityCheck {
+  id              String                  @id
+  websiteId       String
+  platform        AiVisibilityPlatform
+  query           String
+  status          AiVisibilityCheckStatus @default(PENDING)
+  mentioned       Boolean                 @default(false)
+  citationFound   Boolean                 @default(false)
+  position        Int?
+  response        String?
+  citationUrl     String?
+  competitorNames String[]
+  checkedAt       DateTime?
+  errorMessage    String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  Website         Website                 @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([checkedAt])
+  @@index([platform])
+  @@index([status])
+  @@index([websiteId])
+  @@index([websiteId, platform])
+}
+
+model AiVisibilityQuery {
+  id        String   @id
+  websiteId String
+  query     String
+  category  String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  Website   Website  @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@unique([websiteId, query])
+  @@index([isActive])
+  @@index([websiteId])
+}
+
+model AiVisibilitySummary {
+  id                 String   @id
+  websiteId          String
+  date               DateTime
+  totalQueries       Int      @default(0)
+  mentionedQueries   Int      @default(0)
+  citedQueries       Int      @default(0)
+  visibilityScore    Float    @default(0)
+  citationRate       Float    @default(0)
+  averagePosition    Float?
+  competitorMentions Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime
+  Website            Website  @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@unique([websiteId, date])
+  @@index([date])
+  @@index([websiteId])
+}
+
+model GeoAudit {
+  id             String   @id
+  websiteId      String
+  overallScore   Int      @default(0)
+  entityScore    Int      @default(0)
+  citationScore  Int      @default(0)
+  authorityScore Int      @default(0)
+  contentScore   Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime
+  Website        Website  @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([websiteId])
+}
+
+model GeoQuery {
+  id        String           @id
+  websiteId String
+  query     String
+  engine    VisibilityEngine
+  mentioned Boolean          @default(false)
+  cited     Boolean          @default(false)
+  position  Int?
+  response  String?
+  checkedAt DateTime         @default(now())
+  Website   Website          @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([checkedAt])
+  @@index([engine])
+  @@index([query])
+  @@index([websiteId])
+}
+
+model Backlink {
+  id              String   @id @default(cuid())
+  websiteId       String
+  sourceUrl       String
+  targetUrl       String
+  sourceDomain    String
+  anchorText      String?
+  linkType        String   @default("UNKNOWN")
+  status          String   @default("ACTIVE")
+  firstSeenAt     DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
+  domainAuthority Float?
+  pageAuthority   Float?
+  isToxic         Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  website         Website  @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId])
+  @@index([sourceDomain])
+  @@index([targetUrl])
+  @@index([status])
+  @@index([lastSeenAt])
+}
+
+model BacklinkDomain {
+  id             String   @id @default(cuid())
+  websiteId      String
+  domain         String
+  backlinkCount  Int      @default(0)
+  authorityScore Float    @default(0)
+  dofollowCount  Int      @default(0)
+  nofollowCount  Int      @default(0)
+  toxicCount     Int      @default(0)
+  firstSeenAt    DateTime @default(now())
+  lastSeenAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  website        Website  @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@unique([websiteId, domain])
+  @@index([websiteId])
+  @@index([authorityScore])
+  @@index([backlinkCount])
+}
+
+model BacklinkSnapshot {
+  id               String   @id @default(cuid())
+  websiteId        String
+  date             DateTime @default(now())
+  totalBacklinks   Int      @default(0)
+  referringDomains Int      @default(0)
+  dofollowLinks    Int      @default(0)
+  nofollowLinks    Int      @default(0)
+  toxicLinks       Int      @default(0)
+  authorityScore   Float    @default(0)
+  newBacklinks     Int      @default(0)
+  lostBacklinks    Int      @default(0)
+  createdAt        DateTime @default(now())
+  website          Website  @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@unique([websiteId, date])
+  @@index([websiteId])
+  @@index([date])
+}
+
+model BacklinkOpportunity {
+  id               String   @id @default(cuid())
+  websiteId        String
+  sourceDomain     String
+  competitorId     String?
+  targetUrl        String?
+  anchorSuggestion String?
+  opportunityType  String
+  opportunityScore Int      @default(0)
+  priority         String   @default("LOW")
+  status           String   @default("OPEN")
+  reason           String?
+  suggestedAction  String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  website          Website  @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId])
+  @@index([competitorId])
+  @@index([opportunityScore])
+  @@index([priority])
+  @@index([status])
+}
+
+model BusinessBrain {
+  id                 String    @id @default(cuid())
+  websiteId          String    @unique
+  businessName       String?
+  industry           String?
+  country            String?
+  city               String?
+  description        String?
+  services           String[]  @default([])
+  products           String[]  @default([])
+  targetAudience     String?
+  primaryGoal        String?
+  primaryKeywords    String[]  @default([])
+  targetLocations    String[]  @default([])
+  brandTone          String?
+  uniqueSellingPoint String?
+  aiSummary          String?
+  businessScore      Int       @default(0)
+  lastAnalyzedAt     DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  website            Website   @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([businessScore])
+}
+
+model Lead {
+  id             String    @id @default(cuid())
+  websiteId      String
+  name           String?
+  email          String?
+  phone          String?
+  company        String?
+  source         String    @default("OTHER")
+  sourceDetail   String?
+  status         String    @default("NEW")
+  score          Int       @default(0)
+  estimatedValue Float     @default(0)
+  converted      Boolean   @default(false)
+  convertedAt    DateTime?
+  notes          String?
+  landingPage    String?
+  keyword        String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  website        Website   @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  Revenue        Revenue[]
+
+  @@index([websiteId])
+  @@index([status])
+  @@index([source])
+  @@index([converted])
+  @@index([createdAt])
+}
+
+model Revenue {
+  id           String   @id @default(cuid())
+  websiteId    String
+  leadId       String?
+  amount       Float
+  currency     String   @default("INR")
+  source       String?
+  sourceDetail String?
+  status       String   @default("RECOGNIZED")
+  description  String?
+  recognizedAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lead         Lead?    @relation(fields: [leadId], references: [id])
+  website      Website  @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId])
+  @@index([leadId])
+  @@index([status])
+  @@index([recognizedAt])
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum SeoIssueSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum SeoIssueStatus {
+  OPEN
+  FIXED
+  IGNORED
+}
+
+enum AeoCheckType {
+  ANSWER_READINESS
+  FAQ
+  STRUCTURED_DATA
+  ENTITY
+  CITATION
+  CONTENT_DEPTH
+  DIRECT_ANSWER
+}
+
+enum AeoIssueStatus {
+  OPEN
+  FIXED
+  IGNORED
+}
+
+enum AiVisibilityCheckStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum AiVisibilityPlatform {
+  CHATGPT
+  GOOGLE_AI
+  GEMINI
+  CLAUDE
+  PERPLEXITY
+  OTHER
+}
+
+enum VisibilityEngine {
+  GOOGLE
+  AI_OVERVIEW
+  CHATGPT
+  PERPLEXITY
+  GEMINI
+  CLAUDE
+  BING_COPILOT
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  UNPAID
+}
+
+enum UsageMetric {
+  WEBSITES
+  KEYWORDS
+  COMPETITORS
+  AI_PROMPTS
+  AI_SCANS
+  USERS
+  CLIENTS
+  REPORTS
+  CRAWL_CREDITS
+  API_CALLS
+  AI_CREDITS
+}
+
+model Plan {
+  id           String  @id @default(cuid())
+  code         String  @unique
+  name         String
+  description  String?
+  monthlyPrice Float
+  yearlyPrice  Float
+  currency     String  @default("INR")
+  active       Boolean @default(true)
+  public       Boolean @default(true)
+
+  maxWebsites     Int @default(1)
+  maxKeywords     Int @default(500)
+  maxCompetitors  Int @default(5)
+  maxAiPrompts    Int @default(100)
+  maxAiScans      Int @default(10)
+  maxUsers        Int @default(1)
+  maxClients      Int @default(0)
+  maxReports      Int @default(5)
+  maxCrawlCredits Int @default(10)
+  maxApiCalls     Int @default(1000)
+  maxAiCredits    Int @default(100)
+
+  stripeMonthlyPriceId String?
+  stripeYearlyPriceId  String?
+
+  subscriptions Subscription[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Subscription {
+  id             String @id @default(cuid())
+  organizationId String @unique
+  planId         String
+
+  status SubscriptionStatus @default(TRIALING)
+
+  stripeCustomerId     String? @unique
+  stripeSubscriptionId String? @unique
+
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  trialStart         DateTime?
+  trialEnd           DateTime?
+
+  cancelAtPeriodEnd Boolean   @default(false)
+  canceledAt        DateTime?
+  endedAt           DateTime?
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan         Plan           @relation(fields: [planId], references: [id])
+  usage        UsageCounter[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model UsageCounter {
+  id             String      @id @default(cuid())
+  subscriptionId String
+  metric         UsageMetric
+  periodStart    DateTime
+  periodEnd      DateTime
+  used           Int         @default(0)
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([subscriptionId, metric, periodStart])
+}
+
+model BillingEvent {
+  id             String  @id @default(cuid())
+  organizationId String?
+  provider       String  @default("STRIPE")
+  eventId        String  @unique
+  eventType      String
+  processed      Boolean @default(false)
+  payload        Json
+  errorMessage   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+}
+
+enum ActionStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  DISMISSED
+}
+
+enum RecommendationStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  DISMISSED
+}
+
+model Recommendation {
+  id             String  @id @default(cuid())
+  organizationId String
+  websiteId      String?
+  competitorId   String?
+
+  source      String
+  type        String
+  title       String
+  description String
+  priority    String
+  impact      String?
+  effort      String?
+  status      RecommendationStatus @default(OPEN)
+  actionText  String?
+  pageUrl     String?
+  metadata    Json?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  website      Website?     @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  competitor   Competitor?  @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  actions      Action[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([websiteId])
+  @@index([competitorId])
+  @@index([status])
+}
+
+model Action {
+  id               String  @id @default(cuid())
+  organizationId   String
+  websiteId        String?
+  recommendationId String?
+
+  type        String
+  title       String
+  description String
+  url         String?
+  priority    String
+  status      ActionStatus @default(TODO)
+
+  completedAt DateTime?
+  metadata    Json?
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  website        Website?        @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  recommendation Recommendation? @relation(fields: [recommendationId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([websiteId])
+  @@index([recommendationId])
+  @@index([status])
+}
+
+model OrganizationInvite {
+  id             String     @id @default(cuid())
+  organizationId String
+  email          String
+  role           MemberRole @default(MEMBER)
+  token          String     @unique
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([email])
+  @@index([expiresAt])
+}
