@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+﻿import { Injectable, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,11 +13,11 @@ export class StripeService {
   ) {
     const key = this.config.get<string>('STRIPE_SECRET_KEY');
 
-    if (!key) {
-      throw new Error('STRIPE_SECRET_KEY is not configured');
+    if (key) {
+      this.stripe = new Stripe(key);
+    } else {
+      this.stripe = null as unknown as Stripe;
     }
-
-    this.stripe = new Stripe(key);
   }
 
   async syncPlansToStripe() {
@@ -155,3 +155,4 @@ export class StripeService {
     };
   }
 }
+
