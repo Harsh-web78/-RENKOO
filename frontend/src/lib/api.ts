@@ -1701,3 +1701,10 @@ export async function acceptTeamInvite(token: string) {
 
 
 
+export async function getCompetitorComparison(
+  competitorId: string,
+) {
+  return request<any>(
+    `/comparison/competitors/${encodeURIComponent(competitorId)}`,
+  );
+}
