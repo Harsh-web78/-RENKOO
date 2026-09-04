@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -1711,6 +1711,16 @@ export default function CompetitorsPage() {
 
                           <div className="flex flex-wrap items-center gap-2">
 
+                            {/* COMPARE */}
+
+                            <a
+                              href={`/competitors/${competitor.id}`}
+                              className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                            >
+                              <BarChart3 size={14} />
+                              Compare
+                            </a>
+
                             {/* CRAWL */}
 
                             <button
@@ -2060,4 +2070,5 @@ function Stat({
     </div>
   );
 }
+
 

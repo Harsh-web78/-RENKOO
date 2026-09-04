@@ -1708,3 +1708,11 @@ export async function getCompetitorComparison(
     `/comparison/competitors/${encodeURIComponent(competitorId)}`,
   );
 }
+
+export async function getCompetitorRecommendations(
+  competitorId: string,
+) {
+  return request<any>(
+    `/recommendations/competitors/${encodeURIComponent(competitorId)}`,
+  );
+}
