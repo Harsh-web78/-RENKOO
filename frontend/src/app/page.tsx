@@ -1170,7 +1170,7 @@ async function loadSearchAnalytics(
           <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <h1 className="text-2xl font-bold sm:text-3xl">
-                Good morning! 👋
+                Growth Command Center 👋
               </h1>
 
               <p className="mt-1 text-sm text-slate-500">
@@ -2409,6 +2409,7 @@ function Panel({
     </section>
   );
 }
+
 
 
 
