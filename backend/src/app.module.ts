@@ -1,5 +1,5 @@
-﻿
-import { MarketingSpendModule } from './marketing-spend/marketing-spend.module';
+﻿import { MarketingSpendModule } from './marketing-spend/marketing-spend.module';
+import { MonitoringModule } from './monitoring/monitoring.module';
 import { TeamModule } from './team/team.module';
 
 import { Module } from '@nestjs/common';
@@ -59,7 +59,8 @@ import { AeoModule } from './aeo/aeo.module';
 @Module({
   imports: [
     MarketingSpendModule,
-TeamModule, 
+    MonitoringModule,
+    TeamModule, 
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
@@ -105,6 +106,7 @@ LeadsModule,
   ],
 })
 export class AppModule {}
+
 
 
 

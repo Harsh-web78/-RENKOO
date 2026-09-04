@@ -1,0 +1,28 @@
+model MonitoringAlert {
+  id               String   @id @default(cuid())
+  organizationId   String
+  websiteId        String
+  type             String
+  source           String
+  severity         String
+  title            String
+  description      String
+  evidence         Json
+  detectedAt       DateTime @default(now())
+  status           String   @default("DETECTED")
+  acknowledgedAt   DateTime?
+  resolvedAt       DateTime?
+  deduplicationKey String
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([organizationId, websiteId, deduplicationKey, active])
+  @@index([organizationId])
+  @@index([websiteId])
+  @@index([source])
+  @@index([severity])
+  @@index([status])
+  @@index([detectedAt])
+  @@index([active])
+}
