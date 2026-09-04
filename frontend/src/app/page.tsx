@@ -1584,6 +1584,8 @@ async function loadSearchAnalytics(
                     searchAnalyticsError ||
                     'Connect Search Console to unlock clicks, queries and growth opportunities.'
                   }
+                  actionLabel="Connect Search Console"
+                  actionHref="/integrations"
                 />
               ) : (
                 <>
@@ -1707,6 +1709,8 @@ async function loadSearchAnalytics(
                     ga4Error ||
                     'Connect Google Analytics to measure traffic, engagement and conversions.'
                   }
+                  actionLabel="Connect Google Analytics"
+                  actionHref="/integrations"
                 />
               ) : (
                 <>
@@ -2071,6 +2075,12 @@ async function loadSearchAnalytics(
                       ? 'No top issues were returned by the latest crawl.'
                       : 'Run a Technical SEO crawl to generate issue intelligence.'
                   }
+                  actionLabel={
+                    technicalSeo ? undefined : 'Run Technical SEO Audit'
+                  }
+                  actionHref={
+                    technicalSeo ? undefined : '/technical-seo'
+                  }
                 />
               ) : (
                 <div className="space-y-2">
@@ -2348,13 +2358,17 @@ function EmptyState({
   loading,
   title,
   description,
+  actionLabel,
+  actionHref,
 }: {
   loading: boolean;
   title: string;
   description: string;
+  actionLabel?: string;
+  actionHref?: string;
 }) {
   return (
-    <div className="rounded-xl bg-slate-50 p-5">
+    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-5">
       <div className="flex items-start gap-3">
         {loading ? (
           <RefreshCw
@@ -2368,14 +2382,23 @@ function EmptyState({
           />
         )}
 
-        <div>
-          <div className="text-sm font-semibold text-slate-700">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-slate-800">
             {title}
           </div>
 
-          <div className="mt-1 text-xs leading-5 text-slate-500">
+          <div className="mt-1 max-w-xl text-xs leading-5 text-slate-500">
             {description}
           </div>
+
+          {actionLabel && actionHref && !loading && (
+            <a
+              href={actionHref}
+              className="mt-4 inline-flex items-center rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800"
+            >
+              {actionLabel} ?
+            </a>
+          )}
         </div>
       </div>
     </div>
@@ -2409,6 +2432,11 @@ function Panel({
     </section>
   );
 }
+
+
+
+
+
 
 
 
