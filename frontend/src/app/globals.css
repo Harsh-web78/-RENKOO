@@ -2,71 +2,179 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --rk-bg: #f7f8fa;
+  --rk-surface: #ffffff;
+  --rk-surface-soft: #f9fafb;
+  --rk-border: #e7e9ee;
+  --rk-border-strong: #d9dde5;
+  --rk-text: #111318;
+  --rk-text-secondary: #5f6673;
+  --rk-text-muted: #8b929f;
+  --rk-primary: #111318;
+  --rk-success: #16835b;
+  --rk-warning: #b7791f;
+  --rk-danger: #c24141;
+  --rk-radius-sm: 8px;
+  --rk-radius-md: 12px;
+  --rk-radius-lg: 16px;
+  --rk-shadow-sm: 0 1px 2px rgba(16,24,40,.04);
+  --rk-shadow-md: 0 8px 24px rgba(16,24,40,.06);
+}
+
 * {
   box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 html,
 body {
   margin: 0;
   padding: 0;
+  min-height: 100%;
 }
 
 body {
-  background: #fff;
-  color: #0f172a;
-  font-family: Arial, Helvetica, sans-serif;
+  background:
+    radial-gradient(circle at 85% 0%, rgba(17,19,24,.025), transparent 28%),
+    var(--rk-bg);
+  color: var(--rk-text);
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* =========================================================
- * FORM INPUTS
- * ========================================================= */
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: rgba(17,19,24,.12);
+  color: var(--rk-text);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cfd3da;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #aeb4be;
+}
+
+/* RENKOO premium surfaces */
+
+.rk-surface {
+  background: var(--rk-surface);
+  border: 1px solid var(--rk-border);
+  border-radius: var(--rk-radius-lg);
+  box-shadow: var(--rk-shadow-sm);
+}
+
+.rk-surface:hover {
+  border-color: var(--rk-border-strong);
+}
+
+.rk-label {
+  color: var(--rk-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.rk-number {
+  color: var(--rk-text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.035em;
+}
+
+.rk-divider {
+  height: 1px;
+  background: var(--rk-border);
+}
+
+/* Subtle premium motion */
+
+@media (prefers-reduced-motion: no-preference) {
+  .rk-interactive {
+    transition:
+      transform 160ms ease,
+      border-color 160ms ease,
+      box-shadow 160ms ease,
+      background-color 160ms ease;
+  }
+
+  .rk-interactive:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--rk-shadow-md);
+  }
+}
+
+/* Forms */
 
 .input {
   width: 100%;
-  border-radius: 0.75rem;
-  border: 1px solid rgb(226 232 240);
-  background: #fff;
-  padding: 0.625rem 0.75rem;
-  font-size: 0.875rem;
-  color: #0f172a;
+  border-radius: var(--rk-radius-md);
+  border: 1px solid var(--rk-border);
+  background: var(--rk-surface);
+  padding: .7rem .8rem;
+  font-size: .875rem;
+  color: var(--rk-text);
   outline: none;
-  transition:
-    border-color 150ms ease,
-    box-shadow 150ms ease;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .input::placeholder {
-  color: rgb(148 163 184);
+  color: var(--rk-text-muted);
 }
 
 .input:hover {
-  border-color: rgb(203 213 225);
+  border-color: var(--rk-border-strong);
 }
 
 .input:focus {
-  border-color: rgb(59 130 246);
-  box-shadow: 0 0 0 3px rgb(59 130 246 / 0.1);
+  border-color: #6b7280;
+  box-shadow: 0 0 0 3px rgba(17,19,24,.07);
 }
 
 .input:disabled {
   cursor: not-allowed;
-  background: rgb(248 250 252);
-  opacity: 0.7;
+  background: var(--rk-surface-soft);
+  opacity: .7;
 }
-
-/* =========================================================
- * TEXTAREA
- * ========================================================= */
 
 textarea.input {
   min-height: 100px;
   line-height: 1.5;
 }
-
-/* =========================================================
- * SELECT
- * ========================================================= */
 
 select.input {
   cursor: pointer;
@@ -74,4 +182,84 @@ select.input {
 
 select.input:disabled {
   cursor: not-allowed;
+}
+/* =========================================================
+   RENKOO COMMAND CENTER — PREMIUM SHELL
+   ========================================================= */
+
+.rk-app {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(15, 23, 42, .035), transparent 24rem),
+    var(--rk-bg);
+}
+
+.rk-main {
+  min-height: 100vh;
+}
+
+.rk-topbar {
+  background: rgba(255,255,255,.88);
+  border-color: var(--rk-border);
+}
+
+.rk-dashboard {
+  animation: rk-page-in 280ms ease-out;
+}
+
+@keyframes rk-page-in {
+  from {
+    opacity: .0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Premium dashboard cards without changing data/components */
+.rk-dashboard [class*="rounded-2xl"][class*="border-slate-200"],
+.rk-dashboard [class*="rounded-xl"][class*="border-slate-200"] {
+  border-color: var(--rk-border);
+  box-shadow: var(--rk-shadow-sm);
+}
+
+.rk-dashboard [class*="rounded-2xl"][class*="bg-white"],
+.rk-dashboard [class*="rounded-xl"][class*="bg-white"] {
+  background: rgba(255,255,255,.94);
+}
+
+/* Stronger section hierarchy */
+.rk-dashboard h1 {
+  letter-spacing: -.04em;
+}
+
+.rk-dashboard h2,
+.rk-dashboard h3 {
+  letter-spacing: -.025em;
+}
+
+/* Remove excessive "AI SaaS" visual noise */
+.rk-dashboard [class*="bg-violet-"],
+.rk-dashboard [class*="bg-purple-"] {
+  background-color: #f5f3ff;
+}
+
+/* Better focus accessibility */
+.rk-dashboard button:focus-visible,
+.rk-topbar button:focus-visible,
+.rk-dashboard a:focus-visible {
+  outline: 2px solid #111318;
+  outline-offset: 2px;
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+  .rk-dashboard {
+    padding: 16px;
+  }
+
+  .rk-dashboard h1 {
+    font-size: 26px;
+  }
 }

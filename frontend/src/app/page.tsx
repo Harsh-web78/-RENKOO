@@ -1022,7 +1022,7 @@ async function loadSearchAnalytics(
    */
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="rk-app min-h-screen text-slate-900">
       <Sidebar
         mobileOpen={open}
         onClose={() =>
@@ -1030,10 +1030,10 @@ async function loadSearchAnalytics(
         }
       />
 
-      <main className="lg:pl-[270px]">
+      <main className="rk-main lg:pl-[270px]">
         {/* HEADER */}
 
-        <header className="sticky top-0 z-30 flex h-[72px] items-center border-b border-slate-200 bg-white/95 px-5 backdrop-blur lg:px-8">
+        <header className="rk-topbar sticky top-0 z-30 flex h-[72px] items-center border-b px-5 backdrop-blur lg:px-8">
           <button
             className="lg:hidden"
             onClick={() =>
@@ -1164,7 +1164,7 @@ async function loadSearchAnalytics(
           </div>
         </header>
 
-        <section className="mx-auto max-w-[1500px] p-5 lg:p-8">
+        <section className="rk-dashboard mx-auto max-w-[1600px] p-5 lg:p-8">
           {/* PAGE HEADING */}
 
           <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
@@ -1174,7 +1174,7 @@ async function loadSearchAnalytics(
               </h1>
 
               <p className="mt-1 text-sm text-slate-500">
-                Your RENKOO growth workspace is ready.
+                Your highest-priority growth signals, opportunities, and actions in one place.
               </p>
             </div>
 
@@ -1434,7 +1434,7 @@ async function loadSearchAnalytics(
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <MetricCard
-              title="SEO Health"
+              title="Organic Growth Health"
               value={
                 loadingSeo
                   ? '...'
@@ -1568,11 +1568,11 @@ async function loadSearchAnalytics(
               REAL SEARCH + GA4
           ====================================================== */}
 
-          <div className="mt-5 grid gap-5 xl:grid-cols-3">
+          <div className="mt-6 grid gap-5 xl:grid-cols-2">
             {/* SEARCH VISIBILITY */}
 
             <Panel
-              title="Search Visibility"
+              title="Search Intelligence"
             >
               {!searchAnalytics ? (
                 <EmptyState
@@ -1642,7 +1642,7 @@ async function loadSearchAnalytics(
                     />
                   </div>
 
-                  <div className="mt-5 h-44 rounded-xl bg-slate-50 p-4">
+                  <div className="rk-chart mt-5 h-44 rounded-xl border border-slate-100 bg-slate-50/70 p-4">
                     {searchChart.length ===
                     0 ? (
                       <div className="grid h-full place-items-center text-xs text-slate-400">
@@ -1662,7 +1662,7 @@ async function loadSearchAnalytics(
                               className="group relative flex h-full flex-1 items-end"
                             >
                               <div
-                                className="w-full rounded-t-md bg-blue-500/70 transition hover:bg-blue-600"
+                                className="w-full rounded-t-md bg-slate-900/80 transition-all duration-200 hover:bg-slate-900"
                                 style={{
                                   height: `${point.height}%`,
                                 }}
@@ -1805,7 +1805,8 @@ async function loadSearchAnalytics(
 
             {/* GROWTH OPPORTUNITIES */}
 
-            <Panel title="Top Growth Opportunities">
+            <div className="xl:col-span-2">
+              <Panel title="Priority Growth Opportunities">
               <div className="space-y-3">
                 {opportunitiesLoading ? (
                   <div className="space-y-3">
@@ -1846,7 +1847,7 @@ async function loadSearchAnalytics(
                   topOpportunities.map((opportunity) => (
                     <div
                       key={opportunity.id}
-                      className="rounded-xl border border-slate-100 bg-white p-4 transition hover:border-slate-200 hover:shadow-sm"
+                      className="group rounded-2xl border border-slate-200 bg-white p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
                     >
                       <div className="flex items-start gap-3">
                         <div className="mt-0.5 rounded-lg bg-orange-50 p-2">
@@ -1978,7 +1979,8 @@ async function loadSearchAnalytics(
                   ))
                 )}
               </div>
-            </Panel>
+              </Panel>
+            </div>
           </div>
 
           {/* =====================================================
@@ -2124,11 +2126,11 @@ async function loadSearchAnalytics(
           </div>
 
           {/* =====================================================
-              AI ASSISTANT + REVENUE
+              INTELLIGENCE + BUSINESS IMPACT
           ====================================================== */}
 
           <div className="mt-5 grid gap-5 xl:grid-cols-2">
-            <Panel title="RENKOO AI Assistant">
+            <Panel title="RENKOO Intelligence">
               <div className="rounded-xl bg-slate-50 p-5">
                 <div className="flex gap-3">
                   <Sparkles
@@ -2161,7 +2163,7 @@ async function loadSearchAnalytics(
               </div>
             </Panel>
 
-            <Panel title="Revenue Opportunity">
+            <Panel title="Business Impact">
               {ga4Report ? (
                 <>
                   <div className="text-sm text-slate-500">
@@ -2275,22 +2277,31 @@ function MetricCard({
   valueClassName?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="text-xs font-medium text-slate-500">
-        {title}
+    <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md">
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+          {title}
+        </div>
+
+        <div className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-slate-300 transition-colors group-hover:bg-slate-900" />
       </div>
 
       <div
-        className={`mt-3 text-3xl font-bold ${valueClassName}`}
+        className={`mt-4 text-[30px] font-bold leading-none tracking-[-0.04em] text-slate-950 ${valueClassName}`}
       >
         {value}
       </div>
 
-      <div className="mt-2 text-xs font-semibold text-slate-500">
+      <div className="mt-3 text-xs font-medium text-slate-500">
         {subtitle}
       </div>
 
-      <div className="mt-5 h-2 rounded-full bg-gradient-to-r from-blue-50 via-violet-50 to-blue-100" />
+      <div className="mt-5 h-px w-full bg-slate-100" />
+
+      <div className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
+        Live workspace signal
+      </div>
     </div>
   );
 }
@@ -2311,14 +2322,16 @@ function MiniMetric({
   value: string | number;
 }) {
   return (
-    <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-      <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500">
-        {icon}
+    <div className="group rounded-xl border border-slate-200 bg-white p-3.5 transition-all duration-200 hover:border-slate-300 hover:shadow-sm">
+      <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-400">
+        <span className="grid h-7 w-7 place-items-center rounded-lg bg-slate-50 text-slate-500 transition-colors group-hover:bg-slate-100 group-hover:text-slate-900">
+          {icon}
+        </span>
 
-        {label}
+        <span>{label}</span>
       </div>
 
-      <div className="mt-2 text-xl font-bold">
+      <div className="mt-3 text-xl font-bold tracking-[-0.025em] text-slate-950">
         {value}
       </div>
     </div>
@@ -2396,6 +2409,13 @@ function Panel({
     </section>
   );
 }
+
+
+
+
+
+
+
 
 
 
