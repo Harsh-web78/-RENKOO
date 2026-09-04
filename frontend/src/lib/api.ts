@@ -1,4 +1,4 @@
-﻿const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
 
 /*
  * =========================================================
@@ -1265,6 +1265,22 @@ export async function updateActionStatus(
   );
 }
 
+export async function createAction(data: {
+  websiteId?: string;
+  recommendationId?: string;
+  type?: string;
+  title: string;
+  description?: string;
+  url?: string;
+  priority?: string;
+  metadata?: any;
+}): Promise<RenkooAction> {
+  return request<RenkooAction>('/actions', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 /* AI VISIBILITY */
 
 export async function getAiVisibilityDashboard(
@@ -1701,10 +1717,96 @@ export async function acceptTeamInvite(token: string) {
 
 
 
+export interface MetricComparison {
+  metric: string;
+  renkoo: number;
+  competitor: number;
+  gap: number;
+  winner: 'RENKOO' | 'COMPETITOR' | 'EQUAL';
+}
+
+export interface PageGapSide {
+  exists: boolean;
+  title: string | null;
+  metaDescription: string | null;
+  h1Count: number;
+  wordCount: number;
+  images: number;
+  imagesWithoutAlt: number;
+  internalLinks: number;
+  loadTimeMs: number | null;
+  structuredDataCount: number;
+}
+
+export interface PageGap {
+  url: string;
+  renkoo: PageGapSide;
+  competitor: PageGapSide;
+  gaps: string[];
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+}
+
+export interface ComparisonOpportunity {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  recommendation: string;
+  priority: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+  priorityScore: number;
+  impactScore: number;
+  effort: 'LOW' | 'MEDIUM' | 'HIGH';
+  affectedPages: number;
+}
+
+export interface CompetitorComparisonResponse {
+  comparison: {
+    status: 'STRONGER' | 'WEAKER' | 'EQUAL';
+    renkoo: {
+      websiteId: string;
+      websiteName: string;
+      websiteUrl: string;
+      crawlId: string;
+      crawlDate: string;
+      pages: number;
+    };
+    competitor: {
+      id: string;
+      name: string;
+      url: string;
+      domain: string;
+      crawlId: string;
+      crawlDate: string;
+      pages: number;
+    };
+  };
+  metrics: MetricComparison[];
+  pageGaps: PageGap[];
+  opportunities: ComparisonOpportunity[];
+  opportunitySummary: {
+    total: number;
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+    totalImpactScore: number;
+  };
+  summary: {
+    totalMetrics: number;
+    renkooWins: number;
+    competitorWins: number;
+    equal: number;
+    totalPageGaps: number;
+    highPriority: number;
+    mediumPriority: number;
+    lowPriority: number;
+  };
+}
+
 export async function getCompetitorComparison(
   competitorId: string,
-) {
-  return request<any>(
+): Promise<CompetitorComparisonResponse> {
+  return request<CompetitorComparisonResponse>(
     `/comparison/competitors/${encodeURIComponent(competitorId)}`,
   );
 }
