@@ -1189,7 +1189,7 @@ async function loadSearchAnalytics(
                 <div className="flex h-[58px] items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 shadow-sm">
                   <RefreshCw
                     size={18}
-                    className="animate-spin text-blue-600"
+                    className="animate-spin text-slate-700"
                   />
 
                   <div>
@@ -1247,7 +1247,7 @@ async function loadSearchAnalytics(
                     }
                     className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm hover:border-blue-300 hover:shadow"
                   >
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-slate-50 text-slate-700">
                       <Globe2
                         size={19}
                       />
@@ -1299,7 +1299,7 @@ async function loadSearchAnalytics(
                             className={`flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-slate-50 ${
                               selectedWebsite?.id ===
                               website.id
-                                ? 'bg-blue-50'
+                                ? 'bg-slate-50'
                                 : ''
                             }`}
                           >
@@ -1325,7 +1325,7 @@ async function loadSearchAnalytics(
 
                             {selectedWebsite?.id ===
                               website.id && (
-                              <div className="text-xs font-bold text-blue-600">
+                              <div className="text-xs font-bold text-slate-700">
                                 Active
                               </div>
                             )}
@@ -1342,9 +1342,9 @@ async function loadSearchAnalytics(
           {/* ACTIVE WEBSITE */}
 
           {selectedWebsite && (
-            <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4">
+            <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
               <div>
-                <div className="text-xs font-medium text-blue-600">
+                <div className="text-xs font-medium text-slate-700">
                   RENKOO WORKSPACE
                 </div>
 
@@ -1494,7 +1494,7 @@ async function loadSearchAnalytics(
                   ? 'Last 28 days'
                   : 'Connect Search Console'
               }
-              valueClassName="text-blue-600"
+              valueClassName="text-slate-700"
             />
 
             <MetricCard
@@ -2013,7 +2013,7 @@ async function loadSearchAnalytics(
                         key={`${query.query}-${index}`}
                         className="flex items-center gap-3 rounded-xl border border-slate-100 p-3"
                       >
-                        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-50 text-xs font-bold text-blue-600">
+                        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-50 text-xs font-bold text-slate-700">
                           {index +
                             1}
                         </div>
@@ -2134,7 +2134,7 @@ async function loadSearchAnalytics(
               <div className="rounded-xl bg-slate-50 p-5">
                 <div className="flex gap-3">
                   <Sparkles
-                    className="mt-1 shrink-0 text-blue-600"
+                    className="mt-1 shrink-0 text-slate-700"
                     size={20}
                   />
 
@@ -2236,7 +2236,7 @@ async function loadSearchAnalytics(
                   >
                     <Sparkles
                       size={18}
-                      className="text-blue-600"
+                      className="text-slate-700"
                     />
 
                     <div className="mt-4 text-sm font-semibold">
@@ -2359,7 +2359,7 @@ function EmptyState({
         {loading ? (
           <RefreshCw
             size={18}
-            className="mt-0.5 animate-spin text-blue-600"
+            className="mt-0.5 animate-spin text-slate-700"
           />
         ) : (
           <AlertTriangle
@@ -2409,6 +2409,7 @@ function Panel({
     </section>
   );
 }
+
 
 
 
