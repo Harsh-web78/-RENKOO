@@ -27,7 +27,7 @@ import {
 } from '../../lib/api';
 
 function number(value: unknown) {
-  if (typeof value !== 'number') return '—';
+  if (typeof value !== 'number') return 'â€”';
   return new Intl.NumberFormat('en-US').format(value);
 }
 
@@ -316,7 +316,7 @@ export default function BacklinksPage() {
                   value={
                     overview?.toxicBacklinks ??
                     overview?.toxic ??
-                    '—'
+                    'â€”'
                   }
                   icon={<ShieldCheck size={17} />}
                 />
@@ -622,13 +622,13 @@ export default function BacklinksPage() {
                               </td>
 
                               <td className="max-w-xs truncate px-5 py-4 text-xs text-slate-500">
-                                {item.targetUrl || '—'}
+                                {item.targetUrl || 'â€”'}
                               </td>
 
                               <td className="px-5 py-4 text-xs font-bold text-slate-700">
                                 {item.domainAuthority ??
                                   item.pageAuthority ??
-                                  '—'}
+                                  'â€”'}
                               </td>
 
                               <td className="px-5 py-4">
