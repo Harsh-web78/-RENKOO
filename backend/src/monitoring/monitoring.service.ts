@@ -134,6 +134,242 @@ export class MonitoringService {
     }
   }
 
+  async detectTechnicalSeoAlerts(
+    organizationId: string,
+    websiteId: string,
+    crawlId: string,
+  ) {
+    try {
+      await this.assertWebsite(organizationId, websiteId);
+
+      const crawl = await this.prisma.crawl.findFirst({
+        where: {
+          id: crawlId,
+          websiteId,
+          status: 'COMPLETED',
+        },
+        select: {
+          id: true,
+          websiteId: true,
+          completedAt: true,
+          pages: {
+            select: {
+              id: true,
+              url: true,
+              issues: {
+                where: {
+                  status: 'OPEN',
+                },
+                select: {
+                  code: true,
+                  category: true,
+                  severity: true,
+                  title: true,
+                  description: true,
+                  recommendation: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!crawl) {
+        throw new NotFoundException('Completed crawl not found');
+      }
+
+      const totalPages = crawl.pages.length;
+
+      if (totalPages === 0) {
+        return {
+          crawlId,
+          websiteId,
+          alertsCreated: 0,
+          alertsUpdated: 0,
+          alertsResolved: 0,
+        };
+      }
+
+      type IssueGroup = {
+        code: string;
+        category: string;
+        severity: string;
+        title: string;
+        description: string;
+        recommendation: string;
+        affectedPages: number;
+        urls: string[];
+      };
+
+      const groups = new Map<string, IssueGroup>();
+
+      for (const page of crawl.pages) {
+        for (const issue of page.issues) {
+          const existing = groups.get(issue.code);
+
+          if (existing) {
+            existing.affectedPages += 1;
+
+            if (existing.urls.length < 20) {
+              existing.urls.push(page.url);
+            }
+
+            if (
+              ['CRITICAL', 'HIGH'].includes(issue.severity) &&
+              !['CRITICAL', 'HIGH'].includes(existing.severity)
+            ) {
+              existing.severity = issue.severity;
+            }
+          } else {
+            groups.set(issue.code, {
+              code: issue.code,
+              category: issue.category,
+              severity: issue.severity,
+              title: issue.title,
+              description: issue.description,
+              recommendation: issue.recommendation,
+              affectedPages: 1,
+              urls: [page.url],
+            });
+          }
+        }
+      }
+
+      const highImpactGroups = [...groups.values()].filter((group) => {
+        const affectedPercentage =
+          (group.affectedPages / totalPages) * 100;
+
+        return (
+          group.severity === 'CRITICAL' ||
+          group.severity === 'HIGH' ||
+          affectedPercentage >= 50
+        );
+      });
+
+      const currentKeys = new Set(
+        highImpactGroups.map(
+          (group) => `TECHNICAL_SEO:${group.code}`,
+        ),
+      );
+
+      let alertsCreated = 0;
+      let alertsUpdated = 0;
+      let alertsResolved = 0;
+
+      for (const group of highImpactGroups) {
+        const affectedPercentage =
+          (group.affectedPages / totalPages) * 100;
+
+        const deduplicationKey =
+          `TECHNICAL_SEO:${group.code}`;
+
+        const existing =
+          await this.prisma.monitoringAlert.findUnique({
+            where: {
+              organizationId_websiteId_deduplicationKey_active: {
+                organizationId,
+                websiteId,
+                deduplicationKey,
+                active: true,
+              },
+            },
+            select: {
+              id: true,
+              status: true,
+            },
+          });
+
+        const alert = await this.createAlert(
+          organizationId,
+          {
+            websiteId,
+            type: 'TECHNICAL_SEO_ISSUE',
+            source: 'TECHNICAL_SEO',
+            severity: group.severity as AlertSeverity,
+            title: `${group.title} detected across ${group.affectedPages} page${group.affectedPages === 1 ? '' : 's'}`,
+            description:
+              `${group.description} ` +
+              `${group.affectedPages} of ${totalPages} crawled pages are affected (${affectedPercentage.toFixed(1)}%).`,
+            evidence: {
+              crawlId,
+              issueCode: group.code,
+              category: group.category,
+              severity: group.severity as AlertSeverity,
+              affectedPages: group.affectedPages,
+              totalPages,
+              affectedPercentage: Number(
+                affectedPercentage.toFixed(1),
+              ),
+              affectedUrls: group.urls,
+              recommendation: group.recommendation,
+            },
+            deduplicationKey,
+            detectedAt: crawl.completedAt ?? new Date(),
+          },
+        );
+
+        if (existing) {
+          alertsUpdated += 1;
+        } else if (alert) {
+          alertsCreated += 1;
+        }
+      }
+
+      const activeTechnicalAlerts =
+        await this.prisma.monitoringAlert.findMany({
+          where: {
+            organizationId,
+            websiteId,
+            source: 'TECHNICAL_SEO',
+            active: true,
+          },
+          select: {
+            id: true,
+            deduplicationKey: true,
+          },
+        });
+
+      for (const alert of activeTechnicalAlerts) {
+        if (!currentKeys.has(alert.deduplicationKey)) {
+          await this.prisma.monitoringAlert.update({
+            where: {
+              id: alert.id,
+            },
+            data: {
+              status: 'RESOLVED',
+              resolvedAt: new Date(),
+              active: false,
+            },
+          });
+
+          alertsResolved += 1;
+        }
+      }
+
+      return {
+        crawlId,
+        websiteId,
+        totalPages,
+        issuesDetected: groups.size,
+        highImpactIssues: highImpactGroups.length,
+        alertsCreated,
+        alertsUpdated,
+        alertsResolved,
+      };
+    } catch (error) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
+
+      return this.handleUnexpectedError(
+        'detectTechnicalSeoAlerts',
+        error,
+      );
+    }
+  }
   async listAlerts(
     organizationId: string,
     filters: MonitoringAlertFilters = {},

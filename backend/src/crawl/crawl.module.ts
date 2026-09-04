@@ -1,8 +1,9 @@
-﻿import { Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
 import { BillingModule } from '../billing/billing.module';
+import { MonitoringModule } from '../monitoring/monitoring.module';
 
 import { CrawlController } from './crawl.controller';
 import { SeoIssueController } from './seo-issue.controller';
@@ -20,6 +21,7 @@ import { TechnicalSeoService } from './technical-seo.service';
     PrismaModule,
     AuthModule,
     BillingModule,
+    MonitoringModule,
   ],
 
   controllers: [

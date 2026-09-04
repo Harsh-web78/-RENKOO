@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { SeoAuditService } from './seo-audit.service';
+import { MonitoringService } from '../monitoring/monitoring.service';
 
 import {
   chromium,
@@ -24,6 +25,7 @@ export class CrawlService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly seoAuditService: SeoAuditService,
+    private readonly monitoringService: MonitoringService,
   ) {}
 
   /*
