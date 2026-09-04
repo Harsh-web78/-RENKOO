@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 
@@ -1170,7 +1170,7 @@ async function loadSearchAnalytics(
           <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <h1 className="text-2xl font-bold sm:text-3xl">
-                Growth Command Center 👋
+                Growth Command Center ðŸ‘‹
               </h1>
 
               <p className="mt-1 text-sm text-slate-500">
@@ -1893,13 +1893,13 @@ async function loadSearchAnalytics(
                               Score <strong className="text-slate-800">{opportunity.score}</strong>
                             </span>
 
-                            <span>•</span>
+                            <span>â€¢</span>
 
                             <span>
                               Impact <strong className="text-slate-800">{opportunity.impact || 'MEDIUM'}</strong>
                             </span>
 
-                            <span>•</span>
+                            <span>â€¢</span>
 
                             <span>
                               Effort <strong className="text-slate-800">{opportunity.effort || 'MEDIUM'}</strong>
@@ -1923,7 +1923,7 @@ async function loadSearchAnalytics(
                                 rel="noreferrer"
                                 className="text-xs font-medium text-slate-500 hover:text-slate-900"
                               >
-                                View page →
+                                View page â†’
                               </a>
                             ) : (
                               <span />
@@ -1945,15 +1945,21 @@ async function loadSearchAnalytics(
                                       opportunity.sourceId,
                                     );
 
-                                    setOpportunities((current) =>
-                                      current.map((item) =>
-                                        item.id === opportunity.id
-                                          ? {
-                                              ...item,
-                                              status: 'IN_PROGRESS',
-                                            }
-                                          : item,
-                                      ),
+                                    if (!selectedWebsite?.id) {
+                                      throw new Error(
+                                        'No website selected.',
+                                      );
+                                    }
+
+                                    const refreshed =
+                                      await getUnifiedOpportunities(
+                                        selectedWebsite.id,
+                                      );
+
+                                    setOpportunities(
+                                      Array.isArray(refreshed.opportunities)
+                                        ? refreshed.opportunities
+                                        : [],
                                     );
                                   } catch (error) {
                                     console.error(
@@ -2034,7 +2040,7 @@ async function loadSearchAnalytics(
                             {query.position.toFixed(
                               1,
                             )}{' '}
-                            ·{' '}
+                            Â·{' '}
                             {
                               query.impressions
                             }{' '}
@@ -2432,6 +2438,9 @@ function Panel({
     </section>
   );
 }
+
+
+
 
 
 

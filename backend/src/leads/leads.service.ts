@@ -57,9 +57,21 @@ export class LeadsService {
       .filter(l => !l.converted)
       .reduce((sum, l) => sum + l.estimatedValue, 0);
 
-    const revenue = leads
-      .filter(l => l.converted)
-      .reduce((sum, l) => sum + l.estimatedValue, 0);
+    const revenueRecords =
+      await this.prisma.revenue.findMany({
+        where: {
+          websiteId,
+          status: 'RECOGNIZED',
+        },
+        select: {
+          amount: true,
+        },
+      });
+
+    const revenue = revenueRecords.reduce(
+      (sum, item) => sum + item.amount,
+      0,
+    );
 
     const conversionRate =
       total > 0 ? Number(((converted / total) * 100).toFixed(2)) : 0;
@@ -134,3 +146,4 @@ export class LeadsService {
     };
   }
 }
+

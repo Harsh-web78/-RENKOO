@@ -246,67 +246,6 @@ export class RecommendationsService {
     return 1;
   }
 
-  private normalizeOpportunityScore(
-    priority: Priority,
-    source: string,
-    metadata: Record<string, any> | null,
-  ): number {
-    const metadataScore =
-      typeof metadata?.score === 'number'
-        ? metadata.score
-        : null;
-
-    if (metadataScore !== null) {
-      return Math.max(
-        0,
-        Math.min(
-          100,
-          Math.round(metadataScore),
-        ),
-      );
-    }
-
-    const sourceScore =
-      typeof metadata?.opportunityScore === 'number'
-        ? metadata.opportunityScore
-        : null;
-
-    if (sourceScore !== null) {
-      return Math.max(
-        0,
-        Math.min(
-          100,
-          Math.round(sourceScore),
-        ),
-      );
-    }
-
-    if (source === 'GEO') {
-      const mentioned =
-        metadata?.mentioned === true;
-      const cited =
-        metadata?.cited === true;
-
-      if (!mentioned && !cited) {
-        return 80;
-      }
-
-      if (mentioned && !cited) {
-        return 60;
-      }
-
-      if (cited) {
-        return 20;
-      }
-    }
-
-    return priority === 'HIGH'
-      ? 80
-      : priority === 'MEDIUM'
-        ? 55
-        : 30;
-  }
-
 
   /*
    * =========================================================
@@ -1326,9 +1265,6 @@ export class RecommendationsService {
     return action;
   }
 }
-
-
-
 
 
 
