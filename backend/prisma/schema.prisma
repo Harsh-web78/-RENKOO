@@ -71,6 +71,7 @@ model Website {
   GeoAudit            GeoAudit[]
   GeoQuery            GeoQuery[]
   Lead                Lead[]
+  MarketingSpend      MarketingSpend[]
   Revenue             Revenue[]
   organization        Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   Recommendation      Recommendation[]
@@ -529,6 +530,25 @@ model Lead {
   @@index([source])
   @@index([converted])
   @@index([createdAt])
+}
+
+model MarketingSpend {
+  id          String   @id @default(cuid())
+  websiteId   String
+  amount      Float
+  currency    String   @default("INR")
+  source      String
+  campaign    String?
+  description String?
+  spendDate   DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  Website Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId])
+  @@index([spendDate])
+  @@index([source])
 }
 
 model Revenue {

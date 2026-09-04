@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+﻿const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
 
 /*
  * =========================================================
@@ -1714,5 +1714,128 @@ export async function getCompetitorRecommendations(
 ) {
   return request<any>(
     `/recommendations/competitors/${encodeURIComponent(competitorId)}`,
+  );
+}
+
+/* ROI */
+
+export interface RoiSourceBreakdown {
+  source: string;
+  revenue: number;
+  spend: number;
+  profit: number;
+  roi: number | null;
+  roas: number | null;
+}
+
+export interface RoiSummary {
+  websiteId: string;
+  currency: string;
+  dateRange: {
+    from: string | null;
+    to: string | null;
+  };
+  totalRevenue: number;
+  totalSpend: number;
+  profit: number;
+  roi: number | null;
+  roas: number | null;
+  convertedLeads: number;
+  revenueTransactions: number;
+  spendTransactions: number;
+  bySource: RoiSourceBreakdown[];
+}
+
+export async function getRoiSummary(
+  websiteId: string,
+  from?: string,
+  to?: string,
+): Promise<RoiSummary> {
+  const params = new URLSearchParams();
+
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+
+  const query = params.toString();
+
+  return request<RoiSummary>(
+    `/roi/${encodeURIComponent(websiteId)}/summary${query ? `?${query}` : ''}`,
+  );
+}
+
+/* MARKETING SPEND */
+
+export interface MarketingSpend {
+  id: string;
+  websiteId: string;
+  amount: number;
+  currency: string;
+  source: string;
+  campaign?: string | null;
+  description?: string | null;
+  spendDate: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface MarketingSpendListResponse {
+  websiteId: string;
+  total: number;
+  spends: MarketingSpend[];
+}
+
+export interface MarketingSpendSummary {
+  websiteId: string;
+  currency: string;
+  totalSpend: number;
+  transactions: number;
+  averageSpend: number;
+}
+
+export async function getMarketingSpend(
+  websiteId: string,
+): Promise<MarketingSpendListResponse> {
+  return request<MarketingSpendListResponse>(
+    `/marketing-spend/${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function getMarketingSpendSummary(
+  websiteId: string,
+): Promise<MarketingSpendSummary> {
+  return request<MarketingSpendSummary>(
+    `/marketing-spend/${encodeURIComponent(websiteId)}/summary`,
+  );
+}
+
+export async function createMarketingSpend(
+  websiteId: string,
+  data: {
+    amount: number;
+    currency?: string;
+    source: string;
+    campaign?: string;
+    description?: string;
+    spendDate?: string;
+  },
+): Promise<MarketingSpend> {
+  return request<MarketingSpend>(
+    `/marketing-spend/${encodeURIComponent(websiteId)}`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+export async function deleteMarketingSpend(
+  websiteId: string,
+  id: string,
+): Promise<MarketingSpend> {
+  return request<MarketingSpend>(
+    `/marketing-spend/${encodeURIComponent(websiteId)}/${encodeURIComponent(id)}`,
+    {
+      method: 'DELETE',
+    },
   );
 }
