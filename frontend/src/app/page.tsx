@@ -1579,10 +1579,10 @@ async function loadSearchAnalytics(
                   loading={
                     loadingSearchAnalytics
                   }
-                  title="Search Console data unavailable"
+                  title="Search performance isn't connected yet"
                   description={
                     searchAnalyticsError ||
-                    'Connect Google Search Console and select a property.'
+                    'Connect Search Console to unlock clicks, queries and growth opportunities.'
                   }
                 />
               ) : (
@@ -1702,10 +1702,10 @@ async function loadSearchAnalytics(
                   loading={
                     loadingGa4
                   }
-                  title="GA4 data unavailable"
+                  title="Analytics isn't connected yet"
                   description={
                     ga4Error ||
-                    'Connect Google Analytics 4 and select a property.'
+                    'Connect Google Analytics to measure traffic, engagement and conversions.'
                   }
                 />
               ) : (
@@ -2409,6 +2409,7 @@ function Panel({
     </section>
   );
 }
+
 
 
 
