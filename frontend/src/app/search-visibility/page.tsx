@@ -444,7 +444,7 @@ export default function SearchVisibilityPage() {
       .slice(0, 10);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="min-h-screen bg-[#f7f8fb] text-[#111827]">
       <Sidebar
         mobileOpen={mobileOpen}
         onClose={() =>
@@ -453,7 +453,7 @@ export default function SearchVisibilityPage() {
       />
 
       <main className="lg:pl-[270px]">
-        <header className="flex h-[72px] items-center border-b border-slate-200 bg-white px-5 lg:px-8">
+        <header className="flex h-[72px] items-center border-b border-[#e5e7eb] bg-white px-5 lg:px-8">
           <button
             className="mr-4 lg:hidden"
             onClick={() =>
@@ -469,7 +469,7 @@ export default function SearchVisibilityPage() {
               RENKO / Search Visibility
             </div>
 
-            <div className="text-xs text-slate-400">
+            <div className="text-xs text-[#9ca3af]">
               Google Search Console performance intelligence
             </div>
           </div>
@@ -483,7 +483,7 @@ export default function SearchVisibilityPage() {
                 loading ||
                 refreshing
               }
-              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-none border border-[#e5e7eb] bg-white px-4 py-2 text-xs font-bold  transition hover:bg-[#f7f8fb] disabled:opacity-50"
             >
               <RefreshCw
                 size={15}
@@ -499,7 +499,7 @@ export default function SearchVisibilityPage() {
           </div>
         </header>
 
-        <section className="mx-auto max-w-[1500px] p-5 lg:p-8">
+        <section className="mx-auto max-w-[1440px] p-5 lg:p-8">
 
           {/* =================================================
               HEADER
@@ -507,10 +507,10 @@ export default function SearchVisibilityPage() {
 
           <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
-              <div className="flex items-center gap-2 text-violet-600">
+              <div className="flex items-center gap-2 text-[#111827]">
                 <Search size={20} />
 
-                <span className="text-xs font-bold uppercase tracking-wide">
+                <span className="text-xs font-semibold uppercase tracking-[0.14em]">
                   Search Visibility
                 </span>
               </div>
@@ -519,7 +519,7 @@ export default function SearchVisibilityPage() {
                 Search Performance
               </h1>
 
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6b7280]">
                 Understand how your website appears
                 in Google Search, which queries drive
                 traffic and where the biggest SEO
@@ -530,15 +530,15 @@ export default function SearchVisibilityPage() {
             {/* PROPERTY */}
 
             <div className="relative w-full xl:w-[420px]">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#9ca3af]">
                 Search Console Property
               </div>
 
               {loading ? (
-                <div className="flex h-[58px] items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4">
+                <div className="flex h-[58px] items-center gap-3 rounded-none border border-[#e5e7eb] bg-white px-4">
                   <RefreshCw
                     size={18}
-                    className="animate-spin text-violet-600"
+                    className="animate-spin text-[#111827]"
                   />
 
                   <span className="text-sm font-medium">
@@ -546,19 +546,19 @@ export default function SearchVisibilityPage() {
                   </span>
                 </div>
               ) : !connection?.connected ? (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                  <div className="text-sm font-bold text-amber-800">
+                <div className="rounded-none border border-[#d1d5db] bg-[#f3f4f6] p-4">
+                  <div className="text-sm font-bold text-[#374151]">
                     Google Search Console not connected
                   </div>
 
-                  <div className="mt-1 text-xs text-amber-700">
+                  <div className="mt-1 text-xs text-[#4b5563]">
                     Connect Google Search Console from
                     Integrations before viewing search
                     visibility data.
                   </div>
                 </div>
               ) : properties.length === 0 ? (
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                <div className="rounded-none border border-[#e5e7eb] bg-white p-4 text-sm text-[#6b7280]">
                   No Search Console properties available.
                 </div>
               ) : (
@@ -570,9 +570,9 @@ export default function SearchVisibilityPage() {
                         (value) => !value,
                       )
                     }
-                    className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm"
+                    className="flex w-full items-center gap-3 rounded-none border border-[#e5e7eb] bg-white p-3 text-left "
                   >
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-50 text-violet-600">
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-none bg-[#f3f4f6] text-[#111827]">
                       <Globe2 size={19} />
                     </div>
 
@@ -582,7 +582,7 @@ export default function SearchVisibilityPage() {
                           'Select property'}
                       </div>
 
-                      <div className="text-xs text-slate-500">
+                      <div className="text-xs text-[#6b7280]">
                         Google Search Console
                       </div>
                     </div>
@@ -591,14 +591,14 @@ export default function SearchVisibilityPage() {
                       size={18}
                       className={
                         showPropertyMenu
-                          ? 'rotate-180 text-slate-400'
-                          : 'text-slate-400'
+                          ? 'rotate-180 text-[#9ca3af]'
+                          : 'text-[#9ca3af]'
                       }
                     />
                   </button>
 
                   {showPropertyMenu && (
-                    <div className="absolute left-0 right-0 top-[82px] z-50 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                    <div className="absolute left-0 right-0 top-[82px] z-50 rounded-none border border-[#e5e7eb] bg-white p-2 ">
                       {properties.map(
                         (property) => (
                           <button
@@ -610,11 +610,11 @@ export default function SearchVisibilityPage() {
                                 property.siteUrl,
                               )
                             }
-                            className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-slate-50"
+                            className="flex w-full items-center gap-3 rounded-none p-3 text-left hover:bg-[#f7f8fb]"
                           >
                             <Globe2
                               size={17}
-                              className="text-slate-500"
+                              className="text-[#6b7280]"
                             />
 
                             <div className="min-w-0 flex-1">
@@ -624,7 +624,7 @@ export default function SearchVisibilityPage() {
                                 }
                               </div>
 
-                              <div className="text-xs text-slate-500">
+                              <div className="text-xs text-[#6b7280]">
                                 {
                                   property.permissionLevel
                                 }
@@ -645,18 +645,18 @@ export default function SearchVisibilityPage() {
           ================================================= */}
 
           {error && (
-            <div className="mt-6 flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4">
+            <div className="mt-6 flex gap-3 rounded-none border border-[#d1d5db] bg-[#fafafa] p-4">
               <AlertTriangle
                 size={19}
-                className="shrink-0 text-red-600"
+                className="shrink-0 text-[#4b5563]"
               />
 
               <div>
-                <div className="text-sm font-bold text-red-700">
+                <div className="text-sm font-bold text-[#374151]">
                   Search Visibility error
                 </div>
 
-                <div className="mt-1 text-xs leading-5 text-red-600">
+                <div className="mt-1 text-xs leading-5 text-[#4b5563]">
                   {error}
                 </div>
               </div>
@@ -668,19 +668,19 @@ export default function SearchVisibilityPage() {
           ================================================= */}
 
           {loading && (
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+            <div className="mt-6 rounded-none border border-[#e5e7eb] bg-white p-8 ">
               <div className="flex items-center gap-3">
                 <RefreshCw
                   size={20}
-                  className="animate-spin text-violet-600"
+                  className="animate-spin text-[#111827]"
                 />
 
                 <div>
-                  <div className="text-sm font-bold">
+                  <div className="text-sm font-semibold tracking-[-0.01em]">
                     Loading Search Visibility
                   </div>
 
-                  <div className="mt-1 text-xs text-slate-500">
+                  <div className="mt-1 text-xs text-[#6b7280]">
                     Fetching Google Search Console data...
                   </div>
                 </div>
@@ -698,18 +698,18 @@ export default function SearchVisibilityPage() {
               <>
                 {/* DATE */}
 
-                <div className="mt-6 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+                <div className="mt-6 flex items-center justify-between rounded-none border border-[#e5e7eb] bg-white px-5 py-4 ">
                   <div>
-                    <div className="text-sm font-bold">
+                    <div className="text-sm font-semibold tracking-[-0.01em]">
                       Last 28 days
                     </div>
 
-                    <div className="mt-1 text-xs text-slate-500">
+                    <div className="mt-1 text-xs text-[#6b7280]">
                       {startDate} → {endDate}
                     </div>
                   </div>
 
-                  <div className="text-xs font-semibold text-slate-400">
+                  <div className="text-xs font-semibold text-[#9ca3af]">
                     Google Search Console
                   </div>
                 </div>
@@ -770,7 +770,7 @@ export default function SearchVisibilityPage() {
                     TABS
                 ================================================= */}
 
-                <div className="mt-6 flex gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+                <div className="mt-6 flex gap-2 overflow-x-auto rounded-none border border-[#e5e7eb] bg-white p-2 ">
                   <TabButton
                     active={
                       activeTab ===
@@ -982,7 +982,7 @@ export default function SearchVisibilityPage() {
                           ) => (
                             <tr
                               key={`${row.query}-${index}`}
-                              className="border-b border-slate-50"
+                              className="border-b border-[#f3f4f6]"
                             >
                               <Td strong>
                                 {row.query}
@@ -1055,7 +1055,7 @@ export default function SearchVisibilityPage() {
                           ) => (
                             <tr
                               key={`${row.page}-${index}`}
-                              className="border-b border-slate-50"
+                              className="border-b border-[#f3f4f6]"
                             >
                               <Td strong>
                                 <div className="flex items-center gap-2">
@@ -1065,7 +1065,7 @@ export default function SearchVisibilityPage() {
 
                                   <ExternalLink
                                     size={12}
-                                    className="shrink-0 text-slate-400"
+                                    className="shrink-0 text-[#9ca3af]"
                                   />
                                 </div>
                               </Td>
@@ -1179,13 +1179,13 @@ function Metric({
   icon: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="border border-[#e5e7eb] bg-white p-5 ">
       <div className="flex items-center justify-between">
-        <div className="text-xs font-medium text-slate-500">
+        <div className="text-xs font-medium text-[#6b7280]">
           {title}
         </div>
 
-        <div className="grid h-9 w-9 place-items-center rounded-xl bg-violet-50 text-violet-600">
+        <div className="grid h-9 w-9 place-items-center rounded-none bg-[#f3f4f6] text-[#111827]">
           {icon}
         </div>
       </div>
@@ -1213,10 +1213,10 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`whitespace-nowrap rounded-xl px-4 py-2.5 text-xs font-bold transition ${
+      className={`whitespace-nowrap rounded-none px-4 py-2.5 text-xs font-bold transition ${
         active
           ? 'bg-slate-900 text-white'
-          : 'text-slate-500 hover:bg-slate-50'
+          : 'text-[#6b7280] hover:bg-[#f7f8fb]'
       }`}
     >
       {children}
@@ -1241,14 +1241,14 @@ function DataCard({
 }) {
   return (
     <section
-      className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${className}`}
+      className={`rounded-none border border-[#e5e7eb] bg-white p-5  ${className}`}
     >
       <div className="mb-5">
-        <h2 className="text-sm font-bold">
+        <h2 className="text-sm font-semibold tracking-[-0.01em]">
           {title}
         </h2>
 
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-[#6b7280]">
           {subtitle}
         </p>
       </div>
@@ -1268,8 +1268,8 @@ function QueryRow({
   row: GoogleQueryRow;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-slate-100 p-3">
-      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-violet-50 text-violet-600">
+    <div className="flex items-center gap-3 rounded-none border border-[#eef0f2] p-3">
+      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-none bg-[#f3f4f6] text-[#111827]">
         <Search size={15} />
       </div>
 
@@ -1278,7 +1278,7 @@ function QueryRow({
           {row.query}
         </div>
 
-        <div className="mt-1 text-[10px] text-slate-400">
+        <div className="mt-1 text-[10px] text-[#9ca3af]">
           Position {row.position.toFixed(1)}
         </div>
       </div>
@@ -1288,7 +1288,7 @@ function QueryRow({
           {formatNumber(row.clicks)}
         </div>
 
-        <div className="text-[10px] text-slate-400">
+        <div className="text-[10px] text-[#9ca3af]">
           clicks
         </div>
       </div>
@@ -1306,8 +1306,8 @@ function PageRow({
   row: GooglePageRow;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-slate-100 p-3">
-      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600">
+    <div className="flex items-center gap-3 rounded-none border border-[#eef0f2] p-3">
+      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-none bg-[#f3f4f6] text-[#374151]">
         <Globe2 size={15} />
       </div>
 
@@ -1316,7 +1316,7 @@ function PageRow({
           {row.page}
         </div>
 
-        <div className="mt-1 text-[10px] text-slate-400">
+        <div className="mt-1 text-[10px] text-[#9ca3af]">
           Position {row.position.toFixed(1)}
         </div>
       </div>
@@ -1326,7 +1326,7 @@ function PageRow({
           {formatNumber(row.clicks)}
         </div>
 
-        <div className="text-[10px] text-slate-400">
+        <div className="text-[10px] text-[#9ca3af]">
           clicks
         </div>
       </div>
@@ -1346,9 +1346,9 @@ function OpportunityRow({
   onAnalyze: () => void;
 }) {
   return (
-    <div className="rounded-xl border border-slate-100 p-3">
+    <div className="rounded-none border border-[#eef0f2] p-3">
       <div className="flex items-center gap-2">
-        <span className="rounded-full bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">
+        <span className="rounded-full bg-[#f3f4f6] px-2 py-1 text-[10px] font-bold text-[#374151]">
           {row.type}
         </span>
 
@@ -1356,19 +1356,19 @@ function OpportunityRow({
           {row.query}
         </span>
 
-        <span className="ml-auto shrink-0 text-xs font-bold text-violet-600">
+        <span className="ml-auto shrink-0 text-xs font-bold text-[#111827]">
           {row.score}
         </span>
       </div>
 
-      <p className="mt-2 text-[11px] leading-5 text-slate-500">
+      <p className="mt-2 text-[11px] leading-5 text-[#6b7280]">
         {row.recommendation}
       </p>
 
       <button
         type="button"
         onClick={onAnalyze}
-        className="mt-3 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[10px] font-bold text-violet-700 transition hover:bg-violet-100"
+        className="mt-3 rounded-none border border-[#d1d5db] bg-[#f3f4f6] px-3 py-2 text-[10px] font-bold text-[#374151] transition hover:bg-[#e5e7eb]"
       >
         Analyze opportunity
       </button>
@@ -1388,25 +1388,25 @@ function OpportunityCard({
   onAnalyze: () => void;
 }) {
   return (
-    <div className="rounded-xl border border-slate-100 p-4">
+    <div className="rounded-none border border-[#eef0f2] p-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">
+            <span className="rounded-full bg-[#f3f4f6] px-2 py-1 text-[10px] font-bold text-[#374151]">
               {row.type}
             </span>
 
-            <span className="text-sm font-bold">
+            <span className="text-sm font-semibold tracking-[-0.01em]">
               {row.query}
             </span>
           </div>
 
-          <div className="mt-2 text-xs text-slate-500">
+          <div className="mt-2 text-xs text-[#6b7280]">
             {row.recommendation}
           </div>
 
           {row.page && (
-            <div className="mt-2 truncate text-[11px] text-slate-400">
+            <div className="mt-2 truncate text-[11px] text-[#9ca3af]">
               {row.page}
             </div>
           )}
@@ -1414,7 +1414,7 @@ function OpportunityCard({
           <button
             type="button"
             onClick={onAnalyze}
-            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-slate-800"
+            className="mt-4 inline-flex items-center gap-2 rounded-none bg-slate-900 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-slate-800"
           >
             <Search size={14} />
             Analyze opportunity
@@ -1461,8 +1461,8 @@ function Snapshot({
   value: string | number;
 }) {
   return (
-    <div className="rounded-xl bg-slate-50 p-4">
-      <div className="text-[10px] text-slate-400">
+    <div className="rounded-none bg-[#f7f8fb] p-4">
+      <div className="text-[10px] text-[#9ca3af]">
         {label}
       </div>
 
@@ -1479,7 +1479,7 @@ function Snapshot({
 
 function Empty() {
   return (
-    <div className="rounded-xl bg-slate-50 p-6 text-center text-xs text-slate-500">
+    <div className="rounded-none bg-[#f7f8fb] p-6 text-center text-xs text-[#6b7280]">
       No data available for the selected period.
     </div>
   );
@@ -1513,7 +1513,7 @@ function Th({
   children: React.ReactNode;
 }) {
   return (
-    <th className="border-b border-slate-100 px-3 py-3 font-semibold text-slate-400">
+    <th className="border-b border-[#eef0f2] px-3 py-3 font-semibold text-[#9ca3af]">
       {children}
     </th>
   );
@@ -1534,8 +1534,8 @@ function Td({
     <td
       className={`px-3 py-3 ${
         strong
-          ? 'font-semibold text-slate-700'
-          : 'text-slate-500'
+          ? 'font-semibold text-[#374151]'
+          : 'text-[#6b7280]'
       }`}
     >
       {children}
@@ -1562,17 +1562,17 @@ function OpportunityAnalysisModal({
 }) {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-[1000px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+      <div className="flex max-h-[90vh] w-full max-w-[1000px] flex-col overflow-hidden rounded-none bg-white ">
 
         {/* HEADER */}
 
-        <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
+        <div className="flex shrink-0 items-center justify-between border-b border-[#e5e7eb] px-5 py-4">
           <div className="min-w-0">
-            <div className="text-xs font-bold uppercase tracking-wide text-violet-600">
+            <div className="text-xs font-bold uppercase tracking-wide text-[#111827]">
               RENKO Opportunity Analysis
             </div>
 
-            <div className="mt-1 truncate text-lg font-bold text-slate-900">
+            <div className="mt-1 truncate text-lg font-bold text-[#111827]">
               {query}
             </div>
           </div>
@@ -1581,7 +1581,7 @@ function OpportunityAnalysisModal({
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50 disabled:opacity-40"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-none border border-[#e5e7eb] text-[#6b7280] transition hover:bg-[#f7f8fb] disabled:opacity-40"
             aria-label="Close analysis"
           >
             <X size={18} />
@@ -1594,7 +1594,7 @@ function OpportunityAnalysisModal({
           {loading && (
             <div className="flex min-h-[350px] items-center justify-center">
               <div className="text-center">
-                <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-violet-50 text-violet-600">
+                <div className="mx-auto grid h-14 w-14 place-items-center rounded-none bg-[#f3f4f6] text-[#111827]">
                   <RefreshCw
                     size={25}
                     className="animate-spin"
@@ -1605,7 +1605,7 @@ function OpportunityAnalysisModal({
                   RENKO is analyzing this opportunity
                 </div>
 
-                <div className="mt-2 text-xs text-slate-500">
+                <div className="mt-2 text-xs text-[#6b7280]">
                   Comparing search visibility, ranking,
                   clicks, CTR and page mapping.
                 </div>
@@ -1614,19 +1614,19 @@ function OpportunityAnalysisModal({
           )}
 
           {!loading && error && (
-            <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
+            <div className="rounded-none border border-[#d1d5db] bg-[#fafafa] p-5">
               <div className="flex gap-3">
                 <AlertTriangle
                   size={19}
-                  className="shrink-0 text-red-600"
+                  className="shrink-0 text-[#4b5563]"
                 />
 
                 <div>
-                  <div className="text-sm font-bold text-red-700">
+                  <div className="text-sm font-bold text-[#374151]">
                     Opportunity analysis failed
                   </div>
 
-                  <div className="mt-1 text-xs leading-5 text-red-600">
+                  <div className="mt-1 text-xs leading-5 text-[#4b5563]">
                     {error}
                   </div>
                 </div>
@@ -1666,13 +1666,13 @@ function OpportunityAnalysisModal({
 
                 {/* SEARCH DATA */}
 
-                <section className="rounded-2xl border border-slate-200 p-5">
+                <section className="rounded-none border border-[#e5e7eb] p-5">
                   <div>
-                    <h3 className="text-sm font-bold">
+                    <h3 className="text-sm font-semibold tracking-[-0.01em]">
                       Search Performance
                     </h3>
 
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-[#6b7280]">
                       Actual Search Console data used by RENKO.
                     </p>
                   </div>
@@ -1708,12 +1708,12 @@ function OpportunityAnalysisModal({
                   </div>
 
                   {analysis.page && (
-                    <div className="mt-4 rounded-xl bg-slate-50 p-4">
-                      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                    <div className="mt-4 rounded-none bg-[#f7f8fb] p-4">
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-[#9ca3af]">
                         Ranking page
                       </div>
 
-                      <div className="mt-1 break-all text-xs font-semibold text-slate-700">
+                      <div className="mt-1 break-all text-xs font-semibold text-[#374151]">
                         {analysis.page}
                       </div>
                     </div>
@@ -1722,13 +1722,13 @@ function OpportunityAnalysisModal({
 
                 {/* CHECKS */}
 
-                <section className="rounded-2xl border border-slate-200 p-5">
+                <section className="rounded-none border border-[#e5e7eb] p-5">
                   <div>
-                    <h3 className="text-sm font-bold">
+                    <h3 className="text-sm font-semibold tracking-[-0.01em]">
                       RENKO Checks
                     </h3>
 
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-[#6b7280]">
                       Signals evaluated for this opportunity.
                     </p>
                   </div>
@@ -1778,20 +1778,20 @@ function OpportunityAnalysisModal({
 
                 {/* RECOMMENDATIONS */}
 
-                <section className="rounded-2xl border border-slate-200 p-5">
+                <section className="rounded-none border border-[#e5e7eb] p-5">
                   <div>
-                    <h3 className="text-sm font-bold">
+                    <h3 className="text-sm font-semibold tracking-[-0.01em]">
                       RENKO Recommendations
                     </h3>
 
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-[#6b7280]">
                       Actions generated from the opportunity analysis.
                     </p>
                   </div>
 
                   {analysis.recommendations
                     .length === 0 ? (
-                    <div className="mt-5 rounded-xl bg-slate-50 p-5 text-xs text-slate-500">
+                    <div className="mt-5 rounded-none bg-[#f7f8fb] p-5 text-xs text-[#6b7280]">
                       No additional recommendations available.
                     </div>
                   ) : (
@@ -1803,15 +1803,15 @@ function OpportunityAnalysisModal({
                         ) => (
                           <div
                             key={`${recommendation}-${index}`}
-                            className="flex gap-3 rounded-xl border border-slate-100 p-4"
+                            className="flex gap-3 rounded-none border border-[#eef0f2] p-4"
                           >
-                            <div className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-violet-50 text-violet-600">
+                            <div className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-none bg-[#f3f4f6] text-[#111827]">
                               <Target
                                 size={14}
                               />
                             </div>
 
-                            <div className="text-xs leading-5 text-slate-700">
+                            <div className="text-xs leading-5 text-[#374151]">
                               {recommendation}
                             </div>
                           </div>
@@ -1827,11 +1827,11 @@ function OpportunityAnalysisModal({
         {/* FOOTER */}
 
         {!loading && (
-          <div className="flex shrink-0 justify-end border-t border-slate-200 bg-slate-50 px-5 py-4">
+          <div className="flex shrink-0 justify-end border-t border-[#e5e7eb] bg-[#f7f8fb] px-5 py-4">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white transition hover:bg-slate-800"
+              className="rounded-none bg-slate-900 px-5 py-2.5 text-xs font-bold text-white transition hover:bg-slate-800"
             >
               Close
             </button>
@@ -1854,12 +1854,12 @@ function AnalysisMetric({
   value: string | number;
 }) {
   return (
-    <div className="rounded-xl bg-slate-50 p-4">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+    <div className="rounded-none bg-[#f7f8fb] p-4">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-[#9ca3af]">
         {label}
       </div>
 
-      <div className="mt-2 break-words text-sm font-bold text-slate-900">
+      <div className="mt-2 break-words text-sm font-bold text-[#111827]">
         {value}
       </div>
     </div>
@@ -1895,7 +1895,7 @@ function AnalysisCheck({
     status === 'HEALTHY';
 
   return (
-    <div className="rounded-xl border border-slate-100 p-4">
+    <div className="rounded-none border border-[#eef0f2] p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="text-xs font-bold">
           {title}
@@ -1904,11 +1904,11 @@ function AnalysisCheck({
         <span
           className={`rounded-full px-2 py-1 text-[10px] font-bold ${
             positive
-              ? 'bg-emerald-50 text-emerald-700'
+              ? 'bg-[#f3f4f6] text-[#374151]'
               : status === 'WARNING' ||
                   status === 'REVIEW'
-                ? 'bg-yellow-50 text-yellow-700'
-                : 'bg-slate-100 text-slate-600'
+                ? 'bg-[#f3f4f6] text-[#374151]'
+                : 'bg-slate-100 text-[#4b5563]'
           }`}
         >
           {status}
@@ -1958,7 +1958,7 @@ function AnalysisCheck({
       </div>
 
       {check.page && (
-        <div className="mt-3 truncate text-[10px] text-slate-400">
+        <div className="mt-3 truncate text-[10px] text-[#9ca3af]">
           {check.page}
         </div>
       )}
@@ -1979,11 +1979,11 @@ function MiniValue({
 }) {
   return (
     <div>
-      <div className="text-[10px] text-slate-400">
+      <div className="text-[10px] text-[#9ca3af]">
         {label}
       </div>
 
-      <div className="mt-1 text-xs font-bold text-slate-700">
+      <div className="mt-1 text-xs font-bold text-[#374151]">
         {value}
       </div>
     </div>
