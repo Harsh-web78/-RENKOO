@@ -8,13 +8,15 @@ datasource db {
 }
 
 model User {
-  id           String               @id @default(cuid())
-  email        String               @unique
-  name         String?
-  passwordHash String?
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
-  memberships  OrganizationMember[]
+  id              String               @id @default(cuid())
+  email           String               @unique
+  name            String?
+  passwordHash    String?
+  emailVerifiedAt DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  memberships     OrganizationMember[]
+  authTokens      AuthToken[]
 }
 
 model Organization {
@@ -28,6 +30,7 @@ model Organization {
   websites         Website[]
   Subscription     Subscription?
   BillingEvent     BillingEvent[]
+  payments         Payment[]
   invites          OrganizationInvite[]
   Recommendation   Recommendation[]
   Action           Action[]
@@ -50,6 +53,7 @@ model OrganizationMember {
 model Website {
   id                  String                @id @default(cuid())
   organizationId      String
+  clientId            String?
   name                String
   url                 String
   industry            String?
@@ -57,6 +61,7 @@ model Website {
   isActive            Boolean               @default(true)
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
+  client              Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
   AeoAudit            AeoAudit[]
   AiVisibilityCheck   AiVisibilityCheck[]
   AiVisibilityQuery   AiVisibilityQuery[]
@@ -76,6 +81,7 @@ model Website {
   organization        Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   Recommendation      Recommendation[]
   Action              Action[]
+  reports             Report[]
 
   @@index([organizationId])
   @@index([url])
@@ -85,6 +91,7 @@ model Competitor {
   id             String            @id @default(cuid())
   organizationId String
   websiteId      String
+  locationId     String?
   name           String
   url            String
   domain         String
@@ -97,6 +104,7 @@ model Competitor {
 
   @@index([organizationId])
   @@index([websiteId])
+  @@index([locationId])
   @@index([domain])
   @@index([url])
 }
@@ -254,6 +262,9 @@ model GoogleConnection {
   googleUserId              String
   scope                     String?
   selectedAnalyticsProperty String?
+  lastSuccessfulRequestAt   DateTime?
+  lastErrorCode             String?
+  lastErrorAt               DateTime?
   organization              Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([googleUserId])
@@ -396,6 +407,7 @@ model Backlink {
   anchorText      String?
   linkType        String   @default("UNKNOWN")
   status          String   @default("ACTIVE")
+  source          String   @default("MANUAL_IMPORT")
   firstSeenAt     DateTime @default(now())
   lastSeenAt      DateTime @default(now())
   domainAuthority Float?
@@ -618,6 +630,7 @@ enum AiVisibilityPlatform {
   CHATGPT
   GOOGLE_AI
   GEMINI
+  OPENAI
   CLAUDE
   PERPLEXITY
   OTHER
@@ -635,9 +648,13 @@ enum VisibilityEngine {
 
 enum SubscriptionStatus {
   TRIALING
+  PENDING
   ACTIVE
   PAST_DUE
+  PAUSED
   CANCELED
+  COMPLETED
+  EXPIRED
   INCOMPLETE
   INCOMPLETE_EXPIRED
   UNPAID
@@ -655,6 +672,7 @@ enum UsageMetric {
   CRAWL_CREDITS
   API_CALLS
   AI_CREDITS
+  AI_GROWTH_ACTIONS
 }
 
 model Plan {
@@ -696,8 +714,18 @@ model Subscription {
 
   status SubscriptionStatus @default(TRIALING)
 
+  provider String @default("STRIPE")
+
   stripeCustomerId     String? @unique
   stripeSubscriptionId String? @unique
+
+  razorpaySubscriptionId String? @unique
+  razorpayCustomerId     String?
+  providerPlanId         String?
+  interval               String?
+  currency               String?
+
+  trialUsed Boolean @default(false)
 
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
@@ -711,9 +739,56 @@ model Subscription {
   organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   plan         Plan           @relation(fields: [planId], references: [id])
   usage        UsageCounter[]
+  payments     Payment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model ProviderPlan {
+  id             String  @id @default(cuid())
+  provider       String
+  planCode       String
+  interval       String
+  currency       String
+  providerPlanId String  @unique
+  amount         Float
+  active         Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, planCode, interval, currency])
+  @@index([provider])
+  @@index([planCode])
+}
+
+model Payment {
+  id                   String  @id @default(cuid())
+  organizationId       String
+  subscriptionId       String?
+  provider             String  @default("RAZORPAY")
+  providerPaymentId    String  @unique
+  providerSubscriptionId String?
+  providerOrderId      String?
+  amount               Float
+  currency             String  @default("INR")
+  status               String  @default("CREATED")
+  method               String?
+  email                String?
+  contact              String?
+  refundId             String?
+  payload              Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([subscriptionId])
+  @@index([status])
 }
 
 model UsageCounter {

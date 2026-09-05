@@ -9,6 +9,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { IsEmail, IsIn } from 'class-validator';
 import { TeamService } from './team.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -40,6 +41,11 @@ export class TeamController {
     return this.teamService.listMembers(req.user.organizationId);
   }
 
+  /*
+   * Sends an email: rate-limited like the other
+   * email-issuing endpoints.
+   */
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('invites')
   invite(@Req() req: any, @Body() dto: InviteDto) {
     return this.teamService.invite(

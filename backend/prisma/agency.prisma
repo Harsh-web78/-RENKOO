@@ -1,0 +1,47 @@
+model Client {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  company        String?
+  email          String?
+  status         String   @default("ACTIVE")
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  websites       Website[]
+  reports        Report[]
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+model Report {
+  id               String    @id @default(cuid())
+  organizationId   String
+  websiteId        String
+  clientId         String?
+  type             String
+  title            String
+  dateFrom         DateTime?
+  dateTo           DateTime?
+  status           String    @default("READY")
+  sections         Json?
+  dataAvailability Json?
+  branding         Json?
+  error            String?
+  createdBy        String?
+  shareToken       String?   @unique
+  shareExpiresAt   DateTime?
+  shareRevoked     Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  website          Website   @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  client           Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([websiteId])
+  @@index([clientId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+}

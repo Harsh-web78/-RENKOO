@@ -1,0 +1,101 @@
+// Local SEO (Phase 14 foundation + Phase 15 intelligence).
+//
+// BusinessLocation associates a real-world business
+// location with the owning organization and,
+// optionally, one website. Sources: MANUAL until a
+// genuine GBP read-only integration exists
+// (currently NOT_AVAILABLE).
+//
+// LocalQuery tracks local searches to monitor.
+// Ranking, review and citation rows are only ever
+// populated from verified sources — never invented.
+// Empty tables honestly report NOT_AVAILABLE.
+
+model BusinessLocation {
+  id             String   @id @default(cuid())
+  organizationId String
+  websiteId      String?
+  name           String
+  address        String?
+  city           String?
+  state          String?
+  country        String?
+  postalCode     String?
+  latitude       Float?
+  longitude      Float?
+  phone          String?
+  websiteUrl     String?
+  category       String?
+  isPrimary      Boolean  @default(false)
+  status         String   @default("ACTIVE")
+  source         String   @default("MANUAL")
+  gbpName        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([websiteId])
+}
+
+model LocalQuery {
+  id             String    @id @default(cuid())
+  organizationId String
+  websiteId      String
+  locationId     String?
+  query          String
+  category       String    @default("local-service")
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([websiteId, query])
+  @@index([organizationId])
+  @@index([websiteId])
+  @@index([locationId])
+}
+
+// Future ranking-provider observations. Written only
+// by a verified ranking data source (none connected).
+// An empty table means RANKING_DATA = NOT_AVAILABLE.
+model LocalRankingObservation {
+  id             String   @id @default(cuid())
+  organizationId String
+  websiteId      String
+  locationId     String?
+  queryId        String?
+  query          String
+  source         String
+  position       Int?
+  totalResults   Int?
+  url            String?
+  observedAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([websiteId])
+  @@index([queryId])
+  @@index([observedAt])
+}
+
+// Citation records. Only MANUAL rows are supported
+// until a legitimate citation data provider exists.
+model LocalCitation {
+  id             String    @id @default(cuid())
+  organizationId String
+  websiteId      String?
+  locationId     String?
+  source         String    @default("MANUAL")
+  sourceUrl      String?
+  businessName   String?
+  address        String?
+  phone          String?
+  websiteUrl     String?
+  status         String    @default("UNVERIFIED")
+  lastCheckedAt  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([organizationId])
+  @@index([websiteId])
+  @@index([locationId])
+}

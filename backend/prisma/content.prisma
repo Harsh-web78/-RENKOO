@@ -1,0 +1,71 @@
+// Content Engine (Phase 16).
+//
+// Tenant-scoped content workflow: IDEA -> BRIEF ->
+// DRAFT -> REVIEW -> READY -> PUBLISHED, with
+// REFRESH_REQUIRED and ARCHIVED as needed.
+// Briefs and drafts persist their evidence sources
+// and provider metadata. AI-generated rows are
+// labeled as such (humanCreated=false); nothing is
+// marked PUBLISHED without a real publish operation
+// or explicit user confirmation.
+
+model ContentItem {
+  id             String   @id @default(cuid())
+  organizationId String
+  websiteId      String
+  title          String
+  targetQuery    String?
+  intent         String?
+  status         String   @default("IDEA")
+  pageUrl        String?
+  publishedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  briefs         ContentBrief[]
+  drafts         ContentDraft[]
+
+  @@index([organizationId])
+  @@index([websiteId])
+  @@index([status])
+}
+
+model ContentBrief {
+  id             String   @id @default(cuid())
+  organizationId String
+  websiteId      String
+  itemId         String?
+  targetQuery    String
+  intent         String?
+  payload        Json
+  evidence       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  item           ContentItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([websiteId])
+  @@index([itemId])
+}
+
+model ContentDraft {
+  id             String   @id @default(cuid())
+  organizationId String
+  websiteId      String
+  itemId         String?
+  briefId        String?
+  mode           String
+  provider       String?
+  model          String?
+  humanCreated   Boolean  @default(true)
+  title          String?
+  content        String
+  version        Int      @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  item           ContentItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([websiteId])
+  @@index([itemId])
+  @@index([briefId])
+}

@@ -1,369 +1,272 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   CreditCard,
   CheckCircle2,
   Loader2,
   RefreshCw,
   LockKeyhole,
+  AlertTriangle,
 } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
+import {
+  cancelBillingSubscription,
+  getBillingEntitlements,
+  getBillingInvoices,
+  getBillingPlans,
+  getBillingProvider,
+  getBillingSubscription,
+  getBillingUsage,
+  getCurrentAccount,
+  openBillingPortal,
+  startBillingCheckout,
+  startBillingTrial,
+  BillingEntitlements,
+  BillingInvoice,
+  BillingPlan,
+  BillingSubscription,
+  BillingUsage,
+} from "@/lib/api";
 
-type Plan = {
-  id: string;
-  code: string;
-  name: string;
-  description?: string | null;
-  monthlyPrice: number;
-  yearlyPrice: number;
-  currency?: string;
-
-  maxWebsites?: number;
-  maxKeywords?: number;
-  maxCompetitors?: number;
-  maxAiPrompts?: number;
-  maxAiScans?: number;
-  maxUsers?: number;
-  maxClients?: number;
-  maxReports?: number;
-  maxCrawlCredits?: number;
-  maxApiCalls?: number;
+const USAGE_LABELS: Record<string, string> = {
+  WEBSITES: "Websites",
+  KEYWORDS: "Keywords",
+  COMPETITORS: "Competitors",
+  AI_PROMPTS: "AI prompts",
+  AI_SCANS: "AI scans",
+  USERS: "Team seats",
+  CLIENTS: "Clients",
+  REPORTS: "Reports",
+  CRAWL_CREDITS: "Crawl credits",
+  API_CALLS: "API calls",
+  AI_CREDITS: "AI credits",
 };
 
-type Subscription = {
-  id: string;
-  status: string;
-  plan?: Plan | null;
-
-  currentPeriodStart?: string | null;
-  currentPeriodEnd?: string | null;
-
-  trialStart?: string | null;
-  trialEnd?: string | null;
-  trialEndsAt?: string | null;
-
-  cancelAtPeriodEnd?: boolean;
+const FEATURE_LABELS: Record<string, string> = {
+  whiteLabel: "White label",
+  scheduledReports: "Scheduled reports",
+  agency: "Agency features",
+  api: "API access",
+  advancedMonitoring: "Advanced monitoring",
 };
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:4000/api";
-
-function getToken(): string {
-  if (typeof window === "undefined") {
-    return "";
-  }
-
-  return (
-    localStorage.getItem("renkoo_access_token") || ""
-  );
-}
-
-function getOrganizationId(): string {
-  const token = getToken();
-
-  if (!token) {
-    return "";
-  }
-
+function money(value: number, currency = "USD"): string {
   try {
-    const parts = token.split(".");
-
-    if (parts.length < 2) {
-      return "";
-    }
-
-    const payload = JSON.parse(
-      atob(
-        parts[1]
-          .replace(/-/g, "+")
-          .replace(/_/g, "/")
-      )
-    );
-
-    return (
-      payload.organizationId ||
-      payload.organization_id ||
-      payload.orgId ||
-      ""
-    );
-  } catch {
-    return "";
-  }
-}
-
-async function apiRequest(
-  path: string
-): Promise<any> {
-  const token = getToken();
-
-  const response = await fetch(
-    `${API_URL}${path}`,
-    {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      cache: "no-store",
-    }
-  );
-
-  const text = await response.text();
-
-  let data: any = null;
-
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = text;
-  }
-
-  if (!response.ok) {
-    throw new Error(
-      typeof data === "object" &&
-      data?.message
-        ? Array.isArray(data.message)
-          ? data.message.join(", ")
-          : data.message
-        : `Request failed (${response.status})`
-    );
-  }
-
-  return data;
-}
-
-function money(
-  value: number,
-  currency = "USD"
-): string {
-  try {
-    return new Intl.NumberFormat(
-      "en-US",
-      {
-        style: "currency",
-        currency,
-        maximumFractionDigits: 0,
-      }
-    ).format(value);
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    }).format(value);
   } catch {
     return `${currency} ${value}`;
   }
 }
 
-function formatDate(
-  value?: string | null
-): string {
-  if (!value) {
-    return "—";
-  }
-
+function formatDate(value?: string | null): string {
+  if (!value) return "—";
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "—";
-  }
-
-  return date.toLocaleDateString();
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleDateString();
 }
 
 export default function BillingPage() {
-  const [plans, setPlans] =
-    useState<Plan[]>([]);
-
+  const [plans, setPlans] = useState<BillingPlan[]>([]);
   const [subscription, setSubscription] =
-    useState<Subscription | null>(null);
+    useState<BillingSubscription | null>(null);
+  const [entitlements, setEntitlements] =
+    useState<BillingEntitlements | null>(null);
+  const [usage, setUsage] = useState<BillingUsage | null>(
+    null,
+  );
+  const [provider, setProvider] = useState(true);
+  const [invoices, setInvoices] = useState<BillingInvoice[]>(
+    [],
+  );
+  const [invoicesNote, setInvoicesNote] = useState("");
+  const [organizationId, setOrganizationId] = useState("");
+  const [yearly, setYearly] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [open, setOpen] = useState(false);
 
-  const [loading, setLoading] =
-    useState(true);
-
-  const [refreshing, setRefreshing] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
-
-  const [billingReady, setBillingReady] =
-    useState(false);
-
-  const [open, setOpen] =
-    useState(false);
-
-  async function loadBilling(
-    isRefresh = false
-  ) {
+  const loadBilling = useCallback(async () => {
     try {
-      if (isRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-
+      setLoading(true);
       setError("");
 
-      const organizationId =
-        getOrganizationId();
+      const account = await getCurrentAccount();
+      const orgId = account.organization.id;
+      setOrganizationId(orgId);
 
-      if (!organizationId) {
-        throw new Error(
-          "Organization could not be detected from your login session."
-        );
-      }
+      const [
+        plansData,
+        entitlementsData,
+        usageData,
+        providerData,
+        subscriptionData,
+        invoiceData,
+      ] = await Promise.all([
+        getBillingPlans(),
+        getBillingEntitlements(),
+        getBillingUsage(),
+        getBillingProvider().catch(() => ({
+          provider: false,
+        })),
+        getBillingSubscription(orgId).catch(() => null),
+        getBillingInvoices().catch(() => ({
+          provider: false,
+          invoices: [],
+          reason: "Payment history unavailable.",
+        })),
+      ]);
 
-      /*
-       * Load plans independently.
-       *
-       * This is important because Stripe may not be configured yet.
-       * Plans should still appear even when subscription/checkout
-       * is not ready.
-       */
-
-      let receivedPlans: Plan[] = [];
-
-      try {
-        const plansData =
-          await apiRequest(
-            "/billing/plans"
-          );
-
-        receivedPlans =
-          Array.isArray(plansData)
-            ? plansData
-            : Array.isArray(
-                plansData?.plans
-              )
-            ? plansData.plans
-            : [];
-
-        setPlans(receivedPlans);
-      } catch (plansError: any) {
-        console.error(
-          "[RENKOO] BILLING PLANS ERROR",
-          plansError
-        );
-
-        setPlans([]);
-
-        throw new Error(
-          plansError?.message ||
-            "Unable to load billing plans."
-        );
-      }
-
-      /*
-       * Subscription is intentionally handled separately.
-       *
-       * If Stripe is not configured yet, this request can fail.
-       * That must NOT hide the available plans.
-       */
-
-      try {
-        const subscriptionData =
-          await apiRequest(
-            `/billing/subscription/${encodeURIComponent(
-              organizationId
-            )}`
-          );
-
-        const receivedSubscription =
-          subscriptionData?.subscription ||
-          subscriptionData ||
-          null;
-
-        setSubscription(
-          receivedSubscription
-        );
-
-        setBillingReady(true);
-      } catch (subscriptionError: any) {
-        console.warn(
-          "[RENKOO] SUBSCRIPTION NOT AVAILABLE",
-          subscriptionError
-        );
-
-        setSubscription(null);
-
-        /*
-         * Stripe is not configured yet.
-         * Do not show a red error because this is expected
-         * during development before the Stripe account is created.
-         */
-        setBillingReady(false);
-      }
-    } catch (err: any) {
-      console.error(
-        "[RENKOO] BILLING LOAD ERROR",
-        err
+      setPlans(
+        Array.isArray(plansData) ? plansData : [],
       );
-
+      setEntitlements(entitlementsData);
+      setUsage(usageData);
+      setProvider(providerData.provider);
+      setSubscription(subscriptionData);
+      setInvoices(invoiceData.invoices ?? []);
+      setInvoicesNote(invoiceData.reason ?? "");
+    } catch (err: any) {
       setError(
-        err?.message ||
-          "Unable to load billing information."
+        err?.message || "Unable to load billing information.",
       );
     } finally {
       setLoading(false);
-      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadBilling();
+  }, [loadBilling]);
+
+  async function handleCheckout(planCode: string) {
+    if (!organizationId || busy) return;
+
+    try {
+      setBusy(planCode);
+      setError("");
+      setNotice("");
+
+      const session = await startBillingCheckout(
+        organizationId,
+        planCode,
+        yearly,
+      );
+
+      if (session.checkoutUrl) {
+        window.location.href = session.checkoutUrl;
+        return;
+      }
+
+      setNotice("Checkout session created.");
+    } catch (err: any) {
+      const message =
+        typeof err?.message === "string"
+          ? err.message
+          : "Checkout failed.";
+
+      if (/not connected|not configured/i.test(message)) {
+        setNotice(
+          "Online checkout is not connected for this workspace yet. Your current plan and data are unchanged — contact sales to upgrade.",
+        );
+      } else {
+        setError(message);
+      }
+    } finally {
+      setBusy(null);
     }
   }
 
-  useEffect(() => {
-    loadBilling();
-  }, []);
+  async function handlePortal() {
+    if (busy) return;
 
-  const currentPlan =
-    subscription?.plan || null;
+    try {
+      setBusy("portal");
+      setError("");
+      setNotice("");
 
-  const trialEnd =
-    subscription?.trialEnd ||
-    subscription?.trialEndsAt ||
-    null;
+      const session = await openBillingPortal();
 
-  const usageItems = useMemo(
-    () => [
-      [
-        "Websites",
-        currentPlan?.maxWebsites,
-      ],
-      [
-        "Keywords",
-        currentPlan?.maxKeywords,
-      ],
-      [
-        "Competitors",
-        currentPlan?.maxCompetitors,
-      ],
-      [
-        "AI Prompts",
-        currentPlan?.maxAiPrompts,
-      ],
-      [
-        "AI Scans",
-        currentPlan?.maxAiScans,
-      ],
-      [
-        "Users",
-        currentPlan?.maxUsers,
-      ],
-      [
-        "Clients",
-        currentPlan?.maxClients,
-      ],
-      [
-        "Reports",
-        currentPlan?.maxReports,
-      ],
-      [
-        "Crawl Credits",
-        currentPlan?.maxCrawlCredits,
-      ],
-      [
-        "API Calls",
-        currentPlan?.maxApiCalls,
-      ],
-    ],
-    [currentPlan]
-  );
+      if (session.portalUrl) {
+        window.location.href = session.portalUrl;
+      }
+    } catch (err: any) {
+      const message =
+        typeof err?.message === "string"
+          ? err.message
+          : "Portal unavailable.";
+
+      if (/not configured/i.test(message)) {
+        setNotice(
+          "Customer billing portal is not configured for this workspace yet.",
+        );
+      } else {
+        setError(message);
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleCancel() {
+    if (busy) return;
+
+    const confirmed = window.confirm(
+      "Cancel your subscription at the end of the current period? Your websites, clients, reports and history are preserved — only new usage is limited afterward.",
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setBusy("cancel");
+      setError("");
+
+      const updated = await cancelBillingSubscription();
+      setSubscription(updated);
+      setNotice(
+        "Subscription will cancel at the end of the current period. All data is preserved.",
+      );
+      await loadBilling();
+    } catch (err: any) {
+      setError(
+        err?.message || "Cancellation failed.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleTrial() {
+    if (!organizationId || busy) return;
+
+    try {
+      setBusy("trial");
+      setError("");
+
+      const created = await startBillingTrial(
+        organizationId,
+      );
+      setSubscription(created);
+      setNotice("Trial started.");
+      await loadBilling();
+    } catch (err: any) {
+      setError(
+        err?.message || "Could not start trial.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const currentCode =
+    entitlements?.planCode || subscription?.plan?.code || "FREE";
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -373,400 +276,397 @@ export default function BillingPage() {
       />
 
       <main className="lg:pl-[270px]">
-        {/* HEADER */}
-
-        <header className="flex h-[72px] items-center border-b border-slate-200 bg-white px-5 lg:px-8">
-          <div>
-            <div className="text-sm font-bold">
-              RENKOO
-            </div>
-
-            <div className="text-xs text-slate-400">
-              Billing & Plan
-            </div>
-          </div>
-        </header>
-
-        {/* CONTENT */}
-
-        <section className="mx-auto max-w-[1150px] p-5 lg:p-8">
-
-          {/* TITLE */}
-
-          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <section className="mx-auto max-w-[1500px] p-5 lg:p-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h1 className="text-3xl font-bold">
-                Billing & Plan
+              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                Billing & Plans
+              </div>
+              <h1 className="mt-1 text-3xl font-bold">
+                Subscription
               </h1>
-
-              <p className="mt-2 text-sm text-slate-500">
-                Manage your RENKOO plan,
-                limits and subscription.
+              <p className="mt-2 max-w-2xl text-sm text-slate-500">
+                Plan, usage, limits and payment history for this
+                workspace. Downgrades never delete data.
               </p>
             </div>
 
             <button
               type="button"
-              onClick={() =>
-                loadBilling(true)
-              }
-              disabled={
-                loading || refreshing
-              }
-              className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => loadBilling()}
+              disabled={loading}
+              className="flex items-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 disabled:opacity-60"
             >
               <RefreshCw
-                size={16}
-                className={
-                  refreshing
-                    ? "animate-spin"
-                    : ""
-                }
+                size={15}
+                className={loading ? "animate-spin" : ""}
               />
-
               Refresh
             </button>
           </div>
 
-          {/* GENERAL ERROR */}
-
           {error && (
-            <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-              <div className="font-semibold">
-                Billing could not be loaded
-              </div>
-
-              <div className="mt-1">
-                {error}
-              </div>
+            <div className="mt-5 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              <AlertTriangle
+                size={17}
+                className="mt-0.5 shrink-0"
+              />
+              <span>{error}</span>
             </div>
           )}
 
-          {/* STRIPE STATUS */}
+          {notice && (
+            <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+              {notice}
+            </div>
+          )}
 
-          {!loading &&
-            !billingReady &&
-            !error && (
-              <div className="mt-6 flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-                <LockKeyhole
-                  size={18}
-                  className="mt-0.5 shrink-0"
-                />
-
-                <div>
-                  <div className="font-bold">
-                    Payments setup pending
-                  </div>
-
-                  <div className="mt-1 text-blue-700">
-                    RENKOO plans are available.
-                    Online payments will be enabled
-                    after Stripe is connected.
-                  </div>
-                </div>
-              </div>
-            )}
-
-          {/* LOADING */}
+          {!provider && (
+            <div className="mt-5 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              <LockKeyhole
+                size={17}
+                className="mt-0.5 shrink-0"
+              />
+              <span>
+                Online payments are not connected for this
+                installation. Plans, usage and limits below are
+                real; checkout and invoices activate once a
+                payment provider is configured.
+              </span>
+            </div>
+          )}
 
           {loading ? (
-            <div className="mt-12 flex items-center justify-center gap-2 text-sm text-slate-500">
-              <Loader2
-                size={18}
-                className="animate-spin"
-              />
-
+            <div className="mt-6 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-10 text-sm text-slate-500">
+              <Loader2 size={20} className="animate-spin" />
               Loading billing...
             </div>
           ) : (
             <>
-              {/* CURRENT PLAN */}
+              <div className="mt-6 grid gap-4 lg:grid-cols-3">
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Current plan
+                  </div>
+                  <div className="mt-2 text-2xl font-bold">
+                    {entitlements?.planName || "Free"}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    Status:{" "}
+                    <span className="font-bold text-slate-800">
+                      {entitlements?.status || "FREE"}
+                    </span>
+                    {entitlements?.cancelAtPeriodEnd && (
+                      <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                        CANCELING
+                      </span>
+                    )}
+                  </div>
+                  {entitlements?.trialEnd && (
+                    <div className="mt-1 text-xs text-slate-500">
+                      Trial ends{" "}
+                      {formatDate(entitlements.trialEnd)}
+                    </div>
+                  )}
+                  {entitlements?.currentPeriodEnd && (
+                    <div className="mt-1 text-xs text-slate-500">
+                      Renews{" "}
+                      {formatDate(
+                        entitlements.currentPeriodEnd,
+                      )}
+                    </div>
+                  )}
 
-              <div className="mt-8 grid gap-5 lg:grid-cols-3">
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {!subscription && (
+                      <button
+                        type="button"
+                        disabled={busy === "trial"}
+                        onClick={handleTrial}
+                        className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-60"
+                      >
+                        {busy === "trial"
+                          ? "Starting..."
+                          : "Start free trial"}
+                      </button>
+                    )}
+                    {subscription &&
+                      !subscription.cancelAtPeriodEnd && (
+                        <button
+                          type="button"
+                          disabled={busy === "cancel"}
+                          onClick={handleCancel}
+                          className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+                        >
+                          {busy === "cancel"
+                            ? "Canceling..."
+                            : "Cancel at period end"}
+                        </button>
+                      )}
+                    <button
+                      type="button"
+                      disabled={busy === "portal"}
+                      onClick={handlePortal}
+                      className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      {busy === "portal"
+                        ? "Opening..."
+                        : "Customer portal"}
+                    </button>
+                  </div>
+                </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
-
-                  <div className="flex items-start justify-between gap-4">
-
-                    <div>
-                      <div className="text-xs font-bold uppercase tracking-wide text-blue-600">
-                        Current Plan
-                      </div>
-
-                      <div className="mt-2 text-2xl font-bold">
-                        {currentPlan?.name ||
-                          "No active plan"}
-                      </div>
-
-                      <p className="mt-1 text-sm text-slate-500">
-                        {currentPlan?.description ||
-                          "Choose a plan to unlock RENKOO growth features."}
-                      </p>
-                    </div>
-
-                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
-                      <CreditCard
-                        size={22}
-                      />
-                    </div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Usage & limits
                   </div>
 
-                  <div className="mt-6 flex flex-wrap gap-3">
-
-                    <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">
-                      {subscription?.status ||
-                        "NOT ACTIVE"}
-                    </span>
-
-                    {currentPlan && (
-                      <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700">
-                        {money(
-                          currentPlan.monthlyPrice,
-                          currentPlan.currency ||
-                            "USD"
-                        )}
-
-                        /month
-                      </span>
-                    )}
-
-                  </div>
+                  {!usage ? (
+                    <p className="mt-3 text-sm text-slate-400">
+                      Usage unavailable.
+                    </p>
+                  ) : (
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {Object.entries(usage.usage).map(
+                        ([metric, item]) => (
+                          <div
+                            key={metric}
+                            className="rounded-xl border border-slate-100 px-4 py-3"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-semibold text-slate-600">
+                                {USAGE_LABELS[metric] ||
+                                  metric}
+                              </span>
+                              <span className="text-xs font-bold tabular-nums text-slate-900">
+                                {item.used === null
+                                  ? "—"
+                                  : `${item.used}/${item.limit}`}
+                              </span>
+                            </div>
+                            {item.used !== null ? (
+                              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                                <div
+                                  className={`h-full rounded-full ${
+                                    item.remaining === 0
+                                      ? "bg-red-500"
+                                      : "bg-slate-900"
+                                  }`}
+                                  style={{
+                                    width: `${Math.min(
+                                      100,
+                                      Math.round(
+                                        (item.used /
+                                          Math.max(
+                                            item.limit,
+                                            1,
+                                          )) *
+                                          100,
+                                      ),
+                                    )}%`,
+                                  }}
+                                />
+                              </div>
+                            ) : (
+                              <div className="mt-2 text-[11px] text-slate-400">
+                                Not reliably measurable —
+                                unavailable, never zero-filled.
+                              </div>
+                            )}
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  )}
                 </div>
-
-                {/* SUBSCRIPTION */}
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-
-                  <div className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                    Subscription
-                  </div>
-
-                  <div className="mt-4 space-y-4 text-sm">
-
-                    <div className="flex justify-between gap-4">
-                      <span className="text-slate-500">
-                        Status
-                      </span>
-
-                      <span className="font-semibold">
-                        {subscription?.status ||
-                          "—"}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between gap-4">
-                      <span className="text-slate-500">
-                        Period ends
-                      </span>
-
-                      <span className="font-semibold">
-                        {formatDate(
-                          subscription?.currentPeriodEnd
-                        )}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between gap-4">
-                      <span className="text-slate-500">
-                        Trial ends
-                      </span>
-
-                      <span className="font-semibold">
-                        {formatDate(trialEnd)}
-                      </span>
-                    </div>
-
-                  </div>
-                </div>
-
               </div>
 
-              {/* PLAN LIMITS */}
-
-              {currentPlan && (
+              {entitlements && (
                 <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-
-                  <h2 className="text-lg font-bold">
-                    Plan Limits
-                  </h2>
-
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-
-                    {usageItems.map(
-                      ([label, value]) => (
-                        <div
-                          key={label as string}
-                          className="rounded-xl bg-slate-50 p-4"
-                        >
-                          <div className="text-xs text-slate-500">
-                            {label}
-                          </div>
-
-                          <div className="mt-1 text-xl font-bold">
-                            {typeof value ===
-                            "number"
-                              ? value.toLocaleString()
-                              : "—"}
-                          </div>
-                        </div>
-                      )
-                    )}
-
+                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Entitlements
                   </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {Object.entries(
+                      entitlements.features,
+                    ).map(([feature, allowed]) => (
+                      <span
+                        key={feature}
+                        className={`rounded-full px-3 py-1 text-xs font-bold ${
+                          allowed
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        {FEATURE_LABELS[feature] || feature}:{" "}
+                        {allowed ? "ON" : "OFF"}
+                      </span>
+                    ))}
+                  </div>
+                  {entitlements.customPricing && (
+                    <p className="mt-3 text-xs text-slate-500">
+                      Custom Enterprise pricing — contact sales
+                      for terms.
+                    </p>
+                  )}
                 </div>
               )}
 
-              {/* AVAILABLE PLANS */}
-
-              <div className="mt-8">
-
-                <div className="mb-5">
-                  <h2 className="text-xl font-bold">
-                    Available Plans
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <h2 className="text-lg font-bold">
+                    Plans
                   </h2>
-
-                  <p className="mt-1 text-sm text-slate-500">
-                    Plans configured in the
-                    RENKOO billing system.
-                  </p>
+                  <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                    <input
+                      type="checkbox"
+                      checked={yearly}
+                      onChange={(e) =>
+                        setYearly(e.target.checked)
+                      }
+                    />
+                    Yearly billing
+                  </label>
                 </div>
 
                 {plans.length === 0 ? (
-
-                  <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
-                    No public plans available.
-                  </div>
-
+                  <p className="mt-4 text-sm text-slate-400">
+                    No public plans configured.
+                  </p>
                 ) : (
+                  <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    {plans.map((plan) => {
+                      const isCurrent =
+                        plan.code === currentCode;
+                      const price = yearly
+                        ? plan.yearlyPrice
+                        : plan.monthlyPrice;
 
-                  <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-
-                    {plans.map(
-                      (plan) => {
-
-                        const active =
-                          currentPlan?.id ===
-                          plan.id;
-
-                        return (
-                          <div
-                            key={plan.id}
-                            className={`relative rounded-2xl border bg-white p-6 shadow-sm ${
-                              active
-                                ? "border-blue-300 ring-2 ring-blue-50"
-                                : "border-slate-200"
-                            }`}
-                          >
-
-                            {active && (
-                              <div className="mb-3 flex items-center gap-1.5 text-xs font-bold text-blue-600">
-                                <CheckCircle2
-                                  size={15}
-                                />
-
-                                Current Plan
-                              </div>
-                            )}
-
-                            <h3 className="text-lg font-bold">
+                      return (
+                        <div
+                          key={plan.code}
+                          className={`rounded-2xl border p-5 ${
+                            isCurrent
+                              ? "border-slate-900 bg-slate-50"
+                              : "border-slate-200"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-bold">
                               {plan.name}
-                            </h3>
+                            </span>
+                            {isCurrent && (
+                              <span className="flex items-center gap-1 rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-white">
+                                <CheckCircle2 size={11} />
+                                CURRENT
+                              </span>
+                            )}
+                          </div>
 
-                            <p className="mt-2 min-h-10 text-xs leading-5 text-slate-500">
-                              {plan.description ||
-                                "RENKOO growth plan"}
+                          <div className="mt-2 text-2xl font-bold">
+                            {money(
+                              price,
+                              plan.currency || "USD",
+                            )}
+                            <span className="text-xs font-medium text-slate-400">
+                              /{yearly ? "yr" : "mo"}
+                            </span>
+                          </div>
+
+                          {plan.description && (
+                            <p className="mt-1 min-h-[2.5rem] text-xs text-slate-500">
+                              {plan.description}
                             </p>
+                          )}
 
-                            <div className="mt-5">
+                          <ul className="mt-3 space-y-1 text-xs text-slate-600">
+                            <li>
+                              {plan.maxWebsites} websites
+                            </li>
+                            <li>
+                              {plan.maxClients} clients
+                            </li>
+                            <li>
+                              {plan.maxReports} reports
+                            </li>
+                            <li>
+                              {plan.maxCompetitors} competitors
+                            </li>
+                            <li>
+                              {plan.maxCrawlCredits} crawl
+                              credits
+                            </li>
+                          </ul>
 
-                              <span className="text-2xl font-black">
-                                {money(
-                                  plan.monthlyPrice,
-                                  plan.currency ||
-                                    "USD"
-                                )}
-                              </span>
-
-                              <span className="text-xs text-slate-400">
-                                /month
-                              </span>
-
-                            </div>
-
-                            {/* PAYMENT BUTTON */}
-
+                          {!isCurrent && (
                             <button
                               type="button"
-                              disabled
-                              className="mt-5 flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-400"
+                              disabled={busy === plan.code}
+                              onClick={() =>
+                                handleCheckout(plan.code)
+                              }
+                              className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-60"
                             >
-                              {active ? (
-                                <>
-                                  <CheckCircle2
-                                    size={16}
-                                  />
-
-                                  Current Plan
-                                </>
-                              ) : (
-                                <>
-                                  <LockKeyhole
-                                    size={15}
-                                  />
-
-                                  Payments Coming Soon
-                                </>
-                              )}
+                              {busy === plan.code
+                                ? "Redirecting..."
+                                : "Upgrade"}
                             </button>
-
-                          </div>
-                        );
-                      }
-                    )}
-
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
-
               </div>
 
-              {/* BILLING NOTE */}
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-bold">
+                  Payment history
+                </h2>
 
-              <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-
-                <div className="flex items-start gap-3">
-
-                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600">
+                {invoices.length === 0 ? (
+                  <p className="mt-2 flex items-start gap-2 text-sm text-slate-500">
                     <CreditCard
-                      size={19}
+                      size={16}
+                      className="mt-0.5 shrink-0"
                     />
+                    {invoicesNote ||
+                      "No payment history. Invoices appear here once billing is connected."}
+                  </p>
+                ) : (
+                  <div className="mt-3 divide-y divide-slate-100">
+                    {invoices.map((invoice) => (
+                      <div
+                        key={invoice.id}
+                        className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="text-sm font-semibold">
+                          {money(
+                            invoice.amount,
+                            invoice.currency,
+                          )}{" "}
+                          <span className="ml-2 text-xs font-medium text-slate-400">
+                            {invoice.status} ·{" "}
+                            {formatDate(invoice.created)}
+                          </span>
+                        </div>
+                        {invoice.url && (
+                          <a
+                            href={invoice.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs font-bold text-blue-700 hover:underline"
+                          >
+                            View invoice
+                          </a>
+                        )}
+                      </div>
+                    ))}
                   </div>
-
-                  <div>
-                    <h3 className="font-bold">
-                      Secure online billing
-                    </h3>
-
-                    <p className="mt-1 text-sm leading-6 text-slate-500">
-                      RENKOO will support secure
-                      online subscriptions,
-                      automatic renewals,
-                      invoices and plan upgrades
-                      through Stripe.
-                    </p>
-
-                    <p className="mt-2 text-xs font-semibold text-slate-400">
-                      Payment gateway setup is
-                      currently pending.
-                    </p>
-                  </div>
-
-                </div>
-
+                )}
               </div>
-
             </>
           )}
-
         </section>
       </main>
     </div>

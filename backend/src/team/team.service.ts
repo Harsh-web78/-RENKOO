@@ -6,6 +6,7 @@
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { BillingService } from '../billing/billing.service';
 import { randomBytes } from 'crypto';
 
 @Injectable()
@@ -13,6 +14,7 @@ export class TeamService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
+    private readonly billingService: BillingService,
   ) {}
 
   private async requireAdmin(
@@ -74,6 +76,32 @@ export class TeamService {
     await this.requireAdmin(
       organizationId,
       userId,
+    );
+
+    const [members, pendingInvites] =
+      await Promise.all([
+        this.prisma.organizationMember.count(
+          {
+            where: { organizationId },
+          },
+        ),
+        this.prisma.organizationInvite.count(
+          {
+            where: {
+              organizationId,
+              acceptedAt: null,
+              expiresAt: {
+                gt: new Date(),
+              },
+            },
+          },
+        ),
+      ]);
+
+    await this.billingService.enforceCreation(
+      organizationId,
+      'USERS',
+      members + pendingInvites,
     );
 
     const normalizedEmail =
@@ -166,12 +194,13 @@ export class TeamService {
       );
     }
 
-    const frontendUrl =
-      process.env.FRONTEND_URL ||
-      'http://localhost:3000';
-
+    /*
+     * Invite links must use the configured public
+     * app URL (APP_PUBLIC_URL in production), never
+     * a localhost fallback.
+     */
     const inviteUrl =
-      `${frontendUrl}/invite/${token}`;
+      `${this.emailService.resolveAppUrl()}/invite/${token}`;
 
     try {
       await this.emailService.sendTeamInvite({

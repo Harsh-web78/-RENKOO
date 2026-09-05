@@ -56,6 +56,8 @@ import { GeoModule } from './geo/geo.module';
 
 import { AeoModule } from './aeo/aeo.module';
 
+import { EmailModule } from './email/email.module';
+
 @Module({
   imports: [
     MarketingSpendModule,
@@ -97,6 +99,7 @@ LeadsModule,
     CompetitorsModule,
     AiVisibilityModule,
     ComparisonModule,
+    EmailModule,
   ],
   providers: [
     {

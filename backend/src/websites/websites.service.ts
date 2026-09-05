@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { BillingService } from '../billing/billing.service';
 
 import { CreateWebsiteDto } from './dto/create-website.dto';
 import { UpdateWebsiteDto } from './dto/update-website.dto';
@@ -13,12 +14,24 @@ import { UpdateWebsiteDto } from './dto/update-website.dto';
 export class WebsitesService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly billingService: BillingService,
   ) {}
 
   async create(
     organizationId: string,
     dto: CreateWebsiteDto,
   ) {
+    const current =
+      await this.prisma.website.count({
+        where: { organizationId },
+      });
+
+    await this.billingService.enforceCreation(
+      organizationId,
+      'WEBSITES',
+      current,
+    );
+
     const url = dto.url.trim();
 
     const existing =

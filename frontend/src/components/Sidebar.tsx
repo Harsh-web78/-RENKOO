@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
+  Activity,
   BarChart3,
   Bot,
   FileText,
@@ -37,8 +38,12 @@ const nav = [
   ['Leads & Revenue', '/leads', TrendingUp],
   ['Opportunities', '/opportunities', Target],
   ['Actions', '/actions', Target],
+  ['Monitoring', '/monitoring', Activity],
   ['Reports', '/reports', FileText],
-  ['AI Agents', '/agents', Bot],
+  ['Intelligence', '/agents', Bot],
+  ['Workers', '/workers', Bot],
+  ['Clients', '/clients', Users],
+  ['Reports', '/reports', FileText],
   ['Integrations', '/integrations', Globe2],
   ['Settings', '/settings', Settings],
   ['Billing', '/billing', CreditCard],

@@ -1,0 +1,27 @@
+model AgentRun {
+  id               String   @id @default(cuid())
+  organizationId   String
+  websiteId        String
+  userId           String?
+  agentId          String
+  trigger          String   @default("USER_REQUEST")
+  input            String?
+  status           String   @default("RUNNING")
+  approvalState    String   @default("NOT_REQUIRED")
+  selectedTools    String[] @default([])
+  evidence         Json?
+  resultSummary    String?
+  proposedActions  Json?
+  executedActionIds String[] @default([])
+  error            String?
+  startedAt        DateTime @default(now())
+  completedAt      DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([websiteId])
+  @@index([agentId])
+  @@index([status])
+  @@index([createdAt])
+}

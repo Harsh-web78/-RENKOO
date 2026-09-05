@@ -15,6 +15,7 @@ export interface User {
 export interface Website {
   id: string;
   organizationId: string;
+  clientId?: string | null;
   name: string;
   url: string;
   industry?: string | null;
@@ -514,6 +515,64 @@ export async function getMe() {
 }
 
 /*
+ * Email verification + password reset. Responses
+ * mirror the backend's honest states: success
+ * means the backend accepted/confirmed the
+ * request, never a claim of inbox delivery.
+ */
+export async function verifyEmail(
+  token: string,
+): Promise<{
+  verified: boolean;
+  message: string;
+}> {
+  return request('/auth/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  });
+}
+
+export async function resendVerification(
+  email: string,
+): Promise<{
+  sent: boolean;
+  message: string;
+}> {
+  return request('/auth/resend-verification', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function forgotPassword(
+  email: string,
+): Promise<{
+  sent: boolean;
+  message: string;
+}> {
+  return request('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPassword(
+  token: string,
+  newPassword: string,
+): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  return request('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({
+      token,
+      newPassword,
+    }),
+  });
+}
+
+/*
  * =========================================================
  * WEBSITES
  * =========================================================
@@ -725,6 +784,320 @@ export async function reopenSeoIssue(
 export async function getGoogleConnectionStatus() {
   return request<GoogleConnectionStatus>(
     '/google/status',
+  );
+}
+
+export interface GoogleIntegrationHealth {
+  provider: string;
+  status: string;
+  connected: boolean;
+  reconnectRequired: boolean;
+  limitation?: string | null;
+  gsc?: {
+    provider: string;
+    status: string;
+    connected: boolean;
+    property?: string | null;
+    dataAvailable: boolean;
+    reconnectRequired: boolean;
+    limitation?: string | null;
+    [key: string]: any;
+  };
+  ga4?: {
+    provider: string;
+    status: string;
+    connected: boolean;
+    property?: string | null;
+    dataAvailable: boolean;
+    reconnectRequired: boolean;
+    limitation?: string | null;
+    [key: string]: any;
+  };
+  gbp?: {
+    provider: string;
+    status: string;
+    connected: boolean;
+    dataAvailable: boolean;
+    limitation?: string | null;
+    [key: string]: any;
+  };
+  lastSuccessfulRequestAt?: string | null;
+  lastErrorCode?: string | null;
+  lastErrorAt?: string | null;
+  [key: string]: any;
+}
+
+export async function getGoogleHealth(): Promise<GoogleIntegrationHealth> {
+  return request<GoogleIntegrationHealth>(
+    '/google/health',
+  );
+}
+
+export async function getGbpStatus(): Promise<{
+  provider: string;
+  status: string;
+  connected: boolean;
+  dataAvailable: boolean;
+  limitation?: string | null;
+  [key: string]: any;
+}> {
+  return request('/google/gbp/status');
+}
+
+export async function disconnectGoogle(): Promise<{
+  connected: boolean;
+  disconnected: boolean;
+  message?: string;
+  [key: string]: any;
+}> {
+  return request('/google/disconnect', {
+    method: 'POST',
+  });
+}
+
+export interface BusinessLocation {
+  id: string;
+  organizationId?: string;
+  websiteId?: string | null;
+  name: string;
+  address?: string | null;
+  phone?: string | null;
+  websiteUrl?: string | null;
+  category?: string | null;
+  source?: string | null;
+  [key: string]: any;
+}
+
+export async function listBusinessLocations(
+  websiteId?: string,
+): Promise<{
+  total: number;
+  gbp?: Record<string, any> | null;
+  locations: BusinessLocation[];
+  [key: string]: any;
+}> {
+  const suffix = websiteId
+    ? `?websiteId=${encodeURIComponent(websiteId)}`
+    : '';
+
+  return request(
+    `/local-seo/locations/all${suffix}`,
+  );
+}
+
+export async function createBusinessLocation(data: {
+  websiteId?: string;
+  name: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  postalCode?: string;
+  latitude?: number;
+  longitude?: number;
+  phone?: string;
+  websiteUrl?: string;
+  category?: string;
+  isPrimary?: boolean;
+}): Promise<BusinessLocation> {
+  return request<BusinessLocation>(
+    '/local-seo/locations',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+export async function updateBusinessLocation(
+  id: string,
+  data: Record<string, any>,
+): Promise<BusinessLocation> {
+  return request<BusinessLocation>(
+    `/local-seo/locations/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+export async function deleteBusinessLocation(
+  id: string,
+): Promise<{ success: boolean; id: string }> {
+  return request(
+    `/local-seo/locations/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export interface LocalHealthArea {
+  key: string;
+  title: string;
+  state:
+    | 'GOOD'
+    | 'ATTENTION'
+    | 'DATA_GAP'
+    | 'NOT_AVAILABLE';
+  evidence: string;
+  limitation?: string | null;
+  [key: string]: any;
+}
+
+export interface LocalHealth {
+  websiteId: string;
+  overall: LocalHealthArea['state'];
+  overallNote?: string;
+  areas: LocalHealthArea[];
+  categories: string[];
+  opportunities: Array<Record<string, any>>;
+  [key: string]: any;
+}
+
+export async function getLocalHealth(
+  websiteId: string,
+): Promise<LocalHealth> {
+  return request<LocalHealth>(
+    `/local-seo/${encodeURIComponent(websiteId)}/health`,
+  );
+}
+
+export interface TrackedLocalQuery {
+  id: string;
+  query: string;
+  category?: string | null;
+  locationId?: string | null;
+  isActive: boolean;
+  [key: string]: any;
+}
+
+export async function listTrackedLocalQueries(
+  websiteId: string,
+): Promise<{
+  total: number;
+  active: number;
+  rankingData: string;
+  rankingNote?: string;
+  queries: TrackedLocalQuery[];
+  [key: string]: any;
+}> {
+  return request(
+    `/local-seo/${encodeURIComponent(websiteId)}/tracked-queries`,
+  );
+}
+
+export async function createTrackedLocalQuery(
+  websiteId: string,
+  data: {
+    locationId?: string;
+    query: string;
+    category?: string;
+  },
+): Promise<TrackedLocalQuery> {
+  return request<TrackedLocalQuery>(
+    `/local-seo/${encodeURIComponent(websiteId)}/tracked-queries`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+export async function deleteTrackedLocalQuery(
+  id: string,
+): Promise<{ success: boolean; id: string }> {
+  return request(
+    `/local-seo/tracked-queries/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export interface LocalCitation {
+  id: string;
+  source: string;
+  sourceUrl?: string | null;
+  businessName?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  websiteUrl?: string | null;
+  status?: string | null;
+  [key: string]: any;
+}
+
+export async function listLocalCitations(
+  websiteId?: string,
+): Promise<{
+  total: number;
+  status: string;
+  note?: string;
+  citations: LocalCitation[];
+  [key: string]: any;
+}> {
+  const suffix = websiteId
+    ? `?websiteId=${encodeURIComponent(websiteId)}`
+    : '';
+
+  return request(
+    `/local-seo/citations/all${suffix}`,
+  );
+}
+
+export async function createLocalCitation(data: {
+  websiteId?: string;
+  locationId?: string;
+  source: string;
+  sourceUrl?: string;
+  businessName?: string;
+  address?: string;
+  phone?: string;
+  websiteUrl?: string;
+  status?: string;
+}): Promise<LocalCitation> {
+  return request<LocalCitation>(
+    '/local-seo/citations',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+export async function deleteLocalCitation(
+  id: string,
+): Promise<{ success: boolean; id: string }> {
+  return request(
+    `/local-seo/citations/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function listLocalCompetitors(
+  websiteId: string,
+  locationId?: string,
+): Promise<{
+  total: number;
+  competitors: Array<Record<string, any>>;
+  [key: string]: any;
+}> {
+  const suffix = locationId
+    ? `?locationId=${encodeURIComponent(locationId)}`
+    : '';
+
+  return request(
+    `/local-seo/${encodeURIComponent(websiteId)}/local-competitors${suffix}`,
+  );
+}
+
+export async function attachLocalCompetitor(
+  competitorId: string,
+  locationId: string | null,
+): Promise<Record<string, any>> {
+  return request(
+    `/local-seo/competitors/${encodeURIComponent(competitorId)}/attach`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ locationId }),
+    },
   );
 }
 
@@ -1057,6 +1430,198 @@ export async function getContentOpportunities(
   );
 }
 
+export interface ContentItem {
+  id: string;
+  title: string;
+  targetQuery?: string | null;
+  intent?: string | null;
+  status: string;
+  pageUrl?: string | null;
+  publishedAt?: string | null;
+  briefs?: Array<{ id: string }>;
+  drafts?: Array<Record<string, any>>;
+  [key: string]: any;
+}
+
+export async function listContentItems(
+  websiteId: string,
+): Promise<{
+  total: number;
+  publishing: Record<string, any>;
+  items: ContentItem[];
+  [key: string]: any;
+}> {
+  return request(
+    `/content/items?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function createContentItem(data: {
+  websiteId: string;
+  title: string;
+  targetQuery?: string;
+  intent?: string;
+  pageUrl?: string;
+}): Promise<ContentItem> {
+  return request<ContentItem>('/content/items', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateContentItem(
+  id: string,
+  data: Record<string, any>,
+): Promise<ContentItem> {
+  return request<ContentItem>(
+    `/content/items/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+export async function deleteContentItem(
+  id: string,
+): Promise<{ success: boolean; id: string }> {
+  return request(
+    `/content/items/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function markContentReady(
+  id: string,
+): Promise<ContentItem> {
+  return request(
+    `/content/items/${encodeURIComponent(id)}/ready`,
+    { method: 'POST' },
+  );
+}
+
+export async function markContentPublished(
+  id: string,
+  confirmed: boolean,
+  pageUrl?: string,
+): Promise<ContentItem> {
+  return request(
+    `/content/items/${encodeURIComponent(id)}/publish`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ confirmed, pageUrl }),
+    },
+  );
+}
+
+export async function generateContentBrief(data: {
+  websiteId: string;
+  query: string;
+  page?: string;
+  itemId?: string;
+}): Promise<Record<string, any>> {
+  return request('/content/briefs', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listContentBriefs(
+  websiteId: string,
+): Promise<{
+  total: number;
+  serp: Record<string, any>;
+  briefs: Array<Record<string, any>>;
+  [key: string]: any;
+}> {
+  return request(
+    `/content/briefs?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function deleteContentBrief(
+  id: string,
+): Promise<{ success: boolean; id: string }> {
+  return request(
+    `/content/briefs/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function generateContentDraft(data: {
+  websiteId: string;
+  itemId?: string;
+  briefId?: string;
+  mode: 'OUTLINE' | 'DRAFT' | 'SECTION' | 'FAQ' | 'REWRITE';
+  provider: 'GEMINI' | 'OPENAI';
+  input?: string;
+  topic?: string;
+}): Promise<Record<string, any>> {
+  return request('/content/generate', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listContentDrafts(
+  websiteId: string,
+  itemId?: string,
+): Promise<{
+  total: number;
+  aiGenerated: number;
+  drafts: Array<Record<string, any>>;
+  [key: string]: any;
+}> {
+  const suffix = itemId
+    ? `&itemId=${encodeURIComponent(itemId)}`
+    : '';
+
+  return request(
+    `/content/drafts?websiteId=${encodeURIComponent(websiteId)}${suffix}`,
+  );
+}
+
+export async function analyzeContentPage(data: {
+  websiteId: string;
+  pageUrl: string;
+  query?: string;
+}): Promise<Record<string, any>> {
+  return request('/content/optimize', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getContentRefreshQueue(
+  websiteId?: string,
+): Promise<{
+  total: number;
+  refresh: Array<Record<string, any>>;
+  persisted: Array<Record<string, any>>;
+  [key: string]: any;
+}> {
+  const suffix = websiteId
+    ? `?websiteId=${encodeURIComponent(websiteId)}`
+    : '';
+
+  return request(`/content/refresh${suffix}`);
+}
+
+export async function getContentPublishingStatus(): Promise<
+  Record<string, any>
+> {
+  return request('/content/publishing/status');
+}
+
+export async function getContentPerformance(
+  websiteId: string,
+  pageUrl: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/content/performance?websiteId=${encodeURIComponent(websiteId)}&pageUrl=${encodeURIComponent(pageUrl)}`,
+  );
+}
+
 /*
  * =========================================================
  * RESTORED API MODULES
@@ -1232,6 +1797,10 @@ export interface UnifiedOpportunity {
   recommendation?: string | null;
   pageUrl?: string | null;
   metadata?: Record<string, any> | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  businessRelevance?: 'HIGH' | 'MEDIUM' | null;
+  businessReason?: string | null;
 }
 
 export interface UnifiedOpportunitiesResponse {
@@ -1309,6 +1878,874 @@ export async function createAiVisibilitySnapshot(
   );
 }
 
+export interface AiVisibilityQuery {
+  id: string;
+  websiteId: string;
+  query: string;
+  category?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiPromptSuggestion {
+  query: string;
+  category: string;
+  deterministic: true;
+  alreadyTracked: boolean;
+}
+
+export interface AiPromptSuggestionsResponse {
+  websiteId: string;
+  websiteUrl?: string;
+  deterministic: boolean;
+  disclaimer?: string;
+  reason?: string;
+  suggestions: AiPromptSuggestion[];
+}
+
+export interface AiCitationDomain {
+  domain: string;
+  citations: number;
+  urls: string[];
+  queries: string[];
+}
+
+export interface AiCompetitorStanding {
+  id?: string;
+  name: string;
+  url?: string;
+  mentions: number;
+  hasData?: boolean;
+}
+
+export interface AiVisibilityGap {
+  key: string;
+  title: string;
+  description: string;
+  priority: string;
+  queries: string[];
+  evidence?: Record<string, any> | null;
+}
+
+export interface AiProviderState {
+  id: string;
+  displayName: string;
+  connected: boolean;
+}
+
+export interface AiIntelligence {
+  website: {
+    id: string;
+    name: string;
+    url: string;
+  };
+  providers: AiProviderState[];
+  counts: {
+    trackedQueries: number;
+    completedChecks: number;
+    brandMentions: number;
+    competitorMentionEvents: number;
+    citedDomains: number;
+  };
+  shareOfVoice: {
+    brand: number;
+    competitors: number;
+    denominator: number;
+    note: string;
+  } | null;
+  trend: {
+    recentMentionRate: number | null;
+    olderMentionRate: number | null;
+    pointChange: number | null;
+    recentCount: number;
+    olderCount: number;
+  } | null;
+  citations: AiCitationDomain[];
+  competitors: {
+    tracked: AiCompetitorStanding[];
+    unlisted: Array<{
+      name: string;
+      mentions: number;
+    }>;
+  };
+  gaps: AiVisibilityGap[];
+}
+
+export async function createAiVisibilityQuery(data: {
+  websiteId: string;
+  query: string;
+  category?: string;
+}): Promise<AiVisibilityQuery> {
+  return request<AiVisibilityQuery>('/ai-visibility/queries', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateAiVisibilityQuery(
+  id: string,
+  data: {
+    query?: string;
+    category?: string | null;
+    isActive?: boolean;
+  },
+): Promise<AiVisibilityQuery> {
+  return request<AiVisibilityQuery>(
+    `/ai-visibility/queries/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+export async function deleteAiVisibilityQuery(
+  id: string,
+): Promise<{ success: boolean; id: string }> {
+  return request<{ success: boolean; id: string }>(
+    `/ai-visibility/queries/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function recordAiVisibilityCheck(data: {
+  websiteId: string;
+  platform:
+    | 'CHATGPT'
+    | 'GOOGLE_AI'
+    | 'GEMINI'
+    | 'CLAUDE'
+    | 'PERPLEXITY'
+    | 'OTHER';
+  query: string;
+  mentioned: boolean;
+  citationFound: boolean;
+  position?: number;
+  citationUrl?: string;
+  competitorNames?: string[];
+  response?: string;
+}): Promise<any> {
+  return request<any>('/ai-visibility/checks', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getAiVisibilityIntelligence(
+  websiteId: string,
+): Promise<AiIntelligence> {
+  return request<AiIntelligence>(
+    `/ai-visibility/intelligence?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export interface AiProviderState {
+  id: string;
+  displayName: string;
+  configured?: boolean;
+  state:
+    | 'CONNECTED'
+    | 'NOT_CONFIGURED'
+    | 'NOT_CONNECTED';
+  resultType?: string | null;
+  reason?: string | null;
+  [key: string]: any;
+}
+
+export interface AiProviderStatesResponse {
+  providers: AiProviderState[];
+  googleAiSearch?: AiProviderState | null;
+  [key: string]: any;
+}
+
+export interface AiRunCheckResult {
+  check?: Record<string, any> | null;
+  queryId?: string | null;
+  category?: string | null;
+  analysis?: Record<string, any> | null;
+  provider?: {
+    id: string;
+    displayName: string;
+    model: string;
+    latencyMs: number;
+    usage?: Record<string, any> | null;
+    [key: string]: any;
+  } | null;
+  observationType?: string | null;
+  resultLabel?: string | null;
+  citations?: any[];
+  citationsNote?: string | null;
+  citationsReason?: string | null;
+  sampleSize?: {
+    promptChecks?: number;
+    note?: string;
+    [key: string]: any;
+  } | null;
+  [key: string]: any;
+}
+
+export async function getAiProviderStates(): Promise<AiProviderStatesResponse> {
+  return request<AiProviderStatesResponse>(
+    '/ai-visibility/providers',
+  );
+}
+
+export async function runAiVisibilityCheck(data: {
+  websiteId: string;
+  queryId?: string;
+  query?: string;
+  provider: 'GEMINI' | 'OPENAI';
+}): Promise<AiRunCheckResult> {
+  return request<AiRunCheckResult>(
+    '/ai-visibility/checks/run',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+export interface IntelligenceEvidence {
+  source: string;
+  metric: string;
+  value?: string | number | null;
+  previousValue?: string | number | null;
+  currentValue?: string | number | null;
+  change?: string | number | null;
+  timestamp?: string | null;
+  pageUrl?: string | null;
+  entity?: string | null;
+  note?: string | null;
+}
+
+export interface IntelligenceOpportunity {
+  id: string;
+  title: string;
+  priority: string;
+  score: number;
+  source: string;
+  recommendation: string | null;
+  recommendationId: string | null;
+}
+
+export interface IntelligenceResponse {
+  website: {
+    id: string;
+    name: string;
+    url: string;
+  };
+  question: string;
+  intent: string;
+  matchedKeywords: string[];
+  answer: string;
+  answerSource: string;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | string;
+  confidenceNote: string;
+  businessPriority: string | null;
+  evidence: IntelligenceEvidence[];
+  keySignals: string[];
+  why: string[];
+  opportunities: IntelligenceOpportunity[];
+  suggestedActions: string[];
+  dataAvailability: Record<string, string>;
+  limitations: string[];
+  llm: {
+    available: boolean;
+    reason: string;
+  };
+}
+
+export async function askIntelligence(
+  websiteId: string,
+  question: string,
+): Promise<IntelligenceResponse> {
+  return request<IntelligenceResponse>('/intelligence/ask', {
+    method: 'POST',
+    body: JSON.stringify({ websiteId, question }),
+  });
+}
+
+export interface WorkerAgent {
+  id: string;
+  name: string;
+  description: string;
+  capability: string[];
+  requiredData: string[];
+  allowedTools: string[];
+  riskLevel: string;
+  approvalRequired: boolean;
+  mode: string;
+  status:
+    | 'AVAILABLE'
+    | 'DETERMINISTIC'
+    | 'LLM_REQUIRED'
+    | 'NOT_AVAILABLE'
+    | 'ERROR'
+    | string;
+}
+
+export interface WorkerTool {
+  name: string;
+  description: string;
+  permission: string;
+}
+
+export interface WorkerProposal {
+  title: string;
+  description: string;
+  priority: string;
+  type: string;
+  metadata?: Record<string, any> | null;
+  recommendationId?: string;
+}
+
+export interface WorkerRun {
+  runId: string;
+  agent: {
+    id: string;
+    name: string;
+    approvalRequired: boolean;
+    mode: string;
+  };
+  organizationId: string;
+  websiteId: string;
+  trigger: string;
+  input: string | null;
+  status: string;
+  approvalState: string;
+  selectedTools: string[];
+  evidence: Array<{
+    source: string;
+    metric: string;
+    value?: string | number | null;
+    entity?: string | null;
+    note?: string | null;
+  }>;
+  resultSummary: string | null;
+  proposedActions: WorkerProposal[];
+  executedActionIds: string[];
+  error: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  providerUnavailable: boolean;
+}
+
+export async function listWorkerAgents(
+  websiteId?: string,
+): Promise<{
+  providerUnavailable: boolean;
+  providerNote: string;
+  futureExternalTools: Array<{
+    name: string;
+    description: string;
+    available: boolean;
+  }>;
+  tools: WorkerTool[];
+  agents: WorkerAgent[];
+}> {
+  const query = websiteId
+    ? `?websiteId=${encodeURIComponent(websiteId)}`
+    : '';
+  return request(`/agents${query}`);
+}
+
+export async function runWorkerAgent(
+  agentId: string,
+  websiteId: string,
+  input?: string,
+  trigger?: string,
+): Promise<WorkerRun> {
+  return request<WorkerRun>(
+    `/agents/${encodeURIComponent(agentId)}/run`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        websiteId,
+        input,
+        trigger: trigger ?? 'USER_REQUEST',
+      }),
+    },
+  );
+}
+
+export async function listWorkerRuns(
+  websiteId?: string,
+  agentId?: string,
+): Promise<{ total: number; runs: WorkerRun[] }> {
+  const search = new URLSearchParams();
+  if (websiteId) search.set('websiteId', websiteId);
+  if (agentId) search.set('agentId', agentId);
+  const query = search.toString();
+  return request(`/agents/runs${query ? `?${query}` : ''}`);
+}
+
+export async function executeWorkerRun(
+  runId: string,
+  approve: boolean,
+  indexes?: number[],
+): Promise<WorkerRun & { executedActions: number }> {
+  return request(
+    `/agents/runs/${encodeURIComponent(runId)}/execute`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ approve, indexes }),
+    },
+  );
+}
+
+export type ReportType =
+  | 'EXECUTIVE'
+  | 'SEO'
+  | 'AI_VISIBILITY'
+  | 'TECHNICAL'
+  | 'COMPETITOR'
+  | 'OUTCOME'
+  | 'AGENCY_CLIENT';
+
+export interface ReportListItem {
+  id: string;
+  websiteId: string;
+  clientId: string | null;
+  type: string;
+  title: string;
+  dateFrom: string | null;
+  dateTo: string | null;
+  status: string;
+  createdBy: string | null;
+  shareToken: string | null;
+  shareExpiresAt: string | null;
+  shareRevoked: boolean;
+  createdAt: string;
+  website?: {
+    name: string;
+    url: string;
+  } | null;
+  client?: {
+    name: string;
+  } | null;
+  shared?: boolean;
+}
+
+export interface ReportDetail extends ReportListItem {
+  organizationId?: string;
+  sections: Record<string, any> | null;
+  dataAvailability: Record<string, string> | null;
+  branding: {
+    agencyName?: string;
+  } | null;
+  error?: string | null;
+}
+
+export interface SharedReport {
+  title: string;
+  type: string;
+  dateFrom: string | null;
+  dateTo: string | null;
+  generatedAt: string;
+  website: {
+    name: string;
+    url: string;
+  };
+  branding: {
+    agencyName?: string;
+  } | null;
+  sections: Record<string, any> | null;
+  dataAvailability: Record<string, string> | null;
+}
+
+export interface AgencyClient {
+  id: string;
+  name: string;
+  company?: string | null;
+  email?: string | null;
+  status: string;
+  notes?: string | null;
+  createdAt?: string;
+  websites?: Array<{
+    id: string;
+    name: string;
+    url: string;
+    isActive?: boolean;
+  }>;
+  reportCount?: number;
+}
+
+export interface CommandCenterEntry {
+  website: {
+    id: string;
+    name: string;
+    url: string;
+  };
+  client: {
+    id: string;
+    name: string;
+    status: string;
+  } | null;
+  highOpportunities: number;
+  openActions: number;
+  activeAlerts: number;
+  completedCrawls: number;
+  latestReport: {
+    id: string;
+    title: string;
+    type: string;
+    createdAt: string;
+  } | null;
+  missingData: boolean;
+  attention: number;
+}
+
+export async function listReports(params: {
+  websiteId?: string;
+  clientId?: string;
+}): Promise<{ total: number; reports: ReportListItem[] }> {
+  const search = new URLSearchParams();
+  if (params.websiteId) search.set('websiteId', params.websiteId);
+  if (params.clientId) search.set('clientId', params.clientId);
+  const query = search.toString();
+  return request(`/reports${query ? `?${query}` : ''}`);
+}
+
+export async function generateReport(data: {
+  websiteId: string;
+  type: ReportType;
+  title?: string;
+  from?: string;
+  to?: string;
+  clientId?: string;
+  agencyName?: string;
+}): Promise<ReportDetail> {
+  return request<ReportDetail>('/reports', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getReport(
+  id: string,
+): Promise<ReportDetail> {
+  return request<ReportDetail>(
+    `/reports/${encodeURIComponent(id)}`,
+  );
+}
+
+export async function deleteReport(
+  id: string,
+): Promise<{ success: boolean; id: string }> {
+  return request(
+    `/reports/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function shareReport(
+  id: string,
+  expiresInDays?: number,
+): Promise<{
+  id: string;
+  shareToken: string;
+  shareExpiresAt: string | null;
+}> {
+  return request(
+    `/reports/${encodeURIComponent(id)}/share`,
+    {
+      method: 'POST',
+      body: JSON.stringify(
+        expiresInDays ? { expiresInDays } : {},
+      ),
+    },
+  );
+}
+
+export async function revokeReportShare(
+  id: string,
+): Promise<{ id: string; shareRevoked: boolean }> {
+  return request(
+    `/reports/${encodeURIComponent(id)}/revoke`,
+    { method: 'PATCH' },
+  );
+}
+
+export async function getSharedReport(
+  token: string,
+): Promise<SharedReport> {
+  return request<SharedReport>(
+    `/reports/shared/${encodeURIComponent(token)}`,
+  );
+}
+
+export async function getCommandCenter(): Promise<{
+  totalWebsites: number;
+  needingAttention: number;
+  missingData: number;
+  entries: CommandCenterEntry[];
+}> {
+  return request('/reports/command-center');
+}
+
+export async function getReportScheduling(): Promise<{
+  supported: boolean;
+  reason: string;
+}> {
+  return request('/reports/scheduling');
+}
+
+export async function listClients(): Promise<{
+  total: number;
+  clients: AgencyClient[];
+}> {
+  return request('/reports/clients/all');
+}
+
+export async function createClient(data: {
+  name: string;
+  company?: string;
+  email?: string;
+  notes?: string;
+}): Promise<AgencyClient> {
+  return request<AgencyClient>('/reports/clients', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateClient(
+  id: string,
+  data: {
+    name?: string;
+    company?: string;
+    email?: string;
+    status?: string;
+    notes?: string;
+  },
+): Promise<AgencyClient> {
+  return request<AgencyClient>(
+    `/reports/clients/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+export async function deleteClient(
+  id: string,
+): Promise<{ success: boolean; id: string }> {
+  return request(
+    `/reports/clients/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function assignClientWebsite(
+  websiteId: string,
+  clientId: string | null,
+): Promise<{ id: string; name: string; clientId: string | null }> {
+  return request('/reports/clients/assign', {
+    method: 'POST',
+    body: JSON.stringify({ websiteId, clientId }),
+  });
+}
+
+export interface AgencyAnswer {
+  question: string;
+  answer: string;
+  answerSource: string;
+  confidence: string;
+  evidence: Array<{
+    source: string;
+    metric: string;
+    value?: string | number | null;
+    entity?: string | null;
+    note?: string | null;
+  }>;
+  keySignals: string[];
+  limitations: string[];
+  llm: {
+    available: boolean;
+    reason: string;
+  };
+}
+
+export interface BillingPlan {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  monthlyPrice: number;
+  yearlyPrice: number;
+  currency?: string;
+  maxWebsites?: number;
+  maxKeywords?: number;
+  maxCompetitors?: number;
+  maxAiPrompts?: number;
+  maxAiScans?: number;
+  maxUsers?: number;
+  maxClients?: number;
+  maxReports?: number;
+  maxCrawlCredits?: number;
+  maxApiCalls?: number;
+  maxAiCredits?: number;
+}
+
+export interface BillingSubscription {
+  id: string;
+  status: string;
+  plan?: BillingPlan | null;
+  currentPeriodStart?: string | null;
+  currentPeriodEnd?: string | null;
+  trialStart?: string | null;
+  trialEnd?: string | null;
+  cancelAtPeriodEnd?: boolean;
+}
+
+export interface BillingEntitlements {
+  planCode: string;
+  planName: string;
+  tier: string;
+  status: string;
+  isFree: boolean;
+  customPricing: boolean;
+  trialEnd?: string | null;
+  currentPeriodEnd?: string | null;
+  cancelAtPeriodEnd?: boolean;
+  limits: Record<string, number>;
+  features: Record<string, boolean>;
+}
+
+export interface BillingUsage {
+  planCode: string;
+  status: string;
+  periodStart: string | null;
+  usage: Record<
+    string,
+    {
+      used: number | null;
+      limit: number;
+      remaining: number | null;
+      measurable: boolean;
+    }
+  >;
+}
+
+export interface BillingInvoice {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string | null;
+  created: string;
+  url: string | null;
+}
+
+export async function getBillingPlans(): Promise<
+  BillingPlan[]
+> {
+  return request<BillingPlan[]>('/billing/plans');
+}
+
+export async function getBillingEntitlements(): Promise<BillingEntitlements> {
+  return request<BillingEntitlements>(
+    '/billing/entitlements',
+  );
+}
+
+export async function getBillingUsage(): Promise<BillingUsage> {
+  return request<BillingUsage>('/billing/usage');
+}
+
+export async function getBillingProvider(): Promise<{
+  provider: boolean;
+}> {
+  return request('/billing/provider');
+}
+
+export async function getBillingInvoices(): Promise<{
+  provider: boolean;
+  invoices: BillingInvoice[];
+  reason?: string;
+}> {
+  return request('/billing/invoices');
+}
+
+export async function startBillingCheckout(
+  organizationId: string,
+  planCode: string,
+  yearly = false,
+): Promise<{
+  sessionId: string;
+  checkoutUrl: string;
+}> {
+  return request(
+    `/billing/stripe/checkout/${encodeURIComponent(organizationId)}/${encodeURIComponent(planCode)}${yearly ? '/yearly' : ''}`,
+    { method: 'POST' },
+  );
+}
+
+export async function openBillingPortal(): Promise<{
+  portalUrl: string;
+}> {
+  return request('/billing/portal', {
+    method: 'POST',
+  });
+}
+
+export async function cancelBillingSubscription(): Promise<BillingSubscription> {
+  return request<BillingSubscription>(
+    '/billing/subscription/cancel',
+    { method: 'POST' },
+  );
+}
+
+export async function startBillingTrial(
+  organizationId: string,
+): Promise<BillingSubscription> {
+  return request<BillingSubscription>(
+    `/billing/trial/${encodeURIComponent(organizationId)}`,
+    { method: 'POST' },
+  );
+}
+
+export async function getBillingSubscription(
+  organizationId: string,
+): Promise<BillingSubscription | null> {
+  return request<BillingSubscription | null>(
+    `/billing/subscription/${encodeURIComponent(organizationId)}`,
+  );
+}
+
+export async function askAgency(
+  question: string,
+): Promise<AgencyAnswer> {
+  return request<AgencyAnswer>('/intelligence/agency', {
+    method: 'POST',
+    body: JSON.stringify({ question }),
+  });
+}
+
+export async function createIntelligenceAction(data: {
+  websiteId: string;
+  recommendationId?: string;
+  opportunityId?: string;
+}): Promise<any> {
+  return request<any>('/intelligence/actions', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function suggestAiVisibilityQueries(
+  websiteId: string,
+): Promise<AiPromptSuggestionsResponse> {
+  return request<AiPromptSuggestionsResponse>(
+    '/ai-visibility/queries/suggest',
+    {
+      method: 'POST',
+      body: JSON.stringify({ websiteId }),
+    },
+  );
+}
+
 /* ANALYTICS */
 
 export async function getGoogleAnalyticsProperties() {
@@ -1346,9 +2783,105 @@ export async function getBacklinksOverview(
 
 export async function getBacklinks(
   websiteId: string,
+  filters?: {
+    status?: string;
+    linkType?: string;
+    domain?: string;
+    quality?: string;
+  },
 ) {
+  const params = new URLSearchParams();
+
+  if (filters?.status)
+    params.set('status', filters.status);
+  if (filters?.linkType)
+    params.set('linkType', filters.linkType);
+  if (filters?.domain)
+    params.set('domain', filters.domain);
+  if (filters?.quality)
+    params.set('quality', filters.quality);
+
+  const suffix = params.toString()
+    ? `?${params.toString()}`
+    : '';
+
   return request<any>(
-    `/backlinks/${encodeURIComponent(websiteId)}/list`,
+    `/backlinks/${encodeURIComponent(websiteId)}/list${suffix}`,
+  );
+}
+
+export async function getBacklinkProviderStatus(): Promise<
+  Record<string, any>
+> {
+  return request('/backlinks/provider/status');
+}
+
+export async function getBacklinkHistory(
+  websiteId: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/backlinks/${encodeURIComponent(websiteId)}/history`,
+  );
+}
+
+export async function getBacklinkCompetitorGap(
+  websiteId: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/backlinks/${encodeURIComponent(websiteId)}/competitor-gap`,
+  );
+}
+
+export async function importBacklinks(
+  websiteId: string,
+  backlinks: Array<Record<string, any>>,
+  source?: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/backlinks/${encodeURIComponent(websiteId)}/import`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        backlinks,
+        source,
+      }),
+    },
+  );
+}
+
+export async function reconcileBacklinks(
+  websiteId: string,
+  observedUrls: string[],
+): Promise<Record<string, any>> {
+  return request(
+    `/backlinks/${encodeURIComponent(websiteId)}/reconcile`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ observedUrls }),
+    },
+  );
+}
+
+export async function createBacklinkOpportunity(
+  websiteId: string,
+  data: Record<string, any>,
+): Promise<Record<string, any>> {
+  return request(
+    `/backlinks/${encodeURIComponent(websiteId)}/opportunities`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+export async function backlinkOpportunityToRecommendation(
+  websiteId: string,
+  id: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/backlinks/${encodeURIComponent(websiteId)}/opportunities/${encodeURIComponent(id)}/recommendation`,
+    { method: 'POST' },
   );
 }
 
@@ -1452,6 +2985,34 @@ export async function getLatestCompetitorCrawl(id: string) {
   return request<CompetitorLatestCrawlResponse>(
     `/competitors/${encodeURIComponent(id)}/crawls/latest`,
   );
+}
+
+export interface CompetitorCrawlHistoryItem {
+  id: string;
+  competitorId: string;
+  status: string;
+  pagesCrawled: number;
+  pagesDiscovered: number;
+  score: number;
+  totalIssues: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+}
+
+export async function getCompetitorCrawlHistory(id: string) {
+  const response = await request<
+    CompetitorCrawlHistoryItem[] | { crawls?: CompetitorCrawlHistoryItem[] | null }
+  >(
+    `/competitors/${encodeURIComponent(id)}/crawls`,
+  );
+  if (Array.isArray(response)) return response;
+  if (response && Array.isArray(response.crawls)) return response.crawls;
+  return [];
 }
 
 /* LEADS */
@@ -1848,6 +3409,96 @@ export interface RoiSummary {
   bySource: RoiSourceBreakdown[];
 }
 
+export interface OutcomeFunnel {
+  visitors: number | null;
+  visitorsAvailability: string;
+  engaged: number | null;
+  engagedAvailability: string;
+  leads: number;
+  qualified: number;
+  conversions: number;
+  conversionRate: number | null;
+  revenue: number;
+  revenueTransactions: number;
+}
+
+export interface OutcomeAttribution {
+  tiers: Record<
+    string,
+    { count: number; amount: number }
+  >;
+  attributedRevenue: number;
+  totalRevenue: number;
+  coverage: number | null;
+}
+
+export interface OutcomeRoi {
+  spend: number;
+  attributedRevenue: number;
+  attributedProfit: number;
+  attributedRoi: number | null;
+  measurable: boolean;
+}
+
+export interface OutcomeSource {
+  source: string;
+  leads: number;
+  conversions: number;
+  attributedRevenue: number;
+  sourceRevenue: number;
+  spend: number;
+  conversionRate: number | null;
+  roi: number | null;
+}
+
+export interface OutcomeGap {
+  id: string;
+  source: string;
+  type: string;
+  title: string;
+  description: string;
+  priority: string;
+}
+
+export interface OutcomeResponse {
+  websiteId: string;
+  currency: string;
+  dateRange: {
+    from: string | null;
+    to: string | null;
+  };
+  funnel: OutcomeFunnel;
+  attribution: OutcomeAttribution;
+  roi: OutcomeRoi;
+  sources: OutcomeSource[];
+  recentChanges: {
+    leadsRecent: number;
+    leadsPrior: number;
+    leadsDelta: number;
+    revenueRecent: number;
+    revenuePrior: number;
+    revenueDelta: number;
+  };
+  conversionGaps: OutcomeGap[];
+}
+
+export async function getRoiOutcome(
+  websiteId: string,
+  from?: string,
+  to?: string,
+): Promise<OutcomeResponse> {
+  const params = new URLSearchParams();
+
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+
+  const query = params.toString();
+
+  return request<OutcomeResponse>(
+    `/roi/${encodeURIComponent(websiteId)}/outcome${query ? `?${query}` : ''}`,
+  );
+}
+
 export async function getRoiSummary(
   websiteId: string,
   from?: string,
@@ -1936,8 +3587,251 @@ export async function deleteMarketingSpend(
 ): Promise<MarketingSpend> {
   return request<MarketingSpend>(
     `/marketing-spend/${encodeURIComponent(websiteId)}/${encodeURIComponent(id)}`,
-    {
-      method: 'DELETE',
-    },
+    { method: 'DELETE' },
+  );
+}
+
+/* MONITORING / WHAT CHANGED */
+
+export interface MonitoringAlert {
+  id: string;
+  organizationId?: string;
+  websiteId: string;
+  type: string;
+  source: string;
+  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | string;
+  title: string;
+  description: string;
+  evidence?: Record<string, any> | null;
+  detectedAt: string;
+  status: 'DETECTED' | 'ACKNOWLEDGED' | 'RESOLVED' | string;
+  acknowledgedAt?: string | null;
+  resolvedAt?: string | null;
+  deduplicationKey?: string;
+  active?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  website?: {
+    id: string;
+    name: string;
+    url: string;
+    isActive?: boolean;
+  } | null;
+}
+
+export interface MonitoringAlertsResponse {
+  alerts: MonitoringAlert[];
+  total: number;
+  limit?: number;
+  storageReady?: boolean;
+  storageError?: string | null;
+}
+
+export interface MonitoringSummary {
+  websiteId: string | null;
+  total: number;
+  unread: number;
+  detected: number;
+  acknowledged: number;
+  resolved: number;
+  bySeverity: {
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+  };
+  storageReady?: boolean;
+  storageError?: string | null;
+}
+
+export interface MonitoringChange {
+  id: string;
+  source: string;
+  type: string;
+  metric: string;
+  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | string;
+  direction: 'NEGATIVE' | 'POSITIVE' | 'NEUTRAL' | string;
+  title: string;
+  description: string;
+  previousValue: number | null;
+  currentValue: number | null;
+  absoluteChange: number | null;
+  pointChange: number | null;
+  previousCrawlId: string;
+  currentCrawlId: string;
+  detectedAt: string;
+  why?: string[];
+  evidence?: Record<string, any> | null;
+  recommendation?: string | null;
+  suppressed?: boolean;
+  businessNote?: string | null;
+}
+
+export interface MonitoringChangesResponse {
+  websiteId: string;
+  completedCrawls: number;
+  oldestCrawlAt: string | null;
+  latestCrawlAt: string | null;
+  latestScore: number | null;
+  notEnoughData: boolean;
+  notEnoughDataReason: string | null;
+  suppressedNoise: number;
+  businessPriority?: string | null;
+  changes: MonitoringChange[];
+  summary: {
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+    positive: number;
+  };
+}
+
+export interface BusinessContext {
+  website: {
+    id: string;
+    name: string;
+    url: string;
+    industry: string | null;
+    country: string | null;
+  };
+  profile: {
+    businessName: string | null;
+    industry: string | null;
+    country: string | null;
+    city: string | null;
+    description: string | null;
+    services: string[];
+    products: string[];
+    targetAudience: string | null;
+    primaryGoal: string | null;
+    primaryKeywords: string[];
+    targetLocations: string[];
+    brandTone: string | null;
+    uniqueSellingPoint: string | null;
+    businessScore: number;
+    lastAnalyzedAt: string | null;
+  } | null;
+  priorities: {
+    primaryGoal: string | null;
+    targetAudience: string | null;
+    targetLocations: string[];
+    primaryKeywords: string[];
+  };
+  offerings: {
+    services: string[];
+    products: string[];
+  };
+  competitors: Array<{
+    id: string;
+    name: string;
+    url: string;
+  }>;
+  dataAvailability: {
+    crawl: boolean;
+    competitors: boolean;
+    aiVisibility: boolean;
+    geo: boolean;
+    leads: boolean;
+    revenue: boolean;
+    recommendations: boolean;
+  };
+  counts: {
+    competitors: number;
+    aiChecks: number;
+    geoQueries: number;
+    leads: number;
+    revenues: number;
+    openRecommendations: number;
+  };
+  contextConfidence: number;
+  confidenceFormula: string;
+  missing: string[];
+  generatedAt: string;
+}
+
+export async function getBusinessContext(
+  websiteId: string,
+): Promise<BusinessContext> {
+  return request<BusinessContext>(
+    `/business-brain/${encodeURIComponent(websiteId)}/context`,
+  );
+}
+
+export async function getMonitoringSummary(
+  websiteId?: string,
+): Promise<MonitoringSummary> {
+  const query = websiteId
+    ? `?websiteId=${encodeURIComponent(websiteId)}`
+    : '';
+  return request<MonitoringSummary>(
+    `/monitoring/alerts/summary${query}`,
+  );
+}
+
+export async function listMonitoringAlerts(params: {
+  websiteId?: string;
+  source?: string;
+  severity?: string;
+  status?: string;
+}): Promise<MonitoringAlertsResponse> {
+  const search = new URLSearchParams();
+  if (params.websiteId) search.set('websiteId', params.websiteId);
+  if (params.source) search.set('source', params.source);
+  if (params.severity) search.set('severity', params.severity);
+  if (params.status) search.set('status', params.status);
+  const query = search.toString();
+  const response = await request<
+    MonitoringAlertsResponse | MonitoringAlert[]
+  >(`/monitoring/alerts${query ? `?${query}` : ''}`);
+  if (Array.isArray(response)) {
+    return { alerts: response, total: response.length };
+  }
+  return {
+    alerts: Array.isArray(response.alerts)
+      ? response.alerts
+      : [],
+    total: response.total ?? 0,
+    limit: response.limit,
+    storageReady: response.storageReady,
+    storageError: response.storageError,
+  };
+}
+
+export async function acknowledgeMonitoringAlert(
+  id: string,
+): Promise<MonitoringAlert> {
+  return request<MonitoringAlert>(
+    `/monitoring/alerts/${encodeURIComponent(id)}/acknowledge`,
+    { method: 'PATCH' },
+  );
+}
+
+export async function resolveMonitoringAlert(
+  id: string,
+): Promise<MonitoringAlert> {
+  return request<MonitoringAlert>(
+    `/monitoring/alerts/${encodeURIComponent(id)}/resolve`,
+    { method: 'PATCH' },
+  );
+}
+
+export async function detectMonitoringChanges(
+  websiteId: string,
+  crawlId?: string,
+): Promise<any> {
+  return request<any>('/monitoring/detect', {
+    method: 'POST',
+    body: JSON.stringify(
+      crawlId ? { websiteId, crawlId } : { websiteId },
+    ),
+  });
+}
+
+export async function getMonitoringChanges(
+  websiteId: string,
+): Promise<MonitoringChangesResponse> {
+  return request<MonitoringChangesResponse>(
+    `/monitoring/changes?websiteId=${encodeURIComponent(websiteId)}`,
   );
 }
