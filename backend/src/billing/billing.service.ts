@@ -1975,8 +1975,16 @@ export class BillingService {
     const findOrgBySubscription = async (
       providerSubscriptionId: string,
     ) => {
+      /*
+       * findFirst: razorpaySubscriptionId carries
+       * no DB-level unique constraint (see schema
+       * note — db push cannot add one to the
+       * populated table). Correctness rests on the
+       * provider-global ID plus one subscription
+       * row per workspace (organizationId unique).
+       */
       const row =
-        await this.prisma.subscription.findUnique(
+        await this.prisma.subscription.findFirst(
           {
             where: {
               razorpaySubscriptionId:

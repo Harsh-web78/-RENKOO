@@ -719,7 +719,21 @@ model Subscription {
   stripeCustomerId     String? @unique
   stripeSubscriptionId String? @unique
 
-  razorpaySubscriptionId String? @unique
+  /*
+   * No DB-level UNIQUE here by design: db push
+   * aborts when adding a unique constraint to the
+   * populated Subscription table, even on an
+   * all-NULL column. Provider IDs are unique by
+   * provider construction and each workspace
+   * holds a single subscription row
+   * (organizationId is unique), so lookups use
+   * findFirst scoped to that invariant. Restore a
+   * DB constraint only after prod data is proven
+   * duplicate-free (detection query in docs) and
+   * prefer CREATE UNIQUE INDEX over db push for
+   * that step.
+   */
+  razorpaySubscriptionId String?
   razorpayCustomerId     String?
   providerPlanId         String?
   interval               String?
