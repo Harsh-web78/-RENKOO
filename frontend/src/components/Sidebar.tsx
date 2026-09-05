@@ -6,7 +6,9 @@ import { useEffect, useState } from 'react';
 import {
   Activity,
   BarChart3,
+  Bell,
   Bot,
+  CreditCard,
   FileText,
   Globe2,
   LayoutDashboard,
@@ -14,199 +16,131 @@ import {
   MapPin,
   Search,
   Settings,
-  CreditCard,
   ShieldCheck,
   Sparkles,
   Target,
   TrendingUp,
   Users,
+  X,
 } from 'lucide-react';
 import { getCurrentAccount, type CurrentAccount } from '@/lib/api';
-import {
-  PERSONA_META,
-  orderNav,
-  usePersona,
-} from '@/lib/persona';
+import { PERSONA_META, orderNav, usePersona } from '@/lib/persona';
 
 const nav = [
-  ['Dashboard', '/', LayoutDashboard],
-  ['Business Brain', '/business-brain', Sparkles],
-  ['Search Visibility', '/search-visibility', Search],
-  ['Traffic & Analytics', '/analytics', BarChart3],
-  ['AI Visibility (AEO/GEO)', '/ai-visibility', Bot],
-  ['Keywords', '/keywords', Target],
-  ['Content Engine', '/content', FileText],
-  ['Technical SEO', '/technical-seo', ShieldCheck],
-  ['Local SEO', '/local-seo', MapPin],
-  ['Competitors', '/competitors', Users],
-  ['Backlinks & Authority', '/backlinks', Link2],
-  ['Leads & Revenue', '/leads', TrendingUp],
-  ['Opportunities', '/opportunities', Target],
-  ['Actions', '/actions', Target],
-  ['Monitoring', '/monitoring', Activity],
-  ['Reports', '/reports', FileText],
-  ['Intelligence', '/agents', Bot],
-  ['Workers', '/workers', Bot],
-  ['Clients', '/clients', Users],
-  ['Reports', '/reports', FileText],
-  ['Integrations', '/integrations', Globe2],
-  ['Settings', '/settings', Settings],
-  ['Billing', '/billing', CreditCard],
+  { group: 'Overview', items: [['Command Center', '/', LayoutDashboard]] },
+  {
+    group: 'Intelligence',
+    items: [
+      ['Business Brain', '/business-brain', Sparkles],
+      ['Search Visibility', '/search-visibility', Search],
+      ['Traffic & Analytics', '/analytics', BarChart3],
+      ['AI Visibility', '/ai-visibility', Bot],
+    ],
+  },
+  {
+    group: 'Decisions',
+    items: [
+      ['Opportunities', '/opportunities', Target],
+      ['Keywords', '/keywords', Target],
+      ['Content Engine', '/content', FileText],
+      ['Competitors', '/competitors', Users],
+    ],
+  },
+  {
+    group: 'Execution',
+    items: [
+      ['Actions', '/actions', Target],
+      ['Technical SEO', '/technical-seo', ShieldCheck],
+      ['Local SEO', '/local-seo', MapPin],
+      ['Backlinks & Authority', '/backlinks', Link2],
+    ],
+  },
+  {
+    group: 'Business',
+    items: [
+      ['Leads & Revenue', '/leads', TrendingUp],
+      ['Clients', '/clients', Users],
+      ['Reports', '/reports', FileText],
+    ],
+  },
+  {
+    group: 'Workspace',
+    items: [
+      ['Monitoring', '/monitoring', Activity],
+      ['Intelligence', '/agents', Bot],
+      ['Integrations', '/integrations', Globe2],
+      ['Settings', '/settings', Settings],
+      ['Billing', '/billing', CreditCard],
+    ],
+  },
 ] as const;
 
-export default function Sidebar({
-  mobileOpen,
-  onClose,
-}: {
-  mobileOpen: boolean;
-  onClose: () => void;
-}) {
+export default function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose: () => void }) {
   const pathname = usePathname();
-
-  const [account, setAccount] =
-    useState<CurrentAccount | null>(null);
-
-  /*
-   * Persona re-orders (never filters) navigation.
-   * Access stays governed by RBAC server-side.
-   */
-  const { effectivePersona, source } =
-    usePersona();
-
-  const orderedNav = orderNav(
-    nav.map(([name, href, Icon]) => ({
-      name,
-      href,
-      Icon,
-    })),
-    effectivePersona,
-  );
+  const [account, setAccount] = useState<CurrentAccount | null>(null);
+  const { effectivePersona, source } = usePersona();
+  const flatNav = nav.flatMap((section) => section.items.map(([name, href, Icon]) => ({ name, href, Icon })));
+  const orderedNav = orderNav(flatNav, effectivePersona);
+  const orderedNames = new Map(orderedNav.map((item, index) => [item.name, index]));
 
   useEffect(() => {
     let mounted = true;
-
-    async function loadAccount() {
-      try {
-        const data = await getCurrentAccount();
-
-        if (mounted) {
-          setAccount(data);
-        }
-      } catch {
-        // Sidebar should never break the application
-      }
-    }
-
-    loadAccount();
-
-    return () => {
-      mounted = false;
-    };
+    getCurrentAccount().then((data) => mounted && setAccount(data)).catch(() => undefined);
+    return () => { mounted = false; };
   }, []);
 
-  const organizationName =
-    account?.organization?.name || 'Workspace';
-
-  const websiteName =
-    account?.website?.name ||
-    account?.website?.url ||
-    'No website connected';
+  const organizationName = account?.organization?.name || 'Workspace';
+  const websiteName = account?.website?.name || account?.website?.url || 'No website connected';
 
   return (
     <>
-      {mobileOpen && (
-        <button
-          className="fixed inset-0 z-30 bg-black/20 lg:hidden"
-          onClick={onClose}
-          aria-label="Close menu"
-        />
-      )}
-
-      <aside
-        className={`fixed inset-y-0 left-0 z-40 w-[270px] border-r border-slate-100 bg-white p-5 transition-transform lg:translate-x-0 ${
-          mobileOpen
-            ? 'translate-x-0'
-            : '-translate-x-full'
-        }`}
-      >
-        <div className="flex items-center gap-2">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-blue-600 to-violet-600 text-xl font-black text-white">
-            R
+      {mobileOpen && <button className="fixed inset-0 z-30 bg-slate-950/30 backdrop-blur-sm lg:hidden" onClick={onClose} aria-label="Close navigation" />}
+      <aside className={`rk-sidebar fixed inset-y-0 left-0 z-40 flex w-[278px] flex-col border-r p-4 transition-transform lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex items-center gap-3 px-2">
+          <div className="rk-brand-mark grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-black text-white">R</div>
+          <div className="min-w-0">
+            <div className="text-[17px] font-bold tracking-[-.03em]">RENKOO</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[.12em] text-slate-400">Growth OS</div>
           </div>
-
-          <b className="text-2xl tracking-tight">
-            RENKO
-          </b>
-
-          <button
-            className="ml-auto text-slate-500 lg:hidden"
-            onClick={onClose}
-            aria-label="Close menu"
-          >
-            ×
-          </button>
+          <button className="ml-auto rounded-lg p-2 text-slate-400 hover:bg-slate-100 lg:hidden" onClick={onClose} aria-label="Close navigation"><X size={18} /></button>
         </div>
 
-        <div className="ml-12 -mt-1 text-[11px] font-medium text-blue-600">
-          AI Growth Operating System
-        </div>
-
-        <div className="mt-8 rounded-xl border border-slate-200 p-3">
-          <b
-            className="block truncate text-sm"
-            title={organizationName}
-          >
-            {organizationName}
-          </b>
-
-          <div
-            className="mt-0.5 truncate text-xs text-slate-500"
-            title={websiteName}
-          >
-            {websiteName}
+        <div className="mt-7 rounded-2xl border border-slate-200 bg-slate-50/80 p-3.5">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="rk-label">Workspace</div>
+              <div className="mt-1 truncate text-sm font-semibold text-slate-800" title={organizationName}>{organizationName}</div>
+              <div className="mt-0.5 truncate text-xs text-slate-500" title={websiteName}>{websiteName}</div>
+            </div>
+            <Globe2 size={15} className="mt-1 shrink-0 text-blue-600" />
           </div>
         </div>
 
-        <nav
-          className="mt-5 space-y-1"
-          aria-label="Primary"
-        >
-          <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-            {PERSONA_META[effectivePersona].label}{' '}
-            view
-            {source === 'default' ? (
-              <Link
-                href="/settings"
-                className="ml-2 normal-case tracking-normal text-blue-600 underline underline-offset-2"
-              >
-                Set role
-              </Link>
-            ) : null}
-          </div>
+        <div className="mt-6 flex items-center justify-between px-2">
+          <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-emerald-500" /><span className="text-xs font-medium text-slate-500">{PERSONA_META[effectivePersona].label} view</span></div>
+          {source === 'default' && <Link href="/settings" className="text-[11px] font-semibold text-blue-600 hover:underline">Set role</Link>}
+        </div>
 
-          {orderedNav.map(({ name, href, Icon }) => {
-            const active =
-              href === '/'
-                ? pathname === '/'
-                : pathname.startsWith(href);
-
-            return (
-              <Link
-                key={name}
-                href={href}
-                onClick={onClose}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
-                  active
-                    ? 'bg-blue-50 font-semibold text-blue-600'
-                    : 'text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <Icon size={17} />
-                <span>{name}</span>
-              </Link>
-            );
+        <nav className="mt-3 min-h-0 flex-1 space-y-5 overflow-y-auto pr-1" aria-label="Primary navigation">
+          {nav.map((section) => {
+            const items = [...section.items].sort(([a], [b]) => (orderedNames.get(a) ?? 0) - (orderedNames.get(b) ?? 0));
+            return <div key={section.group}>
+              <div className="rk-nav-group px-3 pb-1.5">{section.group}</div>
+              <div className="space-y-0.5">
+                {items.map(([name, href, Icon]) => {
+                  const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
+                  return <Link key={name} href={href} onClick={onClose} data-active={active} className="rk-nav-link flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-colors"><Icon size={16} strokeWidth={active ? 2.2 : 1.8} /><span>{name}</span>{name === 'Actions' && <span className="ml-auto rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">Live</span>}</Link>;
+                })}
+              </div>
+            </div>;
           })}
         </nav>
+
+        <div className="mt-3 border-t border-slate-200 pt-3">
+          <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-slate-50" aria-label="Open notifications">
+            <Bell size={16} className="text-slate-500" /><span className="text-xs font-medium text-slate-600">Notifications</span><span className="ml-auto h-2 w-2 rounded-full bg-blue-600" />
+          </button>
+        </div>
       </aside>
     </>
   );
