@@ -799,4 +799,119 @@ export class AuthService {
       organizationId,
     };
   }
+
+  // =========================================================
+  // PERSONA PREFERENCE (experience only)
+  //
+  // Persona changes presentation/prioritization and
+  // NEVER grants permissions. RBAC (membership
+  // role) and billing entitlements remain the sole
+  // authorities. Preference is user-level and
+  // self-only (userId comes from the JWT).
+  // =========================================================
+
+  static readonly PERSONAS = [
+    'BUSINESS_OWNER',
+    'SEO_SPECIALIST',
+    'CONTENT_MARKETER',
+    'MARKETING_MANAGER',
+    'AGENCY',
+    'ADMIN',
+  ] as const;
+
+  static personaFromRole(
+    role: string | null | undefined,
+  ): string {
+    switch ((role ?? '').toUpperCase()) {
+      case 'OWNER':
+        return 'BUSINESS_OWNER';
+      case 'ADMIN':
+        return 'ADMIN';
+      default:
+        return 'MARKETING_MANAGER';
+    }
+  }
+
+  async getPersona(userId: string) {
+    const user =
+      await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          persona: true,
+          personaSelectedAt: true,
+          memberships: {
+            select: { role: true },
+            orderBy: { createdAt: 'asc' },
+            take: 1,
+          },
+        },
+      });
+
+    if (!user) {
+      throw new UnauthorizedException(
+        'User not found',
+      );
+    }
+
+    const role =
+      user.memberships[0]?.role ?? null;
+    const suggested =
+      AuthService.personaFromRole(role);
+    const selected =
+      user.persona &&
+      (
+        AuthService.PERSONAS as readonly string[]
+      ).includes(user.persona)
+        ? user.persona
+        : null;
+
+    return {
+      persona: selected,
+      effectivePersona: selected ?? suggested,
+      suggestedPersona: suggested,
+      source:
+        selected !== null
+          ? 'selected'
+          : 'default',
+      role,
+      personaSelectedAt:
+        user.personaSelectedAt,
+    };
+  }
+
+  async setPersona(
+    userId: string,
+    persona: string | null,
+  ) {
+    const normalized =
+      typeof persona === 'string' &&
+      persona.trim().length > 0
+        ? persona.trim().toUpperCase()
+        : null;
+
+    if (
+      normalized !== null &&
+      !(
+        AuthService.PERSONAS as readonly string[]
+      ).includes(normalized)
+    ) {
+      throw new BadRequestException(
+        `Unknown persona. Choose one of: ${AuthService.PERSONAS.join(', ')}.`,
+      );
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        persona: normalized,
+        personaSelectedAt:
+          normalized === null
+            ? null
+            : new Date(),
+      },
+    });
+
+    return this.getPersona(userId);
+  }
 }

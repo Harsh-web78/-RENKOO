@@ -22,6 +22,11 @@ import {
   Users,
 } from 'lucide-react';
 import { getCurrentAccount, type CurrentAccount } from '@/lib/api';
+import {
+  PERSONA_META,
+  orderNav,
+  usePersona,
+} from '@/lib/persona';
 
 const nav = [
   ['Dashboard', '/', LayoutDashboard],
@@ -60,6 +65,22 @@ export default function Sidebar({
 
   const [account, setAccount] =
     useState<CurrentAccount | null>(null);
+
+  /*
+   * Persona re-orders (never filters) navigation.
+   * Access stays governed by RBAC server-side.
+   */
+  const { effectivePersona, source } =
+    usePersona();
+
+  const orderedNav = orderNav(
+    nav.map(([name, href, Icon]) => ({
+      name,
+      href,
+      Icon,
+    })),
+    effectivePersona,
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -146,8 +167,24 @@ export default function Sidebar({
           </div>
         </div>
 
-        <nav className="mt-5 space-y-1">
-          {nav.map(([name, href, Icon]) => {
+        <nav
+          className="mt-5 space-y-1"
+          aria-label="Primary"
+        >
+          <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            {PERSONA_META[effectivePersona].label}{' '}
+            view
+            {source === 'default' ? (
+              <Link
+                href="/settings"
+                className="ml-2 normal-case tracking-normal text-blue-600 underline underline-offset-2"
+              >
+                Set role
+              </Link>
+            ) : null}
+          </div>
+
+          {orderedNav.map(({ name, href, Icon }) => {
             const active =
               href === '/'
                 ? pathname === '/'

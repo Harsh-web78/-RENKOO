@@ -13,6 +13,15 @@ model User {
   name            String?
   passwordHash    String?
   emailVerifiedAt DateTime?
+  /*
+   * Persona = experience/prioritization only.
+   * Never authorization: RBAC (membership role)
+   * and billing entitlements stay authoritative.
+   * NULL = never chosen; API resolves a safe
+   * deterministic default from org role.
+   */
+  persona           String?
+  personaSelectedAt DateTime?
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
   memberships     OrganizationMember[]

@@ -3,6 +3,7 @@
 import { getTeamMembers, inviteTeamMember, updateTeamMemberRole, removeTeamMember, TeamMember } from "../../lib/api";
 import { useEffect, useState } from 'react';
 import Sidebar from '@/components/Sidebar';
+import PersonaSelector from '@/components/PersonaSelector';
 import {
   getCurrentAccount,
   updateProfile,
@@ -321,6 +322,24 @@ const [open, setOpen] = useState(false);
                       {passwordMessage}
                     </span>
                   )}
+                </div>
+              </section>
+
+              {/* ROLE FOCUS */}
+              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-bold">
+                  Your role
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  What best describes your role?
+                  RENKOO re-orders dashboards,
+                  navigation and suggestions
+                  around it.
+                </p>
+
+                <div className="mt-5">
+                  <PersonaSelector />
                 </div>
               </section>
 

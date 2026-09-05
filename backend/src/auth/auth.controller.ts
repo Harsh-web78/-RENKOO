@@ -18,6 +18,7 @@ import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
+import { SetPersonaDto } from './dto/set-persona.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Controller('auth')
@@ -97,6 +98,35 @@ export class AuthController {
     return this.authService.getCurrentAccount(
       req.user.userId,
       req.user.organizationId,
+    );
+  }
+
+  /*
+   * Persona preference (experience only).
+   * Self-only by construction: the userId comes
+   * from the JWT, never from a parameter, so no
+   * tenant boundary can be crossed. Persona never
+   * affects RBAC, entitlements, or usage limits.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('persona')
+  getPersona(@Req() req: any) {
+    return this.authService.getPersona(
+      req.user.userId,
+    );
+  }
+
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Post('persona')
+  setPersona(
+    @Req() req: any,
+    @Body() dto: SetPersonaDto,
+  ) {
+    return this.authService.setPersona(
+      req.user.userId,
+      dto.persona ?? null,
     );
   }
 

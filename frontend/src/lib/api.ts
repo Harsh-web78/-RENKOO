@@ -573,6 +573,38 @@ export async function resetPassword(
 }
 
 /*
+ * Persona preference (experience only — never
+ * authorization). The backend resolves a safe
+ * default from the org role when unset.
+ */
+export interface PersonaResponse {
+  persona: string | null;
+  effectivePersona: string;
+  suggestedPersona: string;
+  source: 'selected' | 'default';
+  role: string | null;
+  personaSelectedAt: string | null;
+}
+
+export async function getPersona(): Promise<PersonaResponse> {
+  return request<PersonaResponse>(
+    '/auth/persona',
+  );
+}
+
+export async function setPersona(
+  persona: string | null,
+): Promise<PersonaResponse> {
+  return request<PersonaResponse>(
+    '/auth/persona',
+    {
+      method: 'POST',
+      body: JSON.stringify({ persona }),
+    },
+  );
+}
+
+/*
  * =========================================================
  * WEBSITES
  * =========================================================
