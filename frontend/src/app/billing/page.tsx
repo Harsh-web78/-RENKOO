@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
 
 /*
  * RENKOO billing page — Razorpay (primary) + Stripe (secondary/legacy).
  *
- * Primary flow (India / INR): plan → POST /billing/razorpay/subscription
- * → Razorpay checkout.js → POST /billing/razorpay/verify → refresh
+ * Primary flow (India / INR): plan ? POST /billing/razorpay/subscription
+ * ? Razorpay checkout.js ? POST /billing/razorpay/verify ? refresh
  * entitlements. Paid success is shown ONLY after backend verification
  * (or a confirming poll) reports ACTIVE. A browser payment callback
  * alone never marks the subscription active.
@@ -1209,221 +1209,443 @@ export default function BillingPage() {
                 </div>
               )}
 
-              <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <h2 className="text-lg font-bold">
-                    Plans
-                  </h2>
-                  <div className="flex flex-wrap items-center gap-4">
-                    <fieldset>
-                      <legend className="sr-only">
-                        Checkout currency
-                      </legend>
-                      <div
-                        className="flex items-center gap-1 rounded-xl border border-slate-200 p-1"
-                        role="radiogroup"
-                        aria-label="Checkout currency"
-                      >
-                        {(
-                          ["INR", "USD"] as const
-                        ).map((option) => (
-                          <button
-                            key={option}
-                            type="button"
-                            role="radio"
-                            aria-checked={
-                              currency === option
-                            }
-                            onClick={() =>
-                              setCurrency(option)
-                            }
-                            className={`rounded-lg px-3 py-1.5 text-xs font-bold ${
-                              currency === option
-                                ? "bg-slate-900 text-white"
-                                : "text-slate-500 hover:bg-slate-50"
-                            }`}
-                          >
-                            {option === "INR"
-                              ? "🇮🇳 INR"
-                              : "🌍 USD"}
-                          </button>
-                        ))}
+              <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="border-b border-slate-200 bg-slate-50/70 px-6 py-6">
+                  <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Choose your growth engine
                       </div>
-                    </fieldset>
-                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                      <input
-                        type="checkbox"
-                        checked={yearly}
-                        onChange={(e) =>
-                          setYearly(e.target.checked)
-                        }
-                      />
-                      Yearly billing
-                    </label>
+                      <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">
+                        Plans built around growth, not just SEO
+                      </h2>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                        Start with the essentials, then unlock deeper intelligence,
+                        automation and agency workflows as your growth operation scales.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <fieldset>
+                        <legend className="sr-only">Checkout currency</legend>
+                        <div
+                          className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm"
+                          role="radiogroup"
+                          aria-label="Checkout currency"
+                        >
+                          {(["INR", "USD"] as const).map((option) => (
+                            <button
+                              key={option}
+                              type="button"
+                              role="radio"
+                              aria-checked={currency === option}
+                              onClick={() => setCurrency(option)}
+                              className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                                currency === option
+                                  ? "bg-slate-950 text-white shadow-sm"
+                                  : "text-slate-500 hover:bg-slate-50"
+                              }`}
+                            >
+                              {option === "INR" ? "???? INR" : "?? USD"}
+                            </button>
+                          ))}
+                        </div>
+                      </fieldset>
+
+                      <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-sm">
+                        <input
+                          type="checkbox"
+                          checked={yearly}
+                          onChange={(e) => setYearly(e.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        Yearly billing
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                          Save
+                        </span>
+                      </label>
+                    </div>
                   </div>
+
+                  <p className="mt-4 text-xs leading-5 text-slate-500" id="currency-help">
+                    {currency === "INR" ? (
+                      <>
+                        INR checkout via Razorpay
+                        {razorpayConfigured
+                          ? " is available."
+                          : " activates once Razorpay is configured."}{" "}
+                        Prices are served by the billing service.
+                      </>
+                    ) : usdAvailable ? (
+                      <>
+                        USD checkout via Razorpay is available. USD billing uses
+                        Razorpay USD plan pricing.
+                      </>
+                    ) : (
+                      <>
+                        International card payments are currently being activated.
+                        USD checkout stays disabled until Razorpay confirms activation;
+                        INR checkout remains available.
+                      </>
+                    )}
+                  </p>
                 </div>
-                <p
-                  className="mt-2 text-xs text-slate-500"
-                  id="currency-help"
-                >
-                  {currency === "INR" ? (
-                    <>
-                      INR checkout via Razorpay
-                      {razorpayConfigured
-                        ? " is available."
-                        : " activates once Razorpay is configured."}{" "}
-                      Prices below are INR list prices from
-                      the billing service.
-                    </>
-                  ) : usdAvailable ? (
-                    <>
-                      USD checkout via Razorpay is
-                      available. USD billing uses Razorpay
-                      USD plan pricing; INR list prices are
-                      shown below for reference.
-                    </>
-                  ) : (
-                    <>
-                      International card payments are
-                      currently being activated — USD
-                      checkout stays disabled until
-                      Razorpay confirms activation. Prices
-                      below are INR list prices.
-                    </>
-                  )}
-                </p>
 
                 {plans.length === 0 ? (
-                  <p className="mt-4 text-sm text-slate-400">
+                  <p className="p-6 text-sm text-slate-400">
                     No public plans configured.
                   </p>
                 ) : (
-                  <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    {plans.map((plan) => {
-                      const isCurrent =
-                        plan.code === currentCode;
-                      const price = yearly
-                        ? plan.yearlyPrice
-                        : plan.monthlyPrice;
-                      const action = planAction(plan);
-                      const isBusy =
-                        busy === plan.code;
+                  <>
+                    <div className="grid gap-0 xl:grid-cols-4">
+                      {plans
+                        .filter((plan) => plan.code !== "FREE")
+                        .map((plan) => {
+                          const isCurrent = plan.code === currentCode;
+                          const price = yearly ? plan.yearlyPrice : plan.monthlyPrice;
+                          const action = planAction(plan);
+                          const isBusy = busy === plan.code;
+                          const isPopular = plan.code === "GROWTH";
+                          const isAgency = plan.code === "AGENCY";
 
-                      return (
-                        <div
-                          key={plan.code}
-                          className={`rounded-2xl border p-5 ${
-                            isCurrent
-                              ? "border-slate-900 bg-slate-50"
-                              : "border-slate-200"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-bold">
-                              {plan.name}
-                            </span>
-                            {isCurrent && (
-                              <span className="flex items-center gap-1 rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-white">
-                                <CheckCircle2 size={11} />
-                                CURRENT
-                              </span>
-                            )}
-                          </div>
+                          const features =
+                            plan.code === "STARTER"
+                              ? [
+                                  "Technical SEO",
+                                  "Search Console + GA4",
+                                  "AI visibility tracking",
+                                  "AEO + GEO",
+                                  "Content engine",
+                                  "Competitor intelligence",
+                                  "Business Brain",
+                                  "Opportunities + actions",
+                                  "Monitoring + reports",
+                                ]
+                              : plan.code === "GROWTH"
+                                ? [
+                                    "Everything in Starter",
+                                    "1,500 tracked keywords",
+                                    "10 competitors",
+                                    "50 crawl credits",
+                                    "500 growth actions",
+                                    "AI workers + intelligence",
+                                    "Leads ? Revenue",
+                                    "ROI measurement",
+                                    "3 team seats + 5 clients",
+                                  ]
+                                : plan.code === "SCALE"
+                                  ? [
+                                      "Everything in Growth",
+                                      "10 websites",
+                                      "5,000 tracked keywords",
+                                      "25 competitors",
+                                      "200 crawl credits",
+                                      "2,000 growth actions",
+                                      "White label + API access",
+                                      "25 client workspaces",
+                                      "10 team seats",
+                                    ]
+                                  : [
+                                      "Everything in Scale",
+                                      "30 websites",
+                                      "15,000 tracked keywords",
+                                      "100 competitors",
+                                      "1,000 crawl credits",
+                                      "10,000 growth actions",
+                                      "Agency OS + client portal",
+                                      "White label + API access",
+                                      "25 team seats + 100 clients",
+                                    ];
 
-                          <div className="mt-2 text-2xl font-bold">
-                            {money(
-                              price,
-                              plan.currency || "INR",
-                            )}
-                            <span className="text-xs font-medium text-slate-400">
-                              /{yearly ? "yr" : "mo"}
-                            </span>
-                          </div>
+                          return (
+                            <div
+                              key={plan.code}
+                              className={`relative flex min-h-[560px] flex-col border-b border-slate-200 p-6 xl:border-b-0 xl:border-r ${
+                                isPopular
+                                  ? "bg-slate-950 text-white"
+                                  : isCurrent
+                                    ? "bg-slate-50"
+                                    : "bg-white"
+                              } ${isAgency ? "xl:border-r-0" : ""}`}
+                            >
+                              {isPopular && (
+                                <div className="absolute inset-x-0 top-0 h-1 bg-white" />
+                              )}
 
-                          {plan.description && (
-                            <p className="mt-1 min-h-[2.5rem] text-xs text-slate-500">
-                              {plan.description}
-                            </p>
-                          )}
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                    {plan.description || "Plan"}
+                                  </div>
+                                  <h3
+                                    className={`mt-2 text-xl font-bold ${
+                                      isPopular ? "text-white" : "text-slate-950"
+                                    }`}
+                                  >
+                                    {plan.name}
+                                  </h3>
+                                </div>
 
-                          <ul className="mt-3 space-y-1 text-xs text-slate-600">
-                            <li>
-                              {plan.maxWebsites} websites
-                            </li>
-                            <li>
-                              {plan.maxClients} clients
-                            </li>
-                            <li>
-                              {plan.maxReports} reports
-                            </li>
-                            <li>
-                              {plan.maxCompetitors} competitors
-                            </li>
-                            <li>
-                              {plan.maxCrawlCredits} crawl
-                              credits
-                            </li>
-                          </ul>
-
-                          {!isCurrent &&
-                            action.kind !== "none" && (
-                              <button
-                                type="button"
-                                disabled={
-                                  isBusy || !!busy
-                                }
-                                aria-describedby="currency-help"
-                                onClick={() => {
-                                  if (
-                                    action.kind ===
-                                    "change"
-                                  ) {
-                                    void handleChangePlan(
-                                      plan.code,
-                                    );
-                                  } else if (
-                                    action.kind ===
-                                    "legacy"
-                                  ) {
-                                    void handleLegacyStripeCheckout(
-                                      plan.code,
-                                    );
-                                  } else {
-                                    void handleRazorpayCheckout(
-                                      plan.code,
-                                    );
-                                  }
-                                }}
-                                className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-60"
-                              >
-                                {isBusy
-                                  ? payPhase ===
-                                    "awaiting-payment"
-                                    ? "Waiting for payment..."
-                                    : payPhase ===
-                                        "verifying"
-                                      ? "Verifying payment..."
-                                      : payPhase ===
-                                          "confirming"
-                                        ? "Confirming subscription..."
-                                        : "Processing..."
-                                  : action.label}
-                              </button>
-                            )}
-                          {!isCurrent &&
-                            action.kind === "none" &&
-                            action.label && (
-                              <div
-                                className="mt-4 w-full rounded-xl bg-slate-100 px-4 py-2 text-center text-xs font-bold text-slate-400"
-                                title={action.reason}
-                              >
-                                {action.label}
+                                {isPopular ? (
+                                  <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-950">
+                                    Most popular
+                                  </span>
+                                ) : isCurrent ? (
+                                  <span className="flex items-center gap-1 rounded-full bg-slate-950 px-2.5 py-1 text-[10px] font-extrabold text-white">
+                                    <CheckCircle2 size={11} />
+                                    Current
+                                  </span>
+                                ) : null}
                               </div>
-                            )}
+
+                              <p
+                                className={`mt-3 min-h-[48px] text-xs leading-5 ${
+                                  isPopular ? "text-slate-300" : "text-slate-500"
+                                }`}
+                              >
+                                {plan.description}
+                              </p>
+
+                              <div className="mt-5">
+                                <div className="flex items-end gap-1">
+                                  <span
+                                    className={`text-4xl font-extrabold tracking-tight ${
+                                      isPopular ? "text-white" : "text-slate-950"
+                                    }`}
+                                  >
+                                    {money(price, plan.currency || "INR")}
+                                  </span>
+                                  <span className="mb-1 text-xs font-semibold text-slate-400">
+                                    /{yearly ? "yr" : "mo"}
+                                  </span>
+                                </div>
+                                {yearly && plan.monthlyPrice > 0 && (
+                                  <p className="mt-1 text-[11px] text-slate-400">
+                                    Billed annually · monthly equivalent shown by billing service
+                                  </p>
+                                )}
+                              </div>
+
+                              <div
+                                className={`mt-5 grid grid-cols-2 gap-2 rounded-xl p-3 ${
+                                  isPopular
+                                    ? "bg-white/10"
+                                    : "border border-slate-100 bg-slate-50"
+                                }`}
+                              >
+                                {[
+                                  ["Websites", plan.maxWebsites],
+                                  ["Keywords", plan.maxKeywords],
+                                  ["Competitors", plan.maxCompetitors],
+                                  ["Crawls", plan.maxCrawlCredits],
+                                ].map(([label, value]) => (
+                                  <div key={String(label)}>
+                                    <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                                      {label}
+                                    </div>
+                                    <div
+                                      className={`mt-0.5 text-sm font-bold ${
+                                        isPopular ? "text-white" : "text-slate-900"
+                                      }`}
+                                    >
+                                      {value}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="mt-5 flex-1">
+                                <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400">
+                                  Includes
+                                </div>
+                                <ul className="mt-3 space-y-2.5">
+                                  {features.map((feature) => (
+                                    <li
+                                      key={feature}
+                                      className={`flex items-start gap-2 text-xs leading-4 ${
+                                        isPopular ? "text-slate-200" : "text-slate-600"
+                                      }`}
+                                    >
+                                      <CheckCircle2
+                                        size={14}
+                                        className={`mt-0.5 shrink-0 ${
+                                          isPopular ? "text-white" : "text-slate-900"
+                                        }`}
+                                      />
+                                      <span>{feature}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+
+                              {!isCurrent && action.kind !== "none" ? (
+                                <button
+                                  type="button"
+                                  disabled={isBusy || !!busy}
+                                  aria-describedby="currency-help"
+                                  onClick={() => {
+                                    if (action.kind === "change") {
+                                      void handleChangePlan(plan.code);
+                                    } else if (action.kind === "legacy") {
+                                      void handleLegacyStripeCheckout(plan.code);
+                                    } else {
+                                      void handleRazorpayCheckout(plan.code);
+                                    }
+                                  }}
+                                  className={`mt-6 w-full rounded-xl px-4 py-3 text-xs font-extrabold transition disabled:opacity-60 ${
+                                    isPopular
+                                      ? "bg-white text-slate-950 hover:bg-slate-200"
+                                      : "bg-slate-950 text-white hover:bg-slate-700"
+                                  }`}
+                                >
+                                  {isBusy
+                                    ? payPhase === "awaiting-payment"
+                                      ? "Waiting for payment..."
+                                      : payPhase === "verifying"
+                                        ? "Verifying payment..."
+                                        : payPhase === "confirming"
+                                          ? "Confirming subscription..."
+                                          : "Processing..."
+                                    : action.label}
+                                </button>
+                              ) : isCurrent ? (
+                                <div
+                                  className={`mt-6 flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-xs font-extrabold ${
+                                    isPopular
+                                      ? "bg-white/10 text-white"
+                                      : "bg-slate-100 text-slate-600"
+                                  }`}
+                                >
+                                  <CheckCircle2 size={14} />
+                                  Current plan
+                                </div>
+                              ) : action.label ? (
+                                <div
+                                  className="mt-6 w-full rounded-xl bg-slate-100 px-4 py-3 text-center text-xs font-extrabold text-slate-400"
+                                  title={action.reason}
+                                >
+                                  {action.label}
+                                </div>
+                              ) : null}
+
+                              {!isCurrent && (
+                                <div
+                                  className={`mt-2 text-center text-[10px] font-semibold ${
+                                    isPopular ? "text-slate-400" : "text-slate-400"
+                                  }`}
+                                >
+                                  14-day trial available
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+
+                    {plans.some((plan) => plan.code === "FREE") && (
+                      <div className="border-t border-slate-200 bg-slate-50/70 px-6 py-4">
+                        {plans
+                          .filter((plan) => plan.code === "FREE")
+                          .map((plan) => (
+                            <div
+                              key={plan.code}
+                              className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                            >
+                              <div>
+                                <div className="text-sm font-bold text-slate-900">
+                                  {plan.name}
+                                </div>
+                                <p className="mt-0.5 text-xs text-slate-500">
+                                  {plan.description}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-slate-500">
+                                <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5">
+                                  {plan.maxWebsites} website
+                                </span>
+                                <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5">
+                                  {plan.maxKeywords} keywords
+                                </span>
+                                <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5">
+                                  {plan.maxCrawlCredits} crawl credits
+                                </span>
+                                <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5">
+                                  No card required
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+
+                    <div className="border-t border-slate-200 px-6 py-7">
+                      <div className="mb-5">
+                        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                          Compare capacity
                         </div>
-                      );
-                    })}
-                  </div>
+                        <h3 className="mt-1 text-lg font-bold text-slate-950">
+                          More room to execute as you scale
+                        </h3>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[760px] border-collapse text-left">
+                          <thead>
+                            <tr className="border-b border-slate-200">
+                              <th className="px-3 py-3 text-xs font-bold text-slate-500">
+                                Capacity
+                              </th>
+                              {plans
+                                .filter((plan) => plan.code !== "FREE")
+                                .map((plan) => (
+                                  <th
+                                    key={plan.code}
+                                    className="px-3 py-3 text-right text-xs font-extrabold text-slate-600"
+                                  >
+                                    {plan.name}
+                                  </th>
+                                ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[
+                              ["Websites", "maxWebsites"],
+                              ["Keywords", "maxKeywords"],
+                              ["AI prompts", "maxAiPrompts"],
+                              ["Competitors", "maxCompetitors"],
+                              ["Reports / month", "maxReports"],
+                              ["Growth actions / month", "maxAiGrowthActions"],
+                              ["Team seats", "maxTeamMembers"],
+                              ["Clients", "maxClients"],
+                              ["Crawl credits", "maxCrawlCredits"],
+                              ["API calls", "maxApiCalls"],
+                            ].map(([label, key]) => (
+                              <tr key={label} className="border-b border-slate-100 last:border-0">
+                                <td className="px-3 py-3 text-xs font-semibold text-slate-600">
+                                  {label}
+                                </td>
+                                {plans
+                                  .filter((plan) => plan.code !== "FREE")
+                                  .map((plan) => {
+                                    const value = (plan as unknown as Record<string, number | null>)[key];
+                                    return (
+                                      <td
+                                        key={`${plan.code}-${key}`}
+                                        className="px-3 py-3 text-right text-xs font-bold tabular-nums text-slate-900"
+                                      >
+                                        {value === null || value === undefined
+                                          ? "Unlimited"
+                                          : value.toLocaleString()}
+                                      </td>
+                                    );
+                                  })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
 
@@ -1546,3 +1768,6 @@ export default function BillingPage() {
     </AppShell>
   );
 }
+
+
+
