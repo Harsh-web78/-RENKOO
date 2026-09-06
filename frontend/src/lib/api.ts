@@ -1551,6 +1551,11 @@ export interface TechnicalSeoResponse {
   pageIntelligence: TechnicalSeoPageIntelligence[];
 }
 
+export async function getTechnicalSeoByCrawl(
+  crawlId: string,
+) {
+  return request<any>(`/technical-seo/crawl/${encodeURIComponent(crawlId)}`);
+}
 export async function getTechnicalSeoLatest(
   websiteId: string,
 ) {
