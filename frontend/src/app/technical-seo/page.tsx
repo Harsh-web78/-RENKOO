@@ -1,12 +1,12 @@
 'use client';
 
 /*
- * RENKOO V2 â€” Technical health command center (Phase 5E).
+ * RENKOO V2 Ã¢â‚¬â€ Technical health command center (Phase 5E).
  * Real crawl data only via getTechnicalSeoLatest + issue
  * lifecycle APIs. Issues group by severity; detail opens in
  * a Drawer with evidence, recommended fix and a tracked
  * action path. Monitoring alerts link where they exist.
- * Fix state is real backend state â€” never invented.
+ * Fix state is real backend state Ã¢â‚¬â€ never invented.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -64,7 +64,7 @@ function fmtInt(value: unknown) {
 }
 
 function fmtDate(value: unknown) {
-  if (!value) return 'â€”';
+  if (!value) return 'Ã¢â‚¬â€';
   try {
     return new Date(String(value)).toLocaleDateString(
       'en-US',
@@ -90,6 +90,7 @@ export default function TechnicalSeoPage() {
   const [runMsg, setRunMsg] = useState('');
   const [limitError, setLimitError] =
     useState<unknown>(null);
+  const [showLimitModal, setShowLimitModal] = useState(false);
   const [error, setError] = useState('');
   const [data, setData] = useState<any>(null);
   const [alertCount, setAlertCount] = useState<number | null>(
@@ -182,6 +183,7 @@ export default function TechnicalSeoPage() {
       setRunning(true);
       setRunMsg('');
       setLimitError(null);
+      setShowLimitModal(false);
       setError('');
 
       const result = await startCrawl(websiteId);
@@ -209,11 +211,12 @@ export default function TechnicalSeoPage() {
       );
 
       setRunMsg(
-        'Audit complete — results refreshed below.',
+        'Audit complete â€” results refreshed below.',
       );
     } catch (err: any) {
       if (isLimitError(err)) {
         setLimitError(err);
+        setShowLimitModal(true);
         setRunMsg('');
       } else {
         setRunMsg(
@@ -436,7 +439,7 @@ export default function TechnicalSeoPage() {
       <PageHeader
         eyebrow="Visibility"
         title="Technical SEO"
-        description="Measured crawl health â€” issues with evidence, real fix state, and a tracked path to done."
+        description="Measured crawl health Ã¢â‚¬â€ issues with evidence, real fix state, and a tracked path to done."
         actions={
           <div className="flex gap-2">
             <SecondaryButton
@@ -444,7 +447,7 @@ export default function TechnicalSeoPage() {
               disabled={running || !websiteId}
             >
               {running
-                ? `Auditingâ€¦ ${auditSeconds}s`
+                ? `AuditingÃ¢â‚¬Â¦ ${auditSeconds}s`
                 : 'Run audit'}
             </SecondaryButton>
             <Link href="/actions">
@@ -493,7 +496,7 @@ export default function TechnicalSeoPage() {
           >
             <FilterBar
               searchValue={search}
-              searchPlaceholder="Search issuesâ€¦"
+              searchPlaceholder="Search issuesÃ¢â‚¬Â¦"
               onSearchChange={setSearch}
               selects={[
                 {
@@ -548,7 +551,7 @@ export default function TechnicalSeoPage() {
               <div className="mt-2">
                 <LimitReachedState
                   title="Free plan limit reached"
-                  description="This audit could not start because the workspace hit its crawl allowance. Your existing data is untouched â€” raising the limit unlocks the next audit."
+                  description="This audit could not start because the workspace hit its crawl allowance. Your existing data is untouched Ã¢â‚¬â€ raising the limit unlocks the next audit."
                   detail={limitUsageText(
                     limitError,
                   )}
@@ -591,7 +594,7 @@ export default function TechnicalSeoPage() {
                     value={
                       score === null ||
                       score === undefined
-                        ? 'â€”'
+                        ? 'Ã¢â‚¬â€'
                         : String(score)
                     }
                     detail="Latest measured crawl"
@@ -605,7 +608,7 @@ export default function TechnicalSeoPage() {
                         (data as any)?.pages;
                       return raw === undefined ||
                         raw === null
-                        ? 'â€”'
+                        ? 'Ã¢â‚¬â€'
                         : fmtInt(raw);
                     })()}
                     detail="Coverage"
@@ -672,7 +675,7 @@ export default function TechnicalSeoPage() {
                       className="mb-6 last:mb-0"
                     >
                       <h3 className="rk-section-title mb-2">
-                        {g.severity} â€” {g.items.length}
+                        {g.severity} Ã¢â‚¬â€ {g.items.length}
                       </h3>
                       <DataTable
                         caption={`${g.severity} severity issues`}
@@ -689,8 +692,8 @@ export default function TechnicalSeoPage() {
               </Panel>
 
               <RecommendationCallout
-                title="Technical â†’ action"
-                text="Every fix becomes a tracked action with real DONE state. RENKOO never marks a fix complete on its own â€” resolve it here after the work ships."
+                title="Technical Ã¢â€ â€™ action"
+                text="Every fix becomes a tracked action with real DONE state. RENKOO never marks a fix complete on its own Ã¢â‚¬â€ resolve it here after the work ships."
                 actionLabel="Open Action Engine"
                 actionHref="/actions"
               />
@@ -699,6 +702,52 @@ export default function TechnicalSeoPage() {
         </div>
       )}
 
+      {showLimitModal && limitError ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="crawl-limit-title"
+        >
+          <div className="w-full max-w-md rounded-rk-lg border border-rk-border bg-rk-surface p-6 shadow-xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-rk-muted">
+              Subscription
+            </p>
+            <h2
+              id="crawl-limit-title"
+              className="mt-2 text-xl font-semibold text-rk-ink"
+            >
+              Your free crawl limit is used
+            </h2>
+            <p className="rk-body mt-2">
+              You’ve used all available crawl credits for this workspace.
+              Upgrade to continue running technical SEO audits and keep your
+              growth data fresh.
+            </p>
+            <div className="mt-4 rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3">
+              <p className="text-xs font-semibold text-rk-muted">
+                Current usage
+              </p>
+              <p className="mt-1 text-sm font-medium text-rk-ink">
+                {limitUsageText(limitError)}
+              </p>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <SecondaryButton onClick={() => setShowLimitModal(false)}>
+                Maybe later
+              </SecondaryButton>
+              <PrimaryButton
+                onClick={() => {
+                  setShowLimitModal(false);
+                  window.location.href = '/billing';
+                }}
+              >
+                View plans & upgrade
+              </PrimaryButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <Drawer
         open={drawerIssue !== null}
         onClose={() => setDrawerIssue(null)}
@@ -712,12 +761,58 @@ export default function TechnicalSeoPage() {
       >
         {drawerIssue && (
           <>
-            <DrawerMeta
+            {showLimitModal && limitError ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="crawl-limit-title"
+        >
+          <div className="w-full max-w-md rounded-rk-lg border border-rk-border bg-rk-surface p-6 shadow-xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-rk-muted">
+              Subscription
+            </p>
+            <h2
+              id="crawl-limit-title"
+              className="mt-2 text-xl font-semibold text-rk-ink"
+            >
+              Your free crawl limit is used
+            </h2>
+            <p className="rk-body mt-2">
+              You’ve used all available crawl credits for this workspace.
+              Upgrade to continue running technical SEO audits and keep your
+              growth data fresh.
+            </p>
+            <div className="mt-4 rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3">
+              <p className="text-xs font-semibold text-rk-muted">
+                Current usage
+              </p>
+              <p className="mt-1 text-sm font-medium text-rk-ink">
+                {limitUsageText(limitError)}
+              </p>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <SecondaryButton onClick={() => setShowLimitModal(false)}>
+                Maybe later
+              </SecondaryButton>
+              <PrimaryButton
+                onClick={() => {
+                  setShowLimitModal(false);
+                  window.location.href = '/billing';
+                }}
+              >
+                View plans & upgrade
+              </PrimaryButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      <DrawerMeta
               items={[
                 {
                   label: 'Severity',
                   value: String(
-                    drawerIssue.severity || 'â€”',
+                    drawerIssue.severity || 'Ã¢â‚¬â€',
                   ).replace(/_/g, ' '),
                 },
                 {
@@ -743,7 +838,53 @@ export default function TechnicalSeoPage() {
                 },
               ]}
             />
-            <DrawerSection title="Evidence">
+            {showLimitModal && limitError ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="crawl-limit-title"
+        >
+          <div className="w-full max-w-md rounded-rk-lg border border-rk-border bg-rk-surface p-6 shadow-xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-rk-muted">
+              Subscription
+            </p>
+            <h2
+              id="crawl-limit-title"
+              className="mt-2 text-xl font-semibold text-rk-ink"
+            >
+              Your free crawl limit is used
+            </h2>
+            <p className="rk-body mt-2">
+              You’ve used all available crawl credits for this workspace.
+              Upgrade to continue running technical SEO audits and keep your
+              growth data fresh.
+            </p>
+            <div className="mt-4 rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3">
+              <p className="text-xs font-semibold text-rk-muted">
+                Current usage
+              </p>
+              <p className="mt-1 text-sm font-medium text-rk-ink">
+                {limitUsageText(limitError)}
+              </p>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <SecondaryButton onClick={() => setShowLimitModal(false)}>
+                Maybe later
+              </SecondaryButton>
+              <PrimaryButton
+                onClick={() => {
+                  setShowLimitModal(false);
+                  window.location.href = '/billing';
+                }}
+              >
+                View plans & upgrade
+              </PrimaryButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      <DrawerSection title="Evidence">
               {Array.isArray(drawerIssue.affectedUrls) &&
               drawerIssue.affectedUrls.length > 0 ? (
                 <EvidenceList
@@ -764,7 +905,53 @@ export default function TechnicalSeoPage() {
                 </p>
               )}
             </DrawerSection>
-            <DrawerSection title="Why it matters & fix">
+            {showLimitModal && limitError ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="crawl-limit-title"
+        >
+          <div className="w-full max-w-md rounded-rk-lg border border-rk-border bg-rk-surface p-6 shadow-xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-rk-muted">
+              Subscription
+            </p>
+            <h2
+              id="crawl-limit-title"
+              className="mt-2 text-xl font-semibold text-rk-ink"
+            >
+              Your free crawl limit is used
+            </h2>
+            <p className="rk-body mt-2">
+              You’ve used all available crawl credits for this workspace.
+              Upgrade to continue running technical SEO audits and keep your
+              growth data fresh.
+            </p>
+            <div className="mt-4 rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3">
+              <p className="text-xs font-semibold text-rk-muted">
+                Current usage
+              </p>
+              <p className="mt-1 text-sm font-medium text-rk-ink">
+                {limitUsageText(limitError)}
+              </p>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <SecondaryButton onClick={() => setShowLimitModal(false)}>
+                Maybe later
+              </SecondaryButton>
+              <PrimaryButton
+                onClick={() => {
+                  setShowLimitModal(false);
+                  window.location.href = '/billing';
+                }}
+              >
+                View plans & upgrade
+              </PrimaryButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      <DrawerSection title="Why it matters & fix">
               <p className="rk-body">
                 {String(
                   drawerIssue.whyItMatters ||
@@ -783,7 +970,53 @@ export default function TechnicalSeoPage() {
                 )}
               </p>
             </DrawerSection>
-            <DrawerSection title="Fix state">
+            {showLimitModal && limitError ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="crawl-limit-title"
+        >
+          <div className="w-full max-w-md rounded-rk-lg border border-rk-border bg-rk-surface p-6 shadow-xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-rk-muted">
+              Subscription
+            </p>
+            <h2
+              id="crawl-limit-title"
+              className="mt-2 text-xl font-semibold text-rk-ink"
+            >
+              Your free crawl limit is used
+            </h2>
+            <p className="rk-body mt-2">
+              You’ve used all available crawl credits for this workspace.
+              Upgrade to continue running technical SEO audits and keep your
+              growth data fresh.
+            </p>
+            <div className="mt-4 rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3">
+              <p className="text-xs font-semibold text-rk-muted">
+                Current usage
+              </p>
+              <p className="mt-1 text-sm font-medium text-rk-ink">
+                {limitUsageText(limitError)}
+              </p>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <SecondaryButton onClick={() => setShowLimitModal(false)}>
+                Maybe later
+              </SecondaryButton>
+              <PrimaryButton
+                onClick={() => {
+                  setShowLimitModal(false);
+                  window.location.href = '/billing';
+                }}
+              >
+                View plans & upgrade
+              </PrimaryButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      <DrawerSection title="Fix state">
               <div className="flex flex-wrap gap-2">
                 {String(
                   drawerIssue.status || 'OPEN',
@@ -852,7 +1085,53 @@ export default function TechnicalSeoPage() {
                 </SecondaryButton>
               </div>
             </DrawerSection>
-            <DrawerSection title="Outcome">
+            {showLimitModal && limitError ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="crawl-limit-title"
+        >
+          <div className="w-full max-w-md rounded-rk-lg border border-rk-border bg-rk-surface p-6 shadow-xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-rk-muted">
+              Subscription
+            </p>
+            <h2
+              id="crawl-limit-title"
+              className="mt-2 text-xl font-semibold text-rk-ink"
+            >
+              Your free crawl limit is used
+            </h2>
+            <p className="rk-body mt-2">
+              You’ve used all available crawl credits for this workspace.
+              Upgrade to continue running technical SEO audits and keep your
+              growth data fresh.
+            </p>
+            <div className="mt-4 rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3">
+              <p className="text-xs font-semibold text-rk-muted">
+                Current usage
+              </p>
+              <p className="mt-1 text-sm font-medium text-rk-ink">
+                {limitUsageText(limitError)}
+              </p>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <SecondaryButton onClick={() => setShowLimitModal(false)}>
+                Maybe later
+              </SecondaryButton>
+              <PrimaryButton
+                onClick={() => {
+                  setShowLimitModal(false);
+                  window.location.href = '/billing';
+                }}
+              >
+                View plans & upgrade
+              </PrimaryButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      <DrawerSection title="Outcome">
               <NextAction
                 label="See what changed"
                 detail="Monitoring measures crawl-over-crawl movement after the fix."
