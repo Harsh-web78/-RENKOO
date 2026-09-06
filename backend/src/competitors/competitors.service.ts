@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { BillingService } from '../billing/billing.service';
 
 import { CreateCompetitorDto } from './dto/create-competitor.dto';
 import { UpdateCompetitorDto } from './dto/update-competitor.dto';
@@ -13,6 +14,7 @@ import { UpdateCompetitorDto } from './dto/update-competitor.dto';
 export class CompetitorsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly billingService: BillingService,
   ) {}
 
   // =========================================================
@@ -37,6 +39,17 @@ export class CompetitorsService {
         'Competitor URL is required',
       );
     }
+
+    const current =
+      await this.prisma.competitor.count({
+        where: { organizationId },
+      });
+
+    await this.billingService.enforceCreation(
+      organizationId,
+      'COMPETITORS',
+      current,
+    );
 
     const domain = this.extractDomain(url);
 

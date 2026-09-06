@@ -55,6 +55,22 @@ export class BusinessBrainController {
   }
 
   // =========================================================
+  // BUSINESS CONTEXT (lightweight, reusable)
+  // GET /api/business-brain/:websiteId/context
+  // =========================================================
+
+  @Get(':websiteId/context')
+  context(
+    @Req() req: any,
+    @Param('websiteId') websiteId: string,
+  ) {
+    return this.businessBrainService.getBusinessContext(
+      req.user.organizationId,
+      websiteId,
+    );
+  }
+
+  // =========================================================
   // ANALYZE BUSINESS BRAIN
   // POST /api/business-brain/:websiteId/analyze
   // =========================================================

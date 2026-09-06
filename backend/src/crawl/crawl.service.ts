@@ -436,6 +436,33 @@ export class CrawlService {
           crawl.id,
         );
 
+      /*
+       * =======================================================
+       * MONITORING DETECTION
+       *
+       * Fire-and-forget: technical SEO alerts are derived from
+       * the completed crawl. Detection must never break the
+       * crawl response.
+       * =======================================================
+       */
+
+      void this.monitoringService
+        .detectTechnicalSeoAlerts(
+          organizationId,
+          websiteId,
+          crawl.id,
+        )
+        .catch((detectionError) => {
+          // eslint-disable-next-line no-console
+          console.error(
+            '[RENKOO] Monitoring detection failed for crawl',
+            crawl.id,
+            detectionError instanceof Error
+              ? detectionError.message
+              : detectionError,
+          );
+        });
+
       return {
         crawl:
           completedCrawl,

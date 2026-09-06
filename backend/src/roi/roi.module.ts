@@ -2,6 +2,7 @@
 
 import { AuthModule } from '../auth/auth.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { GoogleModule } from '../google/google.module';
 import { RoiController } from './roi.controller';
 import { RoiService } from './roi.service';
 
@@ -9,6 +10,7 @@ import { RoiService } from './roi.service';
   imports: [
     PrismaModule,
     AuthModule,
+    GoogleModule,
   ],
   controllers: [RoiController],
   providers: [RoiService],

@@ -536,6 +536,14 @@ export class ComparisonService {
         false,
       ),
 
+      // Lower is better.
+      this.metric(
+        'Average Load Time (ms)',
+        renkoo.averageLoadTime,
+        competitor.averageLoadTime,
+        false,
+      ),
+
       // Lower is not necessarily better.
       // This metric is informational.
       this.metric(

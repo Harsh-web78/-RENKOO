@@ -6,8 +6,111 @@
 import { PrismaService } from '../prisma/prisma.service';
 import { ComparisonService } from '../comparison/comparison.service';
 import { GoogleService } from '../google/google.service';
+import { BusinessBrainService } from '../business-brain/business-brain.service';
 
 type Priority = 'HIGH' | 'MEDIUM' | 'LOW';
+
+/*
+ * Business relevance mapping (deterministic, transparent).
+ *
+ * When a primary business goal is configured, opportunity
+ * sources aligned with that goal receive a small score nudge
+ * (+5 HIGH / +2 MEDIUM, capped at 100) recorded in metadata.
+ * Without a goal, scoring falls back to pure evidence.
+ */
+const GOAL_SOURCE_MAP: Array<{
+  keywords: string[];
+  sources: string[];
+}> = [
+  {
+    keywords: [
+      'lead',
+      'leads',
+      'enquiry',
+      'enquiries',
+      'signup',
+      'sign-up',
+      'demo',
+      'quote',
+      'booking',
+      'appointment',
+      'contact',
+      'conversion',
+    ],
+    sources: [
+      'GSC_SEO',
+      'CONTENT',
+      'GEO',
+      'BUSINESS_BRAIN',
+      'CONVERSION',
+    ],
+  },
+  {
+    keywords: [
+      'local',
+      'area',
+      'near me',
+      'city',
+      'region',
+      'footfall',
+      'branch',
+    ],
+    sources: ['GEO', 'BUSINESS_BRAIN'],
+  },
+  {
+    keywords: [
+      'sale',
+      'sales',
+      'revenue',
+      'purchase',
+      'order',
+      'checkout',
+      'ecommerce',
+      'shop',
+    ],
+    sources: [
+      'GSC_SEO',
+      'CONTENT',
+      'BACKLINK',
+      'CONVERSION',
+    ],
+  },
+  {
+    keywords: [
+      'traffic',
+      'visitor',
+      'visibility',
+      'ranking',
+      'rankings',
+      'growth',
+    ],
+    sources: [
+      'GSC_SEO',
+      'SEO_AUDIT',
+      'COMPETITOR_COMPARISON',
+      'BACKLINK',
+      'GEO',
+      'AEO',
+      'AI_VISIBILITY',
+    ],
+  },
+  {
+    keywords: [
+      'brand',
+      'awareness',
+      'authority',
+      'reputation',
+    ],
+    sources: [
+      'GEO',
+      'AEO',
+      'AEO_AUDIT',
+      'GEO_AUDIT',
+      'BACKLINK',
+      'AI_VISIBILITY',
+    ],
+  },
+];
 
 @Injectable()
 export class RecommendationsService {
@@ -15,7 +118,88 @@ export class RecommendationsService {
     private readonly prisma: PrismaService,
     private readonly comparisonService: ComparisonService,
     private readonly googleService: GoogleService,
+    private readonly businessBrainService: BusinessBrainService,
   ) {}
+
+  private async getBusinessGoal(
+    organizationId: string,
+    websiteId: string,
+  ): Promise<string> {
+    try {
+      const context =
+        await this.businessBrainService.getBusinessContext(
+          organizationId,
+          websiteId,
+        );
+
+      return (
+        context.priorities.primaryGoal ??
+        ''
+      );
+    } catch {
+      return '';
+    }
+  }
+
+  private businessRelevanceFor(
+    goal: string,
+    source: string,
+    priority: string,
+  ): {
+    relevance: 'HIGH' | 'MEDIUM' | null;
+    boost: number;
+    reason: string | null;
+  } {
+    const clean = goal
+      .toLowerCase()
+      .trim();
+
+    if (!clean) {
+      return {
+        relevance: null,
+        boost: 0,
+        reason: null,
+      };
+    }
+
+    const match =
+      GOAL_SOURCE_MAP.find(
+        (entry) =>
+          entry.keywords.some(
+            (keyword) =>
+              clean.includes(
+                keyword,
+              ),
+          ),
+      );
+
+    if (
+      !match ||
+      !match.sources.includes(
+        source,
+      )
+    ) {
+      return {
+        relevance: null,
+        boost: 0,
+        reason: null,
+      };
+    }
+
+    if (priority === 'HIGH') {
+      return {
+        relevance: 'HIGH',
+        boost: 5,
+        reason: `Aligned with the configured business priority "${goal}".`,
+      };
+    }
+
+    return {
+      relevance: 'MEDIUM',
+      boost: 2,
+      reason: `Related to the configured business priority "${goal}".`,
+    };
+  }
 
   async getRecommendations(
     organizationId: string,
@@ -39,6 +223,12 @@ export class RecommendationsService {
       await this.comparisonService.compare(
         organizationId,
         competitorId,
+      );
+
+    const businessGoal =
+      await this.getBusinessGoal(
+        organizationId,
+        competitor.websiteId,
       );
 
     const recommendations: any[] = [];
@@ -65,7 +255,9 @@ export class RecommendationsService {
         source: 'COMPETITOR_COMPARISON',
         type: opportunity.type,
         title: opportunity.title,
-        description: opportunity.description,
+        description: businessGoal
+          ? `${opportunity.description} Relevant to your configured business priority: "${businessGoal}".`
+          : opportunity.description,
         priority,
         impact: this.getImpact(priority),
         effort: this.getEffort(opportunity.type),
@@ -450,7 +642,7 @@ export class RecommendationsService {
           organizationId,
           websiteId,
           status: {
-            not: 'DISMISSED',
+            in: ['OPEN', 'IN_PROGRESS'],
           },
         },
         orderBy: {
@@ -644,6 +836,51 @@ export class RecommendationsService {
       });
     }
 
+    // -------------------------------------------------------
+    // Business relevance (deterministic, transparent).
+    // Falls back to pure evidence scoring when no goal
+    // is configured or no source mapping matches.
+    // -------------------------------------------------------
+
+    const businessGoal =
+      await this.getBusinessGoal(
+        organizationId,
+        websiteId,
+      );
+
+    for (const opportunity of opportunities) {
+      const business =
+        this.businessRelevanceFor(
+          businessGoal,
+          opportunity.source,
+          opportunity.priority,
+        );
+
+      opportunity.businessRelevance =
+        business.relevance;
+      opportunity.businessReason =
+        business.reason;
+
+      if (business.boost > 0) {
+        opportunity.score = Math.min(
+          100,
+          opportunity.score +
+            business.boost,
+        );
+
+        opportunity.metadata = {
+          ...(opportunity.metadata &&
+          typeof opportunity.metadata ===
+            'object'
+            ? opportunity.metadata
+            : {}),
+          businessBoost:
+            business.boost,
+          businessGoal,
+        };
+      }
+    }
+
     const unique =
       new Map<string, any>();
 
@@ -705,6 +942,13 @@ export class RecommendationsService {
       website,
       total: sorted.length,
 
+      business: {
+        primaryGoal:
+          businessGoal || null,
+        boostApplied:
+          businessGoal.length > 0,
+      },
+
       summary: {
         high: sorted.filter(
           (item) =>
@@ -753,6 +997,11 @@ export class RecommendationsService {
           BUSINESS_BRAIN: sorted.filter(
             (item) =>
               item.source === 'BUSINESS_BRAIN',
+          ).length,
+
+          CONVERSION: sorted.filter(
+            (item) =>
+              item.source === 'CONVERSION',
           ).length,
         },
       },
@@ -1270,6 +1519,9 @@ export class RecommendationsService {
       'GEO_AUDIT',
       'BUSINESS_BRAIN',
       'COMPETITOR_COMPARISON',
+      'AI_VISIBILITY',
+      'LOCAL_SEO',
+      'BACKLINK',
     ]);
 
     if (!actionEligibleSources.has(recommendation.source)) {

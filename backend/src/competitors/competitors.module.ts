@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
+import { BillingModule } from '../billing/billing.module';
 
 import { CompetitorsController } from './competitors.controller';
 import { CompetitorsService } from './competitors.service';
@@ -11,6 +12,7 @@ import { CompetitorCrawlService } from './competitor-crawl.service';
   imports: [
     PrismaModule,
     AuthModule,
+    BillingModule,
   ],
 
   controllers: [

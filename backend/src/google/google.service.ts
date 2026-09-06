@@ -1,16 +1,46 @@
 ﻿import {
+  BadRequestException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   InternalServerErrorException,
+  Logger,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 
 import { google } from 'googleapis';
 import { createHmac } from 'crypto';
+import { timingSafeStringEqual } from '../common/crypto/timing-safe';
+import {
+  decryptToken,
+  encryptToken,
+} from '../common/crypto/token-cipher';
 
 import { PrismaService } from '../prisma/prisma.service';
 
+/*
+ * Integration health states. Derived from stored
+ * connection state only — computing health never
+ * spends Google API quota.
+ */
+export type GoogleIntegrationState =
+  | 'CONNECTED'
+  | 'RECONNECT_REQUIRED'
+  | 'TOKEN_EXPIRED'
+  | 'TOKEN_REVOKED'
+  | 'INVALID_CREDENTIALS'
+  | 'PROPERTY_NOT_SELECTED'
+  | 'CONFIGURATION_REQUIRED'
+  | 'ERROR';
+
 @Injectable()
 export class GoogleService {
+  private readonly logger = new Logger(
+    GoogleService.name,
+  );
+
   constructor(
     private readonly prisma: PrismaService,
   ) {}
@@ -75,7 +105,21 @@ export class GoogleService {
       );
     }
 
-    if (!connection.refreshToken) {
+    /*
+     * Tokens are decrypted on read. Legacy
+     * plaintext rows keep working and are
+     * re-encrypted on the next write.
+     */
+    const refreshToken = decryptToken(
+      connection.refreshToken,
+    );
+
+    if (!refreshToken) {
+      await this.recordConnectionError(
+        organizationId,
+        'TOKEN_REVOKED',
+      );
+
       throw new UnauthorizedException(
         'Google authorization is missing a refresh token. Please reconnect Google.',
       );
@@ -86,10 +130,11 @@ export class GoogleService {
 
     client.setCredentials({
       access_token:
-        connection.accessToken ?? undefined,
+        decryptToken(
+          connection.accessToken,
+        ) || undefined,
 
-      refresh_token:
-        connection.refreshToken,
+      refresh_token: refreshToken,
 
       expiry_date:
         connection.tokenExpiry
@@ -107,7 +152,9 @@ export class GoogleService {
       if (
         refreshedAccessToken &&
         refreshedAccessToken !==
-          connection.accessToken
+          decryptToken(
+            connection.accessToken,
+          )
       ) {
         await this.prisma.googleConnection.update({
           where: {
@@ -116,7 +163,19 @@ export class GoogleService {
 
           data: {
             accessToken:
-              refreshedAccessToken,
+              encryptToken(
+                refreshedAccessToken,
+              ),
+
+            /*
+             * Lazy migration: re-encrypt the
+             * refresh token if it is still
+             * stored as plaintext.
+             */
+            refreshToken:
+              encryptToken(
+                refreshToken,
+              ),
 
             tokenExpiry:
               client.credentials
@@ -126,6 +185,9 @@ export class GoogleService {
                       .expiry_date,
                   )
                 : connection.tokenExpiry,
+
+            lastErrorCode: null,
+            lastErrorAt: null,
           },
         });
       } else if (
@@ -144,20 +206,39 @@ export class GoogleService {
                 client.credentials
                   .expiry_date,
               ),
+
+            refreshToken:
+              encryptToken(
+                refreshToken,
+              ),
+
+            lastErrorCode: null,
+            lastErrorAt: null,
+          },
+        });
+      } else if (
+        connection.lastErrorCode
+      ) {
+        await this.prisma.googleConnection.update({
+          where: {
+            organizationId,
+          },
+
+          data: {
+            lastErrorCode: null,
+            lastErrorAt: null,
           },
         });
       }
 
       return client;
     } catch (error: any) {
-      console.error(
-        'Google authentication error:',
-        {
-          code: error?.code,
-          message: error?.message,
-          response:
-            error?.response?.data,
-        },
+      /*
+       * Never logs tokens or credentials —
+       * only provider codes and messages.
+       */
+      this.logger.warn(
+        `Google authentication failed (org scoped): code=${String(error?.code ?? error?.response?.status ?? 'unknown').slice(0, 80)}`,
       );
 
       const status =
@@ -167,15 +248,93 @@ export class GoogleService {
         status === 401 ||
         error?.code === 'invalid_grant'
       ) {
-        throw new UnauthorizedException(
-          'Google authorization has expired or been revoked. Please reconnect Google.',
+        await this.recordConnectionError(
+          organizationId,
+          'TOKEN_REVOKED',
+        );
+
+        throw new HttpException(
+          {
+            code: 'TOKEN_REVOKED',
+            message:
+              'Google authorization has expired or been revoked. Please reconnect Google.',
+          },
+          HttpStatus.UNAUTHORIZED,
         );
       }
+
+      await this.recordConnectionError(
+        organizationId,
+        'ERROR',
+      );
 
       throw new InternalServerErrorException(
         'Unable to authenticate with Google. Please try again.',
       );
     }
+  }
+
+  private async recordConnectionError(
+    organizationId: string,
+    code: string,
+  ) {
+    try {
+      await this.prisma.googleConnection.update(
+        {
+          where: { organizationId },
+          data: {
+            lastErrorCode: code,
+            lastErrorAt: new Date(),
+          },
+        },
+      );
+    } catch {
+      // Observability only — never blocks auth.
+    }
+  }
+
+  private async recordSuccessfulRequest(
+    organizationId: string,
+  ) {
+    try {
+      await this.prisma.googleConnection.update(
+        {
+          where: { organizationId },
+          data: {
+            lastSuccessfulRequestAt:
+              new Date(),
+            lastErrorCode: null,
+            lastErrorAt: null,
+          },
+        },
+      );
+    } catch {
+      // Observability only — never blocks data.
+    }
+  }
+
+  /*
+   * Freshness envelope for live Google data.
+   * Every data response is labeled LIVE with a
+   * request-time timestamp; there is no
+   * background sync to pretend otherwise.
+   */
+  private liveResult<T extends object>(
+    organizationId: string,
+    payload: T,
+  ): T & {
+    source: 'LIVE';
+    fetchedAt: string;
+  } {
+    void this.recordSuccessfulRequest(
+      organizationId,
+    );
+
+    return {
+      ...payload,
+      source: 'LIVE' as const,
+      fetchedAt: new Date().toISOString(),
+    };
   }
 
   /*
@@ -297,17 +456,12 @@ export class GoogleService {
     error: any,
     fallbackMessage: string,
   ): never {
-    console.error(
-      'Google API error:',
-      {
-        code: error?.code,
-        status:
-          error?.response?.status,
-        message:
-          error?.message,
-        response:
-          error?.response?.data,
-      },
+    /*
+     * Never logs tokens or credentials —
+     * only provider codes and statuses.
+     */
+    this.logger.warn(
+      `Google API error: status=${String(error?.response?.status ?? error?.code ?? 'unknown').slice(0, 80)}`,
     );
 
     const status =
@@ -317,20 +471,35 @@ export class GoogleService {
       status === 401 ||
       error?.code === 'invalid_grant'
     ) {
-      throw new UnauthorizedException(
-        'Google authorization has expired or been revoked. Please reconnect Google.',
+      throw new HttpException(
+        {
+          code: 'TOKEN_REVOKED',
+          message:
+            'Google authorization has expired or been revoked. Please reconnect Google.',
+        },
+        HttpStatus.UNAUTHORIZED,
       );
     }
 
     if (status === 403) {
-      throw new UnauthorizedException(
-        'Google account does not have permission to access this resource.',
+      throw new HttpException(
+        {
+          code: 'GOOGLE_FORBIDDEN',
+          message:
+            'Google account does not have permission to access this resource.',
+        },
+        HttpStatus.FORBIDDEN,
       );
     }
 
     if (status === 404) {
-      throw new InternalServerErrorException(
-        'Google resource was not found. Please verify the selected property.',
+      throw new HttpException(
+        {
+          code: 'GOOGLE_NOT_FOUND',
+          message:
+            'Google resource was not found. Please verify the selected property.',
+        },
+        HttpStatus.NOT_FOUND,
       );
     }
 
@@ -394,15 +563,7 @@ export class GoogleService {
       .update(payload)
       .digest('hex');
 
-    if (signature.length !== expectedSignature.length) {
-      throw new UnauthorizedException('Invalid OAuth state');
-    }
-
-    const valid = createHmac('sha256', secret)
-      .update(payload)
-      .digest('hex') === signature;
-
-    if (!valid) {
+    if (!timingSafeStringEqual(signature, expectedSignature)) {
       throw new UnauthorizedException('Invalid OAuth state');
     }
 
@@ -582,17 +743,22 @@ export class GoogleService {
         googlePicture:
           data.googlePicture,
 
-        accessToken:
+        accessToken: encryptToken(
           data.accessToken,
+        ),
 
-        refreshToken:
+        refreshToken: encryptToken(
           data.refreshToken ?? '',
+        ),
 
         tokenExpiry:
           data.tokenExpiry,
 
         scope:
           data.scope,
+
+        lastErrorCode: null,
+        lastErrorAt: null,
       },
 
       update: {
@@ -608,26 +774,34 @@ export class GoogleService {
         googlePicture:
           data.googlePicture,
 
-        accessToken:
+        accessToken: encryptToken(
           data.accessToken,
+        ),
 
         /*
          * Google may not return a refresh token
          * on subsequent OAuth approvals.
          *
-         * Preserve the existing refresh token.
+         * Preserve the existing refresh token
+         * (decrypting first so the stored value
+         * is always in current format).
          */
 
-        refreshToken:
+        refreshToken: encryptToken(
           data.refreshToken ??
-          existing?.refreshToken ??
-          '',
+            decryptToken(
+              existing?.refreshToken,
+            ),
+        ),
 
         tokenExpiry:
           data.tokenExpiry,
 
         scope:
           data.scope,
+
+        lastErrorCode: null,
+        lastErrorAt: null,
       },
     });
   }
@@ -707,6 +881,9 @@ export class GoogleService {
               true,
             tokenExpiry: true,
             scope: true,
+            lastSuccessfulRequestAt: true,
+            lastErrorCode: true,
+            lastErrorAt: true,
           },
         },
       );
@@ -729,6 +906,12 @@ export class GoogleService {
         tokenExpiry: null,
 
         scope: null,
+
+        lastSuccessfulRequestAt: null,
+
+        lastErrorCode: null,
+
+        lastErrorAt: null,
       };
     }
 
@@ -757,6 +940,244 @@ export class GoogleService {
 
       scope:
         connection.scope ?? null,
+
+      lastSuccessfulRequestAt:
+        connection.lastSuccessfulRequestAt ??
+        null,
+
+      lastErrorCode:
+        connection.lastErrorCode ?? null,
+
+      lastErrorAt:
+        connection.lastErrorAt ?? null,
+    };
+  }
+
+  /*
+   * =========================================================
+   * INTEGRATION HEALTH CONTRACT
+   *
+   * Derived from stored connection state only —
+   * computing health never spends Google API quota
+   * and never returns credentials.
+   * =========================================================
+   */
+
+  async getIntegrationHealth(
+    organizationId: string,
+  ) {
+    const connection =
+      await this.prisma.googleConnection.findUnique(
+        {
+          where: { organizationId },
+          select: {
+            googleEmail: true,
+            selectedProperty: true,
+            selectedAnalyticsProperty:
+              true,
+            tokenExpiry: true,
+            scope: true,
+            refreshToken: true,
+            lastSuccessfulRequestAt: true,
+            lastErrorCode: true,
+            lastErrorAt: true,
+          },
+        },
+      );
+
+    if (!connection) {
+      return {
+        provider: 'GOOGLE',
+        status:
+          'CONFIGURATION_REQUIRED' as GoogleIntegrationState,
+        connected: false,
+        reconnectRequired: false,
+        limitation:
+          'Google is not connected for this workspace. Connect Google to enable Search Console and Analytics data.',
+        gsc: {
+          provider: 'GSC',
+          status:
+            'CONFIGURATION_REQUIRED' as GoogleIntegrationState,
+          connected: false,
+          property: null,
+          dataAvailable: false,
+          reconnectRequired: false,
+          limitation:
+            'Connect Google and select a Search Console property.',
+        },
+        ga4: {
+          provider: 'GA4',
+          status:
+            'CONFIGURATION_REQUIRED' as GoogleIntegrationState,
+          connected: false,
+          property: null,
+          dataAvailable: false,
+          reconnectRequired: false,
+          limitation:
+            'Connect Google and select a GA4 property.',
+        },
+        gbp: this.gbpStatus(),
+        lastSuccessfulRequestAt: null,
+        lastErrorCode: null,
+        lastErrorAt: null,
+      };
+    }
+
+    const hasRefreshToken = Boolean(
+      decryptToken(
+        connection.refreshToken,
+      ),
+    );
+
+    const errorState = (
+      connection.lastErrorCode ??
+      null
+    ) as GoogleIntegrationState | null;
+
+    const revoked =
+      errorState === 'TOKEN_REVOKED';
+
+    const baseStatus: GoogleIntegrationState =
+      !hasRefreshToken || revoked
+        ? 'RECONNECT_REQUIRED'
+        : errorState === 'ERROR'
+          ? 'ERROR'
+          : 'CONNECTED';
+
+    const gscStatus: GoogleIntegrationState =
+      baseStatus !== 'CONNECTED'
+        ? baseStatus
+        : !connection.selectedProperty
+          ? 'PROPERTY_NOT_SELECTED'
+          : 'CONNECTED';
+
+    const ga4Status: GoogleIntegrationState =
+      baseStatus !== 'CONNECTED'
+        ? baseStatus
+        : !connection
+            .selectedAnalyticsProperty
+          ? 'PROPERTY_NOT_SELECTED'
+          : 'CONNECTED';
+
+    return {
+      provider: 'GOOGLE',
+      status: baseStatus,
+      connected:
+        baseStatus === 'CONNECTED',
+      reconnectRequired:
+        baseStatus ===
+        'RECONNECT_REQUIRED',
+      limitation:
+        baseStatus === 'CONNECTED'
+          ? null
+          : 'Google authorization needs attention. Reconnect Google to restore data.',
+      gsc: {
+        provider: 'GSC',
+        status: gscStatus,
+        connected:
+          gscStatus === 'CONNECTED',
+        property:
+          connection.selectedProperty ??
+          null,
+        dataAvailable:
+          gscStatus === 'CONNECTED',
+        reconnectRequired:
+          gscStatus ===
+          'RECONNECT_REQUIRED',
+        limitation:
+          gscStatus === 'CONNECTED'
+            ? null
+            : gscStatus ===
+                'PROPERTY_NOT_SELECTED'
+              ? 'Select a Search Console property to enable query data.'
+              : 'Reconnect Google to restore Search Console data.',
+      },
+      ga4: {
+        provider: 'GA4',
+        status: ga4Status,
+        connected:
+          ga4Status === 'CONNECTED',
+        property:
+          connection.selectedAnalyticsProperty ??
+          null,
+        dataAvailable:
+          ga4Status === 'CONNECTED',
+        reconnectRequired:
+          ga4Status ===
+          'RECONNECT_REQUIRED',
+        limitation:
+          ga4Status === 'CONNECTED'
+            ? null
+            : ga4Status ===
+                'PROPERTY_NOT_SELECTED'
+              ? 'Select a GA4 property to enable traffic data.'
+              : 'Reconnect Google to restore Analytics data.',
+      },
+      gbp: this.gbpStatus(),
+      lastSuccessfulRequestAt:
+        connection.lastSuccessfulRequestAt ??
+        null,
+      lastErrorCode:
+        connection.lastErrorCode ?? null,
+      lastErrorAt:
+        connection.lastErrorAt ?? null,
+    };
+  }
+
+  /*
+   * =========================================================
+   * GOOGLE BUSINESS PROFILE STATUS (READ-ONLY TRUTH)
+   *
+   * No GBP integration exists: OAuth scopes do not
+   * include business.manage, and no GBP API calls
+   * are implemented. Returned honestly until a
+   * genuine read-only integration is verified.
+   * =========================================================
+   */
+
+  gbpStatus() {
+    return {
+      provider: 'GBP',
+      status: 'NOT_AVAILABLE' as const,
+      connected: false,
+      property: null,
+      dataAvailable: false,
+      reconnectRequired: false,
+      limitation:
+        'Google Business Profile is not connected. Read-only GBP access requires the business.manage OAuth scope and Google API approval, which are not configured.',
+    };
+  }
+
+  async disconnect(organizationId: string) {
+    const connection =
+      await this.prisma.googleConnection.findUnique({
+        where: {
+          organizationId,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+    if (!connection) {
+      return {
+        connected: false,
+        disconnected: false,
+        message: 'Google is not connected.',
+      };
+    }
+
+    await this.prisma.googleConnection.delete({
+      where: {
+        organizationId,
+      },
+    });
+
+    return {
+      connected: false,
+      disconnected: true,
+      message:
+        'Google has been disconnected from this workspace.',
     };
   }
 
@@ -771,7 +1192,7 @@ export class GoogleService {
     siteUrl: string,
   ) {
     if (!siteUrl?.trim()) {
-      throw new UnauthorizedException(
+      throw new BadRequestException(
         'Search Console property is required',
       );
     }
@@ -805,7 +1226,7 @@ export class GoogleService {
       );
 
     if (!propertyExists) {
-      throw new UnauthorizedException(
+      throw new ForbiddenException(
         'You do not have access to this Search Console property',
       );
     }
@@ -853,7 +1274,7 @@ export class GoogleService {
       !startDate ||
       !endDate
     ) {
-      throw new UnauthorizedException(
+      throw new BadRequestException(
         'startDate and endDate are required',
       );
     }
@@ -962,26 +1383,29 @@ export class GoogleService {
             totals.impressions
           : 0;
 
-      return {
-        property:
-          connection.selectedProperty,
+      return this.liveResult(
+        organizationId,
+        {
+          property:
+            connection.selectedProperty,
 
-        startDate,
+          startDate,
 
-        endDate,
+          endDate,
 
-        clicks:
-          totals.clicks,
+          clicks:
+            totals.clicks,
 
-        impressions:
-          totals.impressions,
+          impressions:
+            totals.impressions,
 
-        ctr,
+          ctr,
 
-        averagePosition,
+          averagePosition,
 
-        rows,
-      };
+          rows,
+        },
+      );
     } catch (error: any) {
       this.handleGoogleApiError(
         error,
@@ -1125,7 +1549,7 @@ export class GoogleService {
     propertyId: string,
   ) {
     if (!propertyId?.trim()) {
-      throw new UnauthorizedException(
+      throw new BadRequestException(
         'GA4 property ID is required',
       );
     }
@@ -1161,7 +1585,7 @@ export class GoogleService {
       );
 
     if (!propertyExists) {
-      throw new UnauthorizedException(
+      throw new ForbiddenException(
         'You do not have access to this Google Analytics property',
       );
     }
@@ -1209,7 +1633,7 @@ export class GoogleService {
       !startDate ||
       !endDate
     ) {
-      throw new UnauthorizedException(
+      throw new BadRequestException(
         'startDate and endDate are required',
       );
     }
@@ -1328,16 +1752,17 @@ export class GoogleService {
       const rows =
         response.data.rows ?? [];
 
-      return {
-        property:
-          connection.selectedAnalyticsProperty,
+      return this.liveResult(
+        organizationId,
+        {
+          property:
+            connection.selectedAnalyticsProperty,
 
-        startDate,
+          startDate,
 
-        endDate,
+          endDate,
 
-        rows:
-          rows.map(
+          rows: rows.map(
             (row) => ({
               date:
                 row
@@ -1394,7 +1819,8 @@ export class GoogleService {
                 ),
             }),
           ),
-      };
+        },
+      );
     } catch (error: any) {
       this.handleGoogleApiError(
         error,
@@ -1418,7 +1844,7 @@ export class GoogleService {
       !startDate ||
       !endDate
     ) {
-      throw new UnauthorizedException(
+      throw new BadRequestException(
         'startDate and endDate are required',
       );
     }
@@ -1481,15 +1907,16 @@ export class GoogleService {
       const rows =
         response.data.rows ?? [];
 
-      return {
-        property:
-          connection.selectedProperty,
+      return this.liveResult(
+        organizationId,
+        {
+          property:
+            connection.selectedProperty,
 
-        startDate,
-        endDate,
+          startDate,
+          endDate,
 
-        rows:
-          rows.map(
+          rows: rows.map(
             (row) => ({
               query:
                 row.keys?.[0] ?? '',
@@ -1515,7 +1942,8 @@ export class GoogleService {
                 ),
             }),
           ),
-      };
+        },
+      );
     } catch (error: any) {
       this.handleGoogleApiError(
         error,
@@ -1539,7 +1967,7 @@ export class GoogleService {
       !startDate ||
       !endDate
     ) {
-      throw new UnauthorizedException(
+      throw new BadRequestException(
         'startDate and endDate are required',
       );
     }
@@ -1602,15 +2030,16 @@ export class GoogleService {
       const rows =
         response.data.rows ?? [];
 
-      return {
-        property:
-          connection.selectedProperty,
+      return this.liveResult(
+        organizationId,
+        {
+          property:
+            connection.selectedProperty,
 
-        startDate,
-        endDate,
+          startDate,
+          endDate,
 
-        rows:
-          rows.map(
+          rows: rows.map(
             (row) => ({
               page:
                 row.keys?.[0] ?? '',
@@ -1636,7 +2065,8 @@ export class GoogleService {
                 ),
             }),
           ),
-      };
+        },
+      );
     } catch (error: any) {
       this.handleGoogleApiError(
         error,
@@ -1660,7 +2090,7 @@ export class GoogleService {
       !startDate ||
       !endDate
     ) {
-      throw new UnauthorizedException(
+      throw new BadRequestException(
         'startDate and endDate are required',
       );
     }
@@ -1726,15 +2156,16 @@ export class GoogleService {
       const rows =
         response.data.rows ?? [];
 
-      return {
-        property:
-          connection.selectedProperty,
+      return this.liveResult(
+        organizationId,
+        {
+          property:
+            connection.selectedProperty,
 
-        startDate,
-        endDate,
+          startDate,
+          endDate,
 
-        rows:
-          rows.map(
+          rows: rows.map(
             (row) => ({
               query:
                 row.keys?.[0] ?? '',
@@ -1763,7 +2194,8 @@ export class GoogleService {
                 ),
             }),
           ),
-      };
+        },
+      );
     } catch (error: any) {
       this.handleGoogleApiError(
         error,
@@ -2082,19 +2514,22 @@ export class GoogleService {
         )
         .slice(0, 50);
 
-    return {
-      property:
-        queryData.property,
+    return this.liveResult(
+      organizationId,
+      {
+        property:
+          queryData.property,
 
-      startDate,
+        startDate,
 
-      endDate,
+        endDate,
 
-      total:
-        opportunities.length,
+        total:
+          opportunities.length,
 
-      opportunities,
-    };
+        opportunities,
+      },
+    );
   }
 
   /*
@@ -2115,7 +2550,7 @@ export class GoogleService {
       !endDate ||
       !query?.trim()
     ) {
-      throw new UnauthorizedException(
+      throw new BadRequestException(
         'startDate, endDate and query are required',
       );
     }
@@ -2149,7 +2584,7 @@ export class GoogleService {
       );
 
     if (!matchingQuery) {
-      throw new UnauthorizedException(
+      throw new NotFoundException(
         'Search Console query was not found for this date range',
       );
     }
@@ -2398,41 +2833,44 @@ export class GoogleService {
      * =======================================================
      */
 
-    return {
-      property:
-        queryData.property,
+    return this.liveResult(
+      organizationId,
+      {
+        property:
+          queryData.property,
 
-      startDate,
+        startDate,
 
-      endDate,
+        endDate,
 
-      query:
-        matchingQuery.query,
+        query:
+          matchingQuery.query,
 
-      page:
-        rankingPage || null,
+        page:
+          rankingPage || null,
 
-      rankingPages:
-        matchingPages,
+        rankingPages:
+          matchingPages,
 
-      clicks,
+        clicks,
 
-      impressions,
+        impressions,
 
-      ctr,
+        ctr,
 
-      position,
+        position,
 
-      priority,
+        priority,
 
-      opportunityType,
+        opportunityType,
 
-      rankingStage,
+        rankingStage,
 
-      checks,
+        checks,
 
-      recommendations,
-    };
+        recommendations,
+      },
+    );
   }
 }
 

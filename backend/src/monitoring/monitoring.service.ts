@@ -8,6 +8,7 @@ import {
 import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { BusinessBrainService } from '../business-brain/business-brain.service';
 
 const SOURCES = [
   'GSC',
@@ -49,7 +50,10 @@ export interface CreateMonitoringAlertInput {
 export class MonitoringService {
   private readonly logger = new Logger(MonitoringService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly businessBrainService: BusinessBrainService,
+  ) {}
 
   // Internal API for detector/adaptor modules. It is deliberately not exposed
   // through a controller so users cannot manufacture alerts.
@@ -370,6 +374,727 @@ export class MonitoringService {
       );
     }
   }
+  // =========================================================
+  // DETECT FOR ONE CRAWL (public wrapper for backfill)
+  // =========================================================
+
+  async detectForCrawl(
+    organizationId: string,
+    websiteId: string,
+    crawlId?: string,
+  ) {
+    await this.assertWebsite(organizationId, websiteId);
+
+    let targetCrawlId = crawlId?.trim();
+
+    if (!targetCrawlId) {
+      const latest =
+        await this.prisma.crawl.findFirst({
+          where: {
+            websiteId,
+            status: 'COMPLETED',
+          },
+          orderBy: {
+            completedAt: 'desc',
+          },
+          select: { id: true },
+        });
+
+      if (!latest) {
+        throw new NotFoundException(
+          'No completed crawl found for this website',
+        );
+      }
+
+      targetCrawlId = latest.id;
+    }
+
+    return this.detectTechnicalSeoAlerts(
+      organizationId,
+      websiteId,
+      targetCrawlId,
+    );
+  }
+
+  // =========================================================
+  // CHANGE DETECTION — crawl-over-crawl technical SEO deltas
+  //
+  // Deterministic significance model (documented, no ML):
+  // - score is the canonical 0-100 technical SEO score
+  //   (100 - weighted OPEN-issue penalties, clamped)
+  // - score moves are reported in points (valid: same scale)
+  // - issue counts are reported as absolute changes only
+  //   (percent change is mathematically inappropriate here)
+  // - moves below threshold with no code changes are
+  //   suppressed as noise (counted, not listed)
+  // =========================================================
+
+  private async getBusinessPriority(
+    organizationId: string,
+    websiteId: string,
+  ): Promise<string> {
+    try {
+      const context =
+        await this.businessBrainService.getBusinessContext(
+          organizationId,
+          websiteId,
+        );
+
+      return (
+        context.priorities.primaryGoal ??
+        ''
+      );
+    } catch {
+      return '';
+    }
+  }
+
+  async getChanges(
+    organizationId: string,
+    websiteId: string,
+  ) {
+    await this.assertWebsite(organizationId, websiteId);
+
+    const businessPriority =
+      await this.getBusinessPriority(
+        organizationId,
+        websiteId,
+      );
+
+    const crawls = await this.prisma.crawl.findMany({
+      where: {
+        websiteId,
+        status: 'COMPLETED',
+      },
+      orderBy: {
+        completedAt: 'asc',
+      },
+      select: {
+        id: true,
+        completedAt: true,
+        createdAt: true,
+        pages: {
+          select: {
+            id: true,
+            url: true,
+            issues: {
+              where: { status: 'OPEN' },
+              select: {
+                code: true,
+                category: true,
+                severity: true,
+                title: true,
+                description: true,
+                recommendation: true,
+              },
+            },
+          },
+        },
+      },
+      take: 8,
+    });
+
+    const ordered = [...crawls].sort(
+      (a, b) =>
+        new Date(
+          a.completedAt ?? a.createdAt,
+        ).getTime() -
+        new Date(
+          b.completedAt ?? b.createdAt,
+        ).getTime(),
+    );
+
+    const snapshots = ordered.map((crawl) =>
+      this.summarizeCrawl(crawl),
+    );
+
+    const baseline = {
+      websiteId,
+      completedCrawls: snapshots.length,
+      oldestCrawlAt:
+        snapshots[0]?.completedAt ?? null,
+      latestCrawlAt:
+        snapshots[snapshots.length - 1]
+          ?.completedAt ?? null,
+      latestScore:
+        snapshots[snapshots.length - 1]
+          ?.score ?? null,
+    };
+
+    if (snapshots.length < 2) {
+      return {
+        ...baseline,
+        notEnoughData: true,
+        businessPriority:
+          businessPriority || null,
+        notEnoughDataReason:
+          snapshots.length === 0
+            ? 'No completed crawls exist for this website yet. Run a crawl to establish a baseline.'
+            : 'Only one completed crawl exists for this website. Run another crawl to detect what changed.',
+        suppressedNoise: 0,
+        changes: [],
+        summary: {
+          critical: 0,
+          high: 0,
+          medium: 0,
+          low: 0,
+          positive: 0,
+        },
+      };
+    }
+
+    const changes: any[] = [];
+    let suppressedNoise = 0;
+
+    // Compare consecutive pairs, newest pair first.
+    for (
+      let index = snapshots.length - 1;
+      index >= 1 &&
+      changes.length < 100;
+      index -= 1
+    ) {
+      const previous = snapshots[index - 1];
+      const current = snapshots[index];
+
+      for (const change of this.compareSnapshots(
+        previous,
+        current,
+      )) {
+        if (change.suppressed) {
+          suppressedNoise += 1;
+          continue;
+        }
+
+        changes.push(change);
+      }
+    }
+
+    const businessNote = businessPriority
+      ? `Observed against the configured business priority "${businessPriority}". RENKOO cannot prove business impact from crawl signals alone.`
+      : null;
+
+    const enriched = changes
+      .slice(0, 100)
+      .map((item) => ({
+        ...item,
+        businessNote:
+          item.direction === 'NEGATIVE' &&
+          (item.metric ===
+            'TECHNICAL_SEO_SCORE' ||
+            item.type === 'ISSUE_CODE_NEW' ||
+            item.type ===
+              'ISSUE_CODE_SPREAD')
+            ? businessNote
+            : null,
+      }));
+
+    return {
+      ...baseline,
+      notEnoughData: false,
+      notEnoughDataReason: null,
+      suppressedNoise,
+      businessPriority:
+        businessPriority || null,
+      changes: enriched,
+      summary: {
+        critical: changes.filter(
+          (item) =>
+            item.severity === 'CRITICAL',
+        ).length,
+        high: changes.filter(
+          (item) =>
+            item.severity === 'HIGH',
+        ).length,
+        medium: changes.filter(
+          (item) =>
+            item.severity === 'MEDIUM',
+        ).length,
+        low: changes.filter(
+          (item) =>
+            item.severity === 'LOW',
+        ).length,
+        positive: changes.filter(
+          (item) =>
+            item.direction === 'POSITIVE',
+        ).length,
+      },
+    };
+  }
+
+  private summarizeCrawl(crawl: {
+    id: string;
+    completedAt: Date | null;
+    createdAt: Date;
+    pages: Array<{
+      id: string;
+      url: string;
+      issues: Array<{
+        code: string;
+        category: string;
+        severity: string;
+        title: string;
+        description: string;
+        recommendation: string;
+      }>;
+    }>;
+  }) {
+    const bySeverity: Record<
+      string,
+      number
+    > = {
+      CRITICAL: 0,
+      HIGH: 0,
+      MEDIUM: 0,
+      LOW: 0,
+    };
+
+    const byCode = new Map<
+      string,
+      {
+        code: string;
+        category: string;
+        severity: string;
+        title: string;
+        description: string;
+        recommendation: string;
+        count: number;
+        urls: string[];
+      }
+    >();
+
+    let openIssues = 0;
+
+    for (const page of crawl.pages) {
+      for (const issue of page.issues) {
+        openIssues += 1;
+
+        const severity = String(
+          issue.severity,
+        ).toUpperCase();
+
+        if (
+          bySeverity[severity] !==
+          undefined
+        ) {
+          bySeverity[severity] += 1;
+        }
+
+        const existing = byCode.get(
+          issue.code,
+        );
+
+        if (existing) {
+          existing.count += 1;
+
+          if (
+            existing.urls.length < 10
+          ) {
+            existing.urls.push(
+              page.url,
+            );
+          }
+        } else {
+          byCode.set(issue.code, {
+            code: issue.code,
+            category: issue.category,
+            severity,
+            title: issue.title,
+            description:
+              issue.description,
+            recommendation:
+              issue.recommendation,
+            count: 1,
+            urls: [page.url],
+          });
+        }
+      }
+    }
+
+    const penalty =
+      bySeverity.CRITICAL * 20 +
+      bySeverity.HIGH * 10 +
+      bySeverity.MEDIUM * 5 +
+      bySeverity.LOW * 2;
+
+    const score = Math.max(
+      0,
+      Math.min(100, 100 - penalty),
+    );
+
+    return {
+      crawlId: crawl.id,
+      completedAt:
+        crawl.completedAt ??
+        crawl.createdAt,
+      pages: crawl.pages.length,
+      openIssues,
+      bySeverity,
+      byCode,
+      score,
+    };
+  }
+
+  private compareSnapshots(
+    previous: ReturnType<
+      MonitoringService['summarizeCrawl']
+    >,
+    current: ReturnType<
+      MonitoringService['summarizeCrawl']
+    >,
+  ) {
+    const detectedAt =
+      current.completedAt;
+    const items: any[] = [];
+
+    const scoreDelta =
+      current.score - previous.score;
+
+    const push = (item: any) =>
+      items.push({
+        id: `crawl:${current.crawlId}:vs:${previous.crawlId}:${item.metric}`,
+        websiteId: undefined,
+        source: 'TECHNICAL_SEO',
+        previousCrawlId:
+          previous.crawlId,
+        currentCrawlId:
+          current.crawlId,
+        detectedAt,
+        ...item,
+      });
+
+    // -------------------------------------------------------
+    // Score movement (0-100 scale: points are valid)
+    // -------------------------------------------------------
+
+    if (scoreDelta <= -15) {
+      push({
+        metric: 'TECHNICAL_SEO_SCORE',
+        type: 'SCORE_DROP',
+        severity: 'CRITICAL',
+        direction: 'NEGATIVE',
+        title: `Technical SEO score dropped ${Math.abs(scoreDelta)} points`,
+        description: `Score moved from ${previous.score} to ${current.score} between crawls.`,
+        previousValue: previous.score,
+        currentValue: current.score,
+        absoluteChange: scoreDelta,
+        pointChange: scoreDelta,
+      });
+    } else if (scoreDelta <= -8) {
+      push({
+        metric: 'TECHNICAL_SEO_SCORE',
+        type: 'SCORE_DROP',
+        severity: 'HIGH',
+        direction: 'NEGATIVE',
+        title: `Technical SEO score dropped ${Math.abs(scoreDelta)} points`,
+        description: `Score moved from ${previous.score} to ${current.score} between crawls.`,
+        previousValue: previous.score,
+        currentValue: current.score,
+        absoluteChange: scoreDelta,
+        pointChange: scoreDelta,
+      });
+    } else if (scoreDelta <= -4) {
+      push({
+        metric: 'TECHNICAL_SEO_SCORE',
+        type: 'SCORE_DROP',
+        severity: 'MEDIUM',
+        direction: 'NEGATIVE',
+        title: `Technical SEO score dropped ${Math.abs(scoreDelta)} points`,
+        description: `Score moved from ${previous.score} to ${current.score} between crawls.`,
+        previousValue: previous.score,
+        currentValue: current.score,
+        absoluteChange: scoreDelta,
+        pointChange: scoreDelta,
+      });
+    } else if (scoreDelta < 0) {
+      push({
+        metric: 'TECHNICAL_SEO_SCORE',
+        type: 'SCORE_DRIFT',
+        severity: 'LOW',
+        direction: 'NEGATIVE',
+        suppressed: scoreDelta > -1,
+        title: `Technical SEO score slipped ${Math.abs(scoreDelta)} points`,
+        description: `Score moved from ${previous.score} to ${current.score} between crawls.`,
+        previousValue: previous.score,
+        currentValue: current.score,
+        absoluteChange: scoreDelta,
+        pointChange: scoreDelta,
+      });
+    } else if (scoreDelta >= 4) {
+      push({
+        metric: 'TECHNICAL_SEO_SCORE',
+        type: 'SCORE_IMPROVEMENT',
+        severity: 'LOW',
+        direction: 'POSITIVE',
+        title: `Technical SEO score improved ${scoreDelta} points`,
+        description: `Score moved from ${previous.score} to ${current.score} between crawls.`,
+        previousValue: previous.score,
+        currentValue: current.score,
+        absoluteChange: scoreDelta,
+        pointChange: scoreDelta,
+      });
+    }
+
+    // -------------------------------------------------------
+    // Open issue volume (absolute counts only)
+    // -------------------------------------------------------
+
+    const issueDelta =
+      current.openIssues -
+      previous.openIssues;
+
+    if (
+      Math.abs(issueDelta) >= 5 &&
+      previous.openIssues +
+        current.openIssues >
+        0
+    ) {
+      push({
+        metric: 'OPEN_ISSUES',
+        type:
+          issueDelta > 0
+            ? 'ISSUES_INCREASED'
+            : 'ISSUES_DECREASED',
+        severity:
+          issueDelta > 0
+            ? scoreDelta <= -4
+              ? 'HIGH'
+              : 'MEDIUM'
+            : 'LOW',
+        direction:
+          issueDelta > 0
+            ? 'NEGATIVE'
+            : 'POSITIVE',
+        title:
+          issueDelta > 0
+            ? `Open SEO issues increased by ${issueDelta}`
+            : `Open SEO issues decreased by ${Math.abs(issueDelta)}`,
+        description: `Open issues moved from ${previous.openIssues} to ${current.openIssues} between crawls. Counts are absolute; no percentage is inferred.`,
+        previousValue:
+          previous.openIssues,
+        currentValue:
+          current.openIssues,
+        absoluteChange: issueDelta,
+        pointChange: null,
+      });
+    }
+
+    // -------------------------------------------------------
+    // Coverage change (page count)
+    // -------------------------------------------------------
+
+    const pagesDelta =
+      current.pages - previous.pages;
+    const pagesBase = Math.max(
+      previous.pages,
+      1,
+    );
+
+    if (
+      Math.abs(pagesDelta) /
+        pagesBase >=
+        0.2 &&
+      Math.abs(pagesDelta) >= 3
+    ) {
+      push({
+        metric: 'PAGES_CRAWLED',
+        type:
+          pagesDelta > 0
+            ? 'COVERAGE_EXPANDED'
+            : 'COVERAGE_SHRANK',
+        severity: 'MEDIUM',
+        direction: 'NEUTRAL',
+        title:
+          pagesDelta > 0
+            ? `Crawl coverage expanded by ${pagesDelta} pages`
+            : `Crawl coverage shrank by ${Math.abs(pagesDelta)} pages`,
+        description: `Crawled pages moved from ${previous.pages} to ${current.pages}. Coverage changes can coincide with score movement without causing it.`,
+        previousValue:
+          previous.pages,
+        currentValue: current.pages,
+        absoluteChange: pagesDelta,
+        pointChange: null,
+      });
+    }
+
+    // -------------------------------------------------------
+    // New / resolved issue codes with correlation language
+    // -------------------------------------------------------
+
+    for (const [
+      code,
+      group,
+    ] of current.byCode) {
+      const before =
+        previous.byCode.get(code);
+
+      if (!before) {
+        const severity =
+          group.severity ===
+          'CRITICAL'
+            ? 'CRITICAL'
+            : group.severity === 'HIGH'
+              ? 'HIGH'
+              : group.severity ===
+                  'MEDIUM'
+                ? 'MEDIUM'
+                : 'LOW';
+
+        push({
+          metric: `ISSUE_CODE:${code}`,
+          type: 'ISSUE_CODE_NEW',
+          severity,
+          direction: 'NEGATIVE',
+          title: `New issue detected: ${group.title}`,
+          description: `${group.description} Affects ${group.count} page${group.count === 1 ? '' : 's'} in the latest crawl and was not present before.`,
+          previousValue: 0,
+          currentValue: group.count,
+          absoluteChange:
+            group.count,
+          pointChange: null,
+          evidence: {
+            issueCode: code,
+            category:
+              group.category,
+            affectedPages:
+              group.count,
+            affectedUrls:
+              group.urls,
+          },
+          recommendation:
+            group.recommendation,
+        });
+      } else if (
+        group.count - before.count >=
+        5
+      ) {
+        push({
+          metric: `ISSUE_CODE:${code}`,
+          type: 'ISSUE_CODE_SPREAD',
+          severity:
+            group.severity ===
+              'CRITICAL' ||
+            group.severity === 'HIGH'
+              ? 'HIGH'
+              : 'MEDIUM',
+          direction: 'NEGATIVE',
+          title: `${group.title} spread to ${group.count - before.count} more pages`,
+          description: `Affected pages moved from ${before.count} to ${group.count} between crawls.`,
+          previousValue:
+            before.count,
+          currentValue: group.count,
+          absoluteChange:
+            group.count -
+            before.count,
+          pointChange: null,
+          evidence: {
+            issueCode: code,
+            category:
+              group.category,
+            affectedPages:
+              group.count,
+            affectedUrls:
+              group.urls,
+          },
+          recommendation:
+            group.recommendation,
+        });
+      }
+    }
+
+    for (const [
+      code,
+      group,
+    ] of previous.byCode) {
+      if (!current.byCode.has(code)) {
+        push({
+          metric: `ISSUE_CODE:${code}`,
+          type: 'ISSUE_CODE_RESOLVED',
+          severity: 'LOW',
+          direction: 'POSITIVE',
+          title: `Resolved: ${group.title}`,
+          description: `This issue affected ${group.count} page${group.count === 1 ? '' : 's'} before and is no longer detected.`,
+          previousValue:
+            group.count,
+          currentValue: 0,
+          absoluteChange:
+            -group.count,
+          pointChange: null,
+          evidence: {
+            issueCode: code,
+            category:
+              group.category,
+          },
+          recommendation:
+            group.recommendation,
+        });
+      }
+    }
+
+    // -------------------------------------------------------
+    // Why engine: attach likely contributors with
+    // correlation-only language, or an honest fallback.
+    // -------------------------------------------------------
+
+    const contributors = items.filter(
+      (item) =>
+        item.type === 'ISSUE_CODE_NEW' ||
+        item.type ===
+          'ISSUE_CODE_SPREAD',
+    );
+
+    const hasNegativeScore = items.some(
+      (item) =>
+        item.metric ===
+          'TECHNICAL_SEO_SCORE' &&
+        item.direction ===
+          'NEGATIVE' &&
+        !item.suppressed,
+    );
+
+    return items.map((item) => {
+      if (
+        item.metric ===
+          'TECHNICAL_SEO_SCORE' &&
+        item.direction ===
+          'NEGATIVE' &&
+        !item.suppressed
+      ) {
+        return {
+          ...item,
+          why:
+            contributors.length > 0
+              ? contributors.map(
+                  (entry) =>
+                    `Likely related: ${entry.title} — coincides with this crawl comparison, but RENKOO cannot prove it caused the score move.`,
+                )
+              : [
+                  'RENKOO detected the change but does not have enough evidence to determine why.',
+                ],
+        };
+      }
+
+      if (
+        item.type === 'ISSUE_CODE_NEW' ||
+        item.type ===
+          'ISSUE_CODE_SPREAD'
+      ) {
+        return {
+          ...item,
+          why: [
+            hasNegativeScore
+              ? 'This newly observed issue coincides with the score drop in the same crawl comparison and is a possible cause.'
+              : 'Observed for the first time in this crawl comparison. Treat as a possible cause of future score movement, not a proven one.',
+          ],
+        };
+      }
+
+      return {
+        ...item,
+        why: [],
+      };
+    });
+  }
+
   async listAlerts(
     organizationId: string,
     filters: MonitoringAlertFilters = {},
@@ -390,13 +1115,29 @@ export class MonitoringService {
         this.prisma.monitoringAlert.count({ where }),
       ]);
 
-      return { alerts, total, limit: 200 };
+      return {
+        alerts,
+        total,
+        limit: 200,
+        storageReady: true,
+      };
     } catch (error) {
       if (
         error instanceof BadRequestException ||
         error instanceof NotFoundException
       ) {
         throw error;
+      }
+
+      if (this.isMissingTableError(error)) {
+        return {
+          alerts: [],
+          total: 0,
+          limit: 200,
+          storageReady: false,
+          storageError:
+            'MonitoringAlert table does not exist. Apply the pending Prisma migration to enable alert persistence.',
+        };
       }
 
       return this.handleUnexpectedError('listAlerts', error);
@@ -407,6 +1148,14 @@ export class MonitoringService {
     try {
       const alert = await this.prisma.monitoringAlert.findFirst({
         where: { id, organizationId },
+      }).catch((error: unknown) => {
+        if (this.isMissingTableError(error)) {
+          throw new InternalServerErrorException(
+            'Monitoring alert store is unavailable (MonitoringAlert table is missing). Apply the pending Prisma migration.',
+          );
+        }
+
+        throw error;
       });
 
       if (!alert) {
@@ -493,6 +1242,7 @@ export class MonitoringService {
         acknowledged,
         resolved,
         bySeverity: { critical, high, medium, low },
+        storageReady: true,
       };
     } catch (error) {
       if (
@@ -500,6 +1250,26 @@ export class MonitoringService {
         error instanceof NotFoundException
       ) {
         throw error;
+      }
+
+      if (this.isMissingTableError(error)) {
+        return {
+          websiteId: websiteId ?? null,
+          total: 0,
+          unread: 0,
+          detected: 0,
+          acknowledged: 0,
+          resolved: 0,
+          bySeverity: {
+            critical: 0,
+            high: 0,
+            medium: 0,
+            low: 0,
+          },
+          storageReady: false,
+          storageError:
+            'MonitoringAlert table does not exist. Apply the pending Prisma migration to enable alert persistence.',
+        };
       }
 
       return this.handleUnexpectedError('getSummary', error);
@@ -520,13 +1290,27 @@ export class MonitoringService {
         },
       });
 
-      return { websiteId: websiteId ?? null, unread };
+      return {
+        websiteId: websiteId ?? null,
+        unread,
+        storageReady: true,
+      };
     } catch (error) {
       if (
         error instanceof BadRequestException ||
         error instanceof NotFoundException
       ) {
         throw error;
+      }
+
+      if (this.isMissingTableError(error)) {
+        return {
+          websiteId: websiteId ?? null,
+          unread: 0,
+          storageReady: false,
+          storageError:
+            'MonitoringAlert table does not exist. Apply the pending Prisma migration to enable alert persistence.',
+        };
       }
 
       return this.handleUnexpectedError('getUnreadCount', error);
@@ -768,6 +1552,14 @@ export class MonitoringService {
     return (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === 'P2002'
+    );
+  }
+
+  private isMissingTableError(error: unknown) {
+    return (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === 'P2021' ||
+        error.code === 'P2010')
     );
   }
 

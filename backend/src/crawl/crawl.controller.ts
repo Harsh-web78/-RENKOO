@@ -7,6 +7,7 @@
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { BillingService } from '../billing/billing.service';
@@ -27,6 +28,7 @@ export class CrawlController {
     private readonly billingService: BillingService,
   ) {}
 
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post()
   async crawl(
     @Req() req: any,
@@ -38,13 +40,12 @@ export class CrawlController {
     /*
      * SERVER-SIDE BILLING ENFORCEMENT
      *
-     * Check the organization's subscription
-     * and available crawl credits BEFORE
-     * starting the crawl.
+     * Subscription counters when present, measured
+     * FREE allowance otherwise. Reads are never
+     * gated — only new crawl starts.
      */
-    await this.billingService.checkUsage(
+    await this.billingService.checkCrawlAllowance(
       organizationId,
-      'CRAWL_CREDITS',
     );
 
     /*
@@ -61,12 +62,21 @@ export class CrawlController {
     /*
      * Only consume the credit after the
      * crawl operation has successfully started.
+     * FREE workspaces are measured from crawl
+     * records, so no counter write is needed.
      */
-    await this.billingService.consumeUsage(
-      organizationId,
-      'CRAWL_CREDITS',
-      1,
-    );
+    const subscription =
+      await this.billingService.getSubscription(
+        organizationId,
+      );
+
+    if (subscription) {
+      await this.billingService.consumeUsage(
+        organizationId,
+        'CRAWL_CREDITS',
+        1,
+      );
+    }
 
     return result;
   }

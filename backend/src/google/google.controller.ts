@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Query,
   Req,
   Res,
@@ -8,6 +9,7 @@ import {
 } from '@nestjs/common';
 
 import { Response } from 'express';
+import { Throttle } from '@nestjs/throttler';
 
 import { GoogleService } from './google.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -56,6 +58,43 @@ export class GoogleController {
 
   /*
    * =========================================================
+   * INTEGRATION HEALTH (GOOGLE + GSC + GA4 + GBP)
+   *
+   * Derived from stored state only — never spends
+   * Google API quota, never returns credentials.
+   * =========================================================
+   */
+
+  @UseGuards(JwtAuthGuard)
+  @Get('health')
+  async health(@Req() req: any) {
+    return this.googleService.getIntegrationHealth(
+      req.user.organizationId,
+    );
+  }
+
+  /*
+   * =========================================================
+   * GOOGLE BUSINESS PROFILE STATUS (READ-ONLY TRUTH)
+   * =========================================================
+   */
+
+  @UseGuards(JwtAuthGuard)
+  @Get('gbp/status')
+  async gbpStatus() {
+    return this.googleService.gbpStatus();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('disconnect')
+  async disconnect(@Req() req: any) {
+    return this.googleService.disconnect(
+      req.user.organizationId,
+    );
+  }
+
+  /*
+   * =========================================================
    * GOOGLE OAUTH CALLBACK
    * =========================================================
    */
@@ -96,9 +135,15 @@ export class GoogleController {
         `${process.env.FRONTEND_URL}/`,
       );
     } catch (error) {
+      /*
+       * Log the failure class only — never the
+       * OAuth code, state, or tokens.
+       */
       console.error(
         'Google OAuth callback failed:',
-        error,
+        error instanceof Error
+          ? error.message
+          : 'unknown',
       );
 
       return res.redirect(
@@ -146,6 +191,9 @@ export class GoogleController {
    */
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: { limit: 30, ttl: 60000 },
+  })
   @Get('analytics')
   async analytics(
     @Req() req: any,
@@ -166,6 +214,9 @@ export class GoogleController {
    */
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: { limit: 30, ttl: 60000 },
+  })
   @Get('queries')
   async queries(
     @Req() req: any,
@@ -186,6 +237,9 @@ export class GoogleController {
    */
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: { limit: 30, ttl: 60000 },
+  })
   @Get('pages')
   async pages(
     @Req() req: any,
@@ -206,6 +260,9 @@ export class GoogleController {
    */
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: { limit: 30, ttl: 60000 },
+  })
   @Get('query-pages')
   async queryPages(
     @Req() req: any,
@@ -226,6 +283,9 @@ export class GoogleController {
    */
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: { limit: 20, ttl: 60000 },
+  })
   @Get('opportunities')
   async opportunities(
     @Req() req: any,
@@ -304,6 +364,9 @@ export class GoogleController {
    */
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: { limit: 30, ttl: 60000 },
+  })
   @Get('analytics/report')
   async analyticsReport(
     @Req() req: any,

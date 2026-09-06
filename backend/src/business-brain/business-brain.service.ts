@@ -802,6 +802,467 @@ export class BusinessBrainService {
   }
 
   // =========================================================
+  // BUSINESS CONTEXT PROVIDER
+  //
+  // Lightweight structured context for reuse by the
+  // Opportunity Engine, Monitoring, Recommendations,
+  // Reports and future AI agents.
+  //
+  // No heavy crawl page loads. No invented facts.
+  // contextConfidence formula (transparent):
+  //   60% profile completeness (filled key fields / 8)
+  // + 40% connected data sources (sources with data / 7)
+  // =========================================================
+
+  async getBusinessContext(
+    organizationId: string,
+    websiteId: string,
+  ) {
+    const website =
+      await this.getWebsite(
+        organizationId,
+        websiteId,
+      );
+
+    const brain =
+      await this.prisma.businessBrain.findUnique(
+        {
+          where: {
+            websiteId,
+          },
+        },
+      );
+
+    const [
+      latestCrawl,
+      competitorCount,
+      competitors,
+      aiChecks,
+      googleConnection,
+      businessLocations,
+      backlinkCount,
+      referringDomainCount,
+      geoQueries,
+      leads,
+      revenues,
+      openRecommendations,
+    ] = await Promise.all([
+      this.prisma.crawl.findFirst({
+        where: {
+          websiteId,
+          status: 'COMPLETED',
+        },
+        orderBy: {
+          completedAt: 'desc',
+        },
+        select: {
+          id: true,
+          completedAt: true,
+        },
+      }),
+
+      this.prisma.competitor.count({
+        where: {
+          websiteId,
+          organizationId,
+          isActive: true,
+        },
+      }),
+
+      this.prisma.competitor.findMany({
+        where: {
+          websiteId,
+          organizationId,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          url: true,
+        },
+        orderBy: {
+          createdAt: 'asc',
+        },
+        take: 20,
+      }),
+
+      this.prisma.aiVisibilityCheck.count({
+        where: {
+          websiteId,
+          status: 'COMPLETED',
+        },
+      }),
+
+      /*
+       * Stored Google connection state only —
+       * no live calls. Drives integration
+       * availability for recommendations.
+       */
+      this.prisma.googleConnection.findUnique(
+        {
+          where: { organizationId },
+          select: {
+            selectedProperty: true,
+            selectedAnalyticsProperty:
+              true,
+            refreshToken: true,
+            lastErrorCode: true,
+          },
+        },
+      ),
+
+      this.prisma.businessLocation.findMany(
+        {
+          where: {
+            organizationId,
+            websiteId,
+            status: 'ACTIVE',
+          },
+          select: {
+            id: true,
+            name: true,
+            city: true,
+            state: true,
+            country: true,
+            isPrimary: true,
+            source: true,
+          },
+          orderBy: [
+            { isPrimary: 'desc' },
+            { createdAt: 'asc' },
+          ],
+          take: 10,
+        },
+      ),
+
+      this.prisma.backlink.count({
+        where: {
+          websiteId,
+          status: 'ACTIVE',
+        },
+      }),
+
+      this.prisma.backlinkDomain.count({
+        where: { websiteId },
+      }),
+
+      this.prisma.geoQuery.count({
+        where: { websiteId },
+      }),
+
+      this.prisma.lead.count({
+        where: { websiteId },
+      }),
+
+      this.prisma.revenue.count({
+        where: { websiteId },
+      }),
+
+      this.prisma.recommendation.count({
+        where: {
+          organizationId,
+          websiteId,
+          status: {
+            in: ['OPEN', 'IN_PROGRESS'],
+          },
+        },
+      }),
+    ]);
+
+    const has = (value: unknown) =>
+      this.cleanString(value).length >
+      0;
+
+    const hasList = (
+      value: unknown,
+    ) =>
+      Array.isArray(value) &&
+      value.length > 0;
+
+    const profileFields = [
+      has(brain?.businessName),
+      has(brain?.industry),
+      has(brain?.description),
+      hasList(brain?.services) ||
+        hasList(brain?.products),
+      has(brain?.targetAudience),
+      has(brain?.primaryGoal),
+      hasList(
+        brain?.primaryKeywords,
+      ),
+      hasList(
+        brain?.targetLocations,
+      ),
+    ];
+
+    const filledProfile =
+      profileFields.filter(
+        Boolean,
+      ).length;
+
+    const dataSources = [
+      Boolean(latestCrawl),
+      competitorCount > 0,
+      aiChecks > 0,
+      geoQueries > 0,
+      leads > 0,
+      revenues > 0,
+      openRecommendations > 0,
+    ];
+
+    const connectedSources =
+      dataSources.filter(
+        Boolean,
+      ).length;
+
+    const contextConfidence =
+      Math.round(
+        (filledProfile / 8) * 60 +
+          (connectedSources / 7) *
+            40,
+      );
+
+    const missing: string[] = [];
+
+    if (!has(brain?.businessName)) {
+      missing.push(
+        'Business name is not configured.',
+      );
+    }
+
+    if (!has(brain?.description)) {
+      missing.push(
+        'Business description is not configured.',
+      );
+    }
+
+    if (
+      !hasList(brain?.services) &&
+      !hasList(brain?.products)
+    ) {
+      missing.push(
+        'No products or services are listed.',
+      );
+    }
+
+    if (
+      !has(brain?.targetAudience)
+    ) {
+      missing.push(
+        'Target audience is not described.',
+      );
+    }
+
+    if (!has(brain?.primaryGoal)) {
+      missing.push(
+        'No primary business goal is set, so opportunity prioritization cannot use business relevance yet.',
+      );
+    }
+
+    if (
+      !hasList(
+        brain?.targetLocations,
+      )
+    ) {
+      missing.push(
+        'No target locations or markets are configured.',
+      );
+    }
+
+    if (!latestCrawl) {
+      missing.push(
+        'No completed crawl exists, so technical context is unavailable.',
+      );
+    }
+
+    if (competitorCount === 0) {
+      missing.push(
+        'No competitors are tracked.',
+      );
+    }
+
+    if (
+      !googleConnection?.selectedProperty
+    ) {
+      missing.push(
+        'No Search Console property is selected, so search evidence is unavailable.',
+      );
+    }
+
+    if (
+      !googleConnection?.selectedAnalyticsProperty
+    ) {
+      missing.push(
+        'No GA4 property is selected, so traffic evidence is unavailable.',
+      );
+    }
+
+    return {
+      website: {
+        id: website.id,
+        name: website.name,
+        url: website.url,
+        industry:
+          website.industry,
+        country:
+          website.country,
+      },
+
+      profile: brain
+        ? {
+            businessName:
+              brain.businessName ??
+              null,
+            industry:
+              brain.industry ??
+              null,
+            country:
+              brain.country ??
+              null,
+            city:
+              brain.city ??
+              null,
+            description:
+              brain.description ??
+              null,
+            services:
+              brain.services ?? [],
+            products:
+              brain.products ?? [],
+            targetAudience:
+              brain.targetAudience ??
+              null,
+            primaryGoal:
+              brain.primaryGoal ??
+              null,
+            primaryKeywords:
+              brain.primaryKeywords ??
+              [],
+            targetLocations:
+              brain.targetLocations ??
+              [],
+            brandTone:
+              brain.brandTone ??
+              null,
+            uniqueSellingPoint:
+              brain.uniqueSellingPoint ??
+              null,
+            businessScore:
+              brain.businessScore,
+            lastAnalyzedAt:
+              brain.lastAnalyzedAt ??
+              null,
+          }
+        : null,
+
+      priorities: {
+        primaryGoal:
+          this.cleanString(
+            brain?.primaryGoal,
+          ) || null,
+        targetAudience:
+          this.cleanString(
+            brain?.targetAudience,
+          ) || null,
+        targetLocations:
+          brain?.targetLocations ??
+          [],
+        primaryKeywords:
+          brain?.primaryKeywords ??
+          [],
+      },
+
+      offerings: {
+        services:
+          brain?.services ?? [],
+        products:
+          brain?.products ?? [],
+      },
+
+      competitors: competitors.map(
+        (competitor) => ({
+          id: competitor.id,
+          name: competitor.name,
+          url: competitor.url,
+        }),
+      ),
+
+      /*
+       * Real configured locations (primary
+       * first). Markets in targetLocations that
+       * match a location city are grounded;
+       * anything else stays an aspiration.
+       */
+      locations: businessLocations,
+
+      dataAvailability: {
+        crawl: Boolean(
+          latestCrawl,
+        ),
+        competitors:
+          competitorCount > 0,
+        aiVisibility:
+          aiChecks > 0,
+        geo: geoQueries > 0,
+        leads: leads > 0,
+        revenue: revenues > 0,
+        recommendations:
+          openRecommendations >
+          0,
+        gsc: Boolean(
+          googleConnection?.selectedProperty,
+        ),
+        ga4: Boolean(
+          googleConnection?.selectedAnalyticsProperty,
+        ),
+        backlinks: backlinkCount > 0,
+        referringDomains:
+          referringDomainCount > 0,
+      },
+
+      /*
+       * Integration availability for
+       * recommendation logic. GBP is always
+       * unavailable until a genuine read-only
+       * integration exists. Missing sources
+       * must never produce conclusions —
+       * only data-gap guidance.
+       */
+      integrations: {
+        gsc: googleConnection?.selectedProperty
+          ? 'available'
+          : 'unavailable',
+        ga4: googleConnection?.selectedAnalyticsProperty
+          ? 'available'
+          : 'unavailable',
+        gbp: 'unavailable',
+      },
+
+      counts: {
+        competitors:
+          competitorCount,
+        aiChecks,
+        backlinks: backlinkCount,
+        referringDomains:
+          referringDomainCount,
+        geoQueries,
+        leads,
+        revenues,
+        openRecommendations,
+      },
+
+      contextConfidence,
+      confidenceFormula:
+        '60% filled profile fields (8 tracked) + 40% connected data sources (7 tracked). Deterministic; no AI judgment.',
+
+      missing,
+
+      generatedAt:
+        new Date().toISOString(),
+    };
+  }
+
+  // =========================================================
   // ANALYZE
   // =========================================================
 

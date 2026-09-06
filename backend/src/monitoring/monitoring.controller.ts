@@ -1,8 +1,10 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
   Patch,
+  Post,
   Query,
   Req,
   UseGuards,
@@ -74,6 +76,31 @@ export class MonitoringController {
     return this.monitoringService.getAlert(
       req.user.organizationId,
       id,
+    );
+  }
+
+  @Get('changes')
+  changes(
+    @Req() req: any,
+    @Query('websiteId') websiteId: string,
+  ) {
+    return this.monitoringService.getChanges(
+      req.user.organizationId,
+      websiteId,
+    );
+  }
+
+  @Post('detect')
+  detect(
+    @Req() req: any,
+    @Body() body: { websiteId?: string; crawlId?: string },
+  ) {
+    return this.monitoringService.detectForCrawl(
+      req.user.organizationId,
+      String(body?.websiteId ?? ''),
+      body?.crawlId
+        ? String(body.crawlId)
+        : undefined,
     );
   }
 

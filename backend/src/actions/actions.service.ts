@@ -72,6 +72,41 @@ export class ActionsService {
       metadata?: any;
     },
   ) {
+    // Never trust client-supplied relations: verify ownership server-side.
+    if (data.websiteId) {
+      const website =
+        await this.prisma.website.findFirst({
+          where: {
+            id: data.websiteId,
+            organizationId,
+          },
+          select: { id: true },
+        });
+
+      if (!website) {
+        throw new NotFoundException(
+          'Website not found',
+        );
+      }
+    }
+
+    if (data.recommendationId) {
+      const recommendation =
+        await this.prisma.recommendation.findFirst({
+          where: {
+            id: data.recommendationId,
+            organizationId,
+          },
+          select: { id: true },
+        });
+
+      if (!recommendation) {
+        throw new NotFoundException(
+          'Recommendation not found',
+        );
+      }
+    }
+
     return this.prisma.action.create({
       data: {
         organizationId,

@@ -31,4 +31,19 @@ export class RoiController {
       to,
     );
   }
+
+  @Get(':websiteId/outcome')
+  outcome(
+    @Req() req: any,
+    @Param('websiteId') websiteId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.roiService.outcome(
+      req.user.organizationId,
+      websiteId,
+      from,
+      to,
+    );
+  }
 }

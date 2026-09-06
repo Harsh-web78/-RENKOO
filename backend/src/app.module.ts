@@ -56,6 +56,12 @@ import { GeoModule } from './geo/geo.module';
 
 import { AeoModule } from './aeo/aeo.module';
 
+import { IntelligenceModule } from './intelligence/intelligence.module';
+
+import { AgentsModule } from './agents/agents.module';
+
+import { ReportsModule } from './reports/reports.module';
+
 import { EmailModule } from './email/email.module';
 
 @Module({
@@ -99,6 +105,9 @@ LeadsModule,
     CompetitorsModule,
     AiVisibilityModule,
     ComparisonModule,
+    IntelligenceModule,
+    AgentsModule,
+    ReportsModule,
     EmailModule,
   ],
   providers: [

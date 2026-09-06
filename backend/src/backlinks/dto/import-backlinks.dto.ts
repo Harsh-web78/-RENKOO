@@ -42,6 +42,10 @@ export class BacklinkImportItemDto {
   @IsOptional()
   @IsBoolean()
   isToxic?: boolean;
+
+  @IsOptional()
+  @IsString()
+  source?: string;
 }
 
 export class ImportBacklinksDto {
@@ -49,4 +53,45 @@ export class ImportBacklinksDto {
   @ValidateNested({ each: true })
   @Type(() => BacklinkImportItemDto)
   backlinks: BacklinkImportItemDto[];
+
+  @IsOptional()
+  @IsString()
+  source?: string;
+}
+
+export class ReconcileBacklinksDto {
+  @IsArray()
+  @IsUrl({}, { each: true })
+  observedUrls: string[];
+}
+
+export class CreateBacklinkOpportunityDto {
+  @IsOptional()
+  @IsString()
+  competitorId?: string;
+
+  @IsOptional()
+  @IsString()
+  targetUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  anchorSuggestion?: string;
+
+  @IsString()
+  opportunityType!: string;
+
+  @IsOptional()
+  @IsString()
+  reason?: string;
+
+  @IsOptional()
+  @IsString()
+  suggestedAction?: string;
+}
+
+export class UpdateBacklinkOpportunityDto {
+  @IsOptional()
+  @IsString()
+  status?: string;
 }

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
+import { MonitoringModule } from '../monitoring/monitoring.module';
 
 import { BacklinksController } from './backlinks.controller';
 import { BacklinksService } from './backlinks.service';
@@ -10,6 +11,7 @@ import { BacklinksService } from './backlinks.service';
   imports: [
     PrismaModule,
     AuthModule,
+    MonitoringModule,
   ],
 
   controllers: [
