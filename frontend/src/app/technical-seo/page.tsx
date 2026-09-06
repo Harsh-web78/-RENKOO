@@ -1,12 +1,12 @@
 'use client';
 
 /*
- * RENKOO V2 — Technical health command center (Phase 5E).
+ * RENKOO V2 â€” Technical health command center (Phase 5E).
  * Real crawl data only via getTechnicalSeoLatest + issue
  * lifecycle APIs. Issues group by severity; detail opens in
  * a Drawer with evidence, recommended fix and a tracked
  * action path. Monitoring alerts link where they exist.
- * Fix state is real backend state — never invented.
+ * Fix state is real backend state â€” never invented.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -64,7 +64,7 @@ function fmtInt(value: unknown) {
 }
 
 function fmtDate(value: unknown) {
-  if (!value) return '—';
+  if (!value) return 'â€”';
   try {
     return new Date(String(value)).toLocaleDateString(
       'en-US',
@@ -177,12 +177,37 @@ export default function TechnicalSeoPage() {
 
   async function handleRunAudit() {
     if (!websiteId || running) return;
+
     try {
       setRunning(true);
       setRunMsg('');
       setLimitError(null);
-      await startCrawl(websiteId);
-      await load(websiteId);
+      setError('');
+
+      const result = await startCrawl(websiteId);
+      const crawlId = result?.crawl?.id;
+
+      if (!crawlId) {
+        throw new Error(
+          'Crawl completed but no crawl ID was returned. Please try again.',
+        );
+      }
+
+      const [technicalSeo, alerts] = await Promise.all([
+        getTechnicalSeoByCrawl(crawlId),
+        listMonitoringAlerts({
+          websiteId,
+        }).catch(() => null),
+      ]);
+
+      setData(technicalSeo);
+
+      setAlertCount(
+        Array.isArray((alerts as any)?.alerts)
+          ? (alerts as any).alerts.length
+          : null,
+      );
+
       setRunMsg(
         'Audit complete — results refreshed below.',
       );
@@ -411,7 +436,7 @@ export default function TechnicalSeoPage() {
       <PageHeader
         eyebrow="Visibility"
         title="Technical SEO"
-        description="Measured crawl health — issues with evidence, real fix state, and a tracked path to done."
+        description="Measured crawl health â€” issues with evidence, real fix state, and a tracked path to done."
         actions={
           <div className="flex gap-2">
             <SecondaryButton
@@ -419,7 +444,7 @@ export default function TechnicalSeoPage() {
               disabled={running || !websiteId}
             >
               {running
-                ? `Auditing… ${auditSeconds}s`
+                ? `Auditingâ€¦ ${auditSeconds}s`
                 : 'Run audit'}
             </SecondaryButton>
             <Link href="/actions">
@@ -468,7 +493,7 @@ export default function TechnicalSeoPage() {
           >
             <FilterBar
               searchValue={search}
-              searchPlaceholder="Search issues…"
+              searchPlaceholder="Search issuesâ€¦"
               onSearchChange={setSearch}
               selects={[
                 {
@@ -523,7 +548,7 @@ export default function TechnicalSeoPage() {
               <div className="mt-2">
                 <LimitReachedState
                   title="Free plan limit reached"
-                  description="This audit could not start because the workspace hit its crawl allowance. Your existing data is untouched — raising the limit unlocks the next audit."
+                  description="This audit could not start because the workspace hit its crawl allowance. Your existing data is untouched â€” raising the limit unlocks the next audit."
                   detail={limitUsageText(
                     limitError,
                   )}
@@ -566,7 +591,7 @@ export default function TechnicalSeoPage() {
                     value={
                       score === null ||
                       score === undefined
-                        ? '—'
+                        ? 'â€”'
                         : String(score)
                     }
                     detail="Latest measured crawl"
@@ -580,7 +605,7 @@ export default function TechnicalSeoPage() {
                         (data as any)?.pages;
                       return raw === undefined ||
                         raw === null
-                        ? '—'
+                        ? 'â€”'
                         : fmtInt(raw);
                     })()}
                     detail="Coverage"
@@ -647,7 +672,7 @@ export default function TechnicalSeoPage() {
                       className="mb-6 last:mb-0"
                     >
                       <h3 className="rk-section-title mb-2">
-                        {g.severity} — {g.items.length}
+                        {g.severity} â€” {g.items.length}
                       </h3>
                       <DataTable
                         caption={`${g.severity} severity issues`}
@@ -664,8 +689,8 @@ export default function TechnicalSeoPage() {
               </Panel>
 
               <RecommendationCallout
-                title="Technical → action"
-                text="Every fix becomes a tracked action with real DONE state. RENKOO never marks a fix complete on its own — resolve it here after the work ships."
+                title="Technical â†’ action"
+                text="Every fix becomes a tracked action with real DONE state. RENKOO never marks a fix complete on its own â€” resolve it here after the work ships."
                 actionLabel="Open Action Engine"
                 actionHref="/actions"
               />
@@ -692,7 +717,7 @@ export default function TechnicalSeoPage() {
                 {
                   label: 'Severity',
                   value: String(
-                    drawerIssue.severity || '—',
+                    drawerIssue.severity || 'â€”',
                   ).replace(/_/g, ' '),
                 },
                 {
