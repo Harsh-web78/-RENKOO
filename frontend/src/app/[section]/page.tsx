@@ -234,9 +234,25 @@ export default function TechnicalSeoPage() {
 
   const getLatestSummaryForWebsite = useCallback(
     async (websiteId: string): Promise<Summary> => {
+      const configured = (
+        process.env.NEXT_PUBLIC_API_URL ?? ''
+      ).replace(/\/+$/, '');
+
+      if (
+        !configured &&
+        typeof window !== 'undefined'
+      ) {
+        const host = window.location.hostname;
+
+        if (host !== 'localhost' && host !== '127.0.0.1') {
+          throw new Error(
+            'RENKOO backend URL is not configured (NEXT_PUBLIC_API_URL).',
+          );
+        }
+      }
+
       const base =
-        process.env.NEXT_PUBLIC_API_URL ||
-        'http://localhost:4000/api';
+        configured || 'http://localhost:4000/api';
       const response = await fetch(
         `${base}/crawl/latest/${encodeURIComponent(
           websiteId,

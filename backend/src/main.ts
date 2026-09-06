@@ -1,5 +1,8 @@
 import 'reflect-metadata';
-import { ValidationPipe } from '@nestjs/common';
+import {
+  ForbiddenException,
+  ValidationPipe,
+} from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { randomUUID } from 'crypto';
 import {
@@ -15,6 +18,21 @@ import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
 async function bootstrap() {
+  /*
+   * Fail fast in production: without a signing secret
+   * every authenticated request would fail at the guard
+   * anyway — crashing at boot turns a silent outage into
+   * an explicit deployment error.
+   */
+  if (
+    process.env.NODE_ENV === 'production' &&
+    !process.env.JWT_ACCESS_SECRET
+  ) {
+    throw new Error(
+      'JWT_ACCESS_SECRET must be set in production.',
+    );
+  }
+
   const app = await NestFactory.create(
     AppModule,
     { bodyParser: false },
@@ -91,7 +109,16 @@ async function bootstrap() {
         return;
       }
 
-      callback(new Error('CORS origin not allowed'));
+      /*
+       * Fail closed with 403 (not 500): a rejected origin
+       * is a client/configuration problem, never a server
+       * crash. The global filter preserves 4xx messages.
+       */
+      callback(
+        new ForbiddenException(
+          'CORS origin not allowed',
+        ),
+      );
     },
     credentials: true,
   });

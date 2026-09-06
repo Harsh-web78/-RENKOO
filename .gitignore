@@ -7,6 +7,8 @@ dist/
 *.tsbuildinfo
 coverage/
 
-# Local database backups
+# Local database backups (dumps/exports at any depth stay ignored)
 *.sql
 *.dump
+# ...but Prisma migration SQL is source code and must be committable
+!backend/prisma/migrations/*/migration.sql

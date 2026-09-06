@@ -1,4 +1,32 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+/*
+ * Production safety: the localhost fallback is dev-only.
+ * In a real browser on a non-local host, a missing
+ * NEXT_PUBLIC_API_URL throws an explicit configuration
+ * error instead of silently calling a backend that can
+ * never exist there. SSR/prerender (no window) keeps the
+ * localhost default so builds never break.
+ */
+function resolveApiUrl(): string {
+  const configured = (
+    process.env.NEXT_PUBLIC_API_URL ?? ''
+  ).replace(/\/+$/, '');
+
+  if (configured) return configured;
+
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+
+    if (host !== 'localhost' && host !== '127.0.0.1') {
+      throw new Error(
+        'RENKOO backend URL is not configured (NEXT_PUBLIC_API_URL).',
+      );
+    }
+  }
+
+  return 'http://localhost:4000/api';
+}
+
+const API_URL = resolveApiUrl();
 
 /*
  * =========================================================
