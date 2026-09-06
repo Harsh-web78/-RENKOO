@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 /*
  * RENKOO billing page — Razorpay (primary) + Stripe (secondary/legacy).
@@ -488,7 +488,14 @@ export default function BillingPage() {
           : "Checkout failed.";
 
       if (message.startsWith("__DISMISSED__")) {
-        setNotice(message.slice("__DISMISSED__".length));
+        try {
+          await cancelRazorpaySubscription();
+          setNotice("Payment cancelled. You can choose a plan again anytime.");
+          await loadBilling();
+        } catch {
+          setNotice("Payment window closed. Refreshing billing status...");
+          await loadBilling();
+        }
       } else if (
         /not connected|not configured|BILLING_PROVIDER_NOT_CONFIGURED/i.test(
           message,
