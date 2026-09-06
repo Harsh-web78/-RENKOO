@@ -178,46 +178,58 @@ export default function InvitePage() {
           onSubmit={handleSubmit}
           className="space-y-4"
         >
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Full name"
-            autoComplete="name"
-            disabled={loading}
-            className="w-full border rounded-lg px-3 py-3 outline-none disabled:bg-slate-50"
-          />
+          <label className="block text-xs font-semibold text-slate-600">
+            Full name
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Full name"
+              autoComplete="name"
+              disabled={loading}
+              className="mt-1 w-full border rounded-lg px-3 py-3 text-sm font-normal outline-none disabled:bg-slate-50"
+            />
+          </label>
 
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Email address"
-            autoComplete="email"
-            disabled={loading}
-            className="w-full border rounded-lg px-3 py-3 outline-none disabled:bg-slate-50"
-          />
+          <label className="block text-xs font-semibold text-slate-600">
+            Email address
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email address"
+              autoComplete="email"
+              disabled={loading}
+              className="mt-1 w-full border rounded-lg px-3 py-3 text-sm font-normal outline-none disabled:bg-slate-50"
+            />
+          </label>
 
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password — minimum 8 characters"
-            autoComplete="new-password"
-            disabled={loading}
-            className="w-full border rounded-lg px-3 py-3 outline-none disabled:bg-slate-50"
-          />
+          <label className="block text-xs font-semibold text-slate-600">
+            Password
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password — minimum 8 characters"
+              autoComplete="new-password"
+              disabled={loading}
+              className="mt-1 w-full border rounded-lg px-3 py-3 text-sm font-normal outline-none disabled:bg-slate-50"
+            />
+          </label>
 
-          <input
-            type="password"
-            value={confirmPassword}
-            onChange={(e) =>
-              setConfirmPassword(e.target.value)
-            }
-            placeholder="Confirm password"
-            autoComplete="new-password"
-            disabled={loading}
-            className="w-full border rounded-lg px-3 py-3 outline-none disabled:bg-slate-50"
-          />
+          <label className="block text-xs font-semibold text-slate-600">
+            Confirm password
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) =>
+                setConfirmPassword(e.target.value)
+              }
+              placeholder="Confirm password"
+              autoComplete="new-password"
+              disabled={loading}
+              className="mt-1 w-full border rounded-lg px-3 py-3 text-sm font-normal outline-none disabled:bg-slate-50"
+            />
+          </label>
 
           <button
             type="submit"

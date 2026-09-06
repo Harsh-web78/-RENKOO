@@ -1,23 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import {
-  AlertTriangle,
-  BarChart3,
-  CheckCircle2,
-  ChevronDown,
-  ExternalLink,
-  Globe2,
-  Menu,
-  RefreshCw,
-  Search,
-  Target,
-  TrendingUp,
-  X,
-} from 'lucide-react';
+/*
+ * RENKOO V2 — Search Visibility Command Center (Phase 5A).
+ * Real Google Search Console data only: connection status,
+ * property selection, performance signals, query/page
+ * intelligence, and GSC opportunities with analysis.
+ * Unavailable states stay explicit; nothing is fabricated.
+ */
 
-import Sidebar from '../../components/Sidebar';
-
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   getGoogleAnalytics,
   getGoogleConnectionStatus,
@@ -27,1995 +19,1099 @@ import {
   getGoogleQueries,
   selectGoogleProperty,
   analyzeGoogleOpportunity,
-  GoogleAnalytics,
-  GoogleConnectionStatus,
-  GoogleOpportunityAnalysis,
-  GoogleOpportunityRow,
-  GooglePageRow,
-  GoogleProperty,
-  GoogleQueryRow,
-} from '../../lib/api';
+  type GoogleQueryRow,
+  type GooglePageRow,
+  type GoogleOpportunityRow,
+  type GoogleProperty,
+} from '@/lib/api';
+import AppShell from '@/components/AppShell';
+import {
+  PageHeader,
+  Panel,
+  Metric,
+  DataTable,
+  FilterBar,
+  Drawer,
+  DrawerSection,
+  DrawerMeta,
+  PrimaryButton,
+  SecondaryButton,
+  DataSourceBadge,
+  FreshnessBadge,
+  PriorityChip,
+  ScoreBadge,
+  LoadingBlock,
+  ErrorState,
+  EmptyState,
+  NotConnectedState,
+  InsightBlock,
+  ChangeIndicator,
+  RecommendationCallout,
+  NextAction,
+  type DataTableColumn,
+} from '@/components/ui';
+import {
+  TrendChart,
+  BarList,
+  type TrendPoint,
+} from '@/components/charts';
+import { usePersona } from '@/lib/persona';
 
-type Tab =
-  | 'overview'
-  | 'queries'
-  | 'pages'
-  | 'opportunities';
+type Tab = 'queries' | 'pages' | 'opportunities';
 
-function getDateRange() {
+const PERIODS = [
+  { value: '7', label: 'Last 7 days' },
+  { value: '28', label: 'Last 28 days' },
+  { value: '90', label: 'Last 90 days' },
+];
+
+function rangeFor(days: number) {
   const end = new Date();
-
   const start = new Date();
-  // Inclusive 28-day window: today + previous 27 days.
-  start.setDate(end.getDate() - 27);
+  start.setDate(end.getDate() - (days - 1));
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  return { startDate: fmt(start), endDate: fmt(end) };
+}
 
-  const format = (date: Date) =>
-    date.toISOString().slice(0, 10);
+function num(value: unknown, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
 
-  return {
-    startDate: format(start),
-    endDate: format(end),
-  };
+function fmtInt(value: unknown) {
+  if (value === null || value === undefined) return '—';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '—';
+  return n.toLocaleString('en-US');
+}
+
+function fmtCtr(value: unknown) {
+  const n = num(value);
+  return `${(n <= 1 && n > 0 ? n * 100 : n).toFixed(1)}%`;
+}
+
+function fmtPos(value: unknown) {
+  const n = num(value);
+  if (!Number.isFinite(n) || n === 0) return '—';
+  return n.toFixed(1);
 }
 
 export default function SearchVisibilityPage() {
-  const [mobileOpen, setMobileOpen] =
-    useState(false);
+  const [navOpen, setNavOpen] = useState(false);
+  const { effectivePersona } = usePersona();
+  const [period, setPeriod] = useState('28');
+  const [tab, setTab] = useState<Tab>('queries');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [connected, setConnected] = useState<boolean | null>(null);
+  const [properties, setProperties] = useState<GoogleProperty[]>([]);
+  const [property, setProperty] = useState('');
+  const [selecting, setSelecting] = useState(false);
+  const [analytics, setAnalytics] = useState<any>(null);
+  const [queries, setQueries] = useState<GoogleQueryRow[]>([]);
+  const [pages, setPages] = useState<GooglePageRow[]>([]);
+  const [opportunities, setOpportunities] = useState<
+    GoogleOpportunityRow[]
+  >([]);
+  const [drawerQuery, setDrawerQuery] = useState<any>(null);
+  const [analysis, setAnalysis] = useState<any>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState('');
+  const [oppAnalysis, setOppAnalysis] = useState<
+    Record<string, { loading: boolean; data: any; error: string }>
+  >({});
 
-  const [loading, setLoading] =
-    useState(true);
+  const { startDate, endDate } = useMemo(
+    () => rangeFor(num(period, 28)),
+    [period],
+  );
 
-  const [refreshing, setRefreshing] =
-    useState(false);
-
-  const [error, setError] =
-    useState('');
-
-  const [connection, setConnection] =
-    useState<GoogleConnectionStatus | null>(null);
-
-  const [properties, setProperties] =
-    useState<GoogleProperty[]>([]);
-
-  const [selectedProperty, setSelectedProperty] =
-    useState('');
-
-  const [showPropertyMenu, setShowPropertyMenu] =
-    useState(false);
-
-  const [analytics, setAnalytics] =
-    useState<GoogleAnalytics | null>(null);
-
-  const [queries, setQueries] =
-    useState<GoogleQueryRow[]>([]);
-
-  const [pages, setPages] =
-    useState<GooglePageRow[]>([]);
-
-  const [opportunities, setOpportunities] =
-    useState<GoogleOpportunityRow[]>([]);
-
-  const [activeTab, setActiveTab] =
-    useState<Tab>('overview');
-
-  /*
-   * =========================================================
-   * OPPORTUNITY ANALYSIS
-   * =========================================================
-   */
-
-  const [analysis, setAnalysis] =
-    useState<GoogleOpportunityAnalysis | null>(
-      null,
-    );
-
-  const [analysisLoading, setAnalysisLoading] =
-    useState(false);
-
-  const [analysisError, setAnalysisError] =
-    useState('');
-
-  const [analysisQuery, setAnalysisQuery] =
-    useState('');
-
-  const [showAnalysis, setShowAnalysis] =
-    useState(false);
-
-  const { startDate, endDate } =
-    useMemo(() => getDateRange(), []);
-
-  /*
-   * =========================================================
-   * LOAD SEARCH VISIBILITY DATA
-   * =========================================================
-   */
-
-  async function loadData(
-    showRefresh = false,
-  ) {
+  const load = useCallback(async () => {
     try {
-      if (showRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-
       setError('');
-
-      const status =
-        await getGoogleConnectionStatus();
-
-      setConnection(status);
-
-      if (!status.connected) {
-        setProperties([]);
-        setAnalytics(null);
-        setQueries([]);
-        setPages([]);
-        setOpportunities([]);
+      const status = await getGoogleConnectionStatus();
+      const isConnected = Boolean(
+        (status as any)?.connected,
+      );
+      setConnected(isConnected);
+      if (!isConnected) {
+        setLoading(false);
         return;
       }
-
-      let property =
-        status.selectedProperty ?? '';
-
-      let availableProperties: GoogleProperty[] =
-        [];
-
-      try {
-        availableProperties =
-          await getGoogleProperties();
-
-        setProperties(
-          availableProperties,
-        );
-      } catch (propertyError) {
-        console.error(
-          'Unable to load properties',
-          propertyError,
-        );
-      }
-
-      if (
-        !property &&
-        availableProperties.length > 0
-      ) {
-        property =
-          availableProperties[0].siteUrl;
-
-        await selectGoogleProperty(
-          property,
-        );
-      }
-
-      setSelectedProperty(property);
-
-      if (!property) {
-        setAnalytics(null);
-        setQueries([]);
-        setPages([]);
-        setOpportunities([]);
+      const props = await getGoogleProperties();
+      const list = Array.isArray(props) ? props : [];
+      setProperties(list);
+      const selected =
+        (status as any)?.selectedProperty ||
+        (status as any)?.property ||
+        '';
+      const active =
+        selected &&
+        list.some(
+          (p: any) => (p.siteUrl || p.url) === selected,
+        )
+          ? selected
+          : (list[0] as any)?.siteUrl ||
+            (list[0] as any)?.url ||
+            '';
+      setProperty(active || '');
+      if (!active) {
+        setLoading(false);
         return;
       }
-
-      const [
-        analyticsData,
-        queriesData,
-        pagesData,
-        opportunitiesData,
-      ] = await Promise.all([
-        getGoogleAnalytics(
-          startDate,
-          endDate,
-        ),
-        getGoogleQueries(
-          startDate,
-          endDate,
-        ),
-        getGooglePages(
-          startDate,
-          endDate,
-        ),
-        getGoogleOpportunities(
-          startDate,
-          endDate,
+      const [a, q, pg, o] = await Promise.all([
+        getGoogleAnalytics(startDate, endDate),
+        getGoogleQueries(startDate, endDate),
+        getGooglePages(startDate, endDate),
+        getGoogleOpportunities(startDate, endDate).catch(
+          () => null,
         ),
       ]);
-
-      setAnalytics(
-        analyticsData,
-      );
-
+      setAnalytics(a);
       setQueries(
-        queriesData.rows ?? [],
+        Array.isArray((q as any)?.rows)
+          ? (q as any).rows
+          : [],
       );
-
       setPages(
-        pagesData.rows ?? [],
+        Array.isArray((pg as any)?.rows)
+          ? (pg as any).rows
+          : [],
       );
-
       setOpportunities(
-        opportunitiesData.opportunities ??
-          [],
+        Array.isArray((o as any)?.opportunities)
+          ? (o as any).opportunities
+          : [],
       );
-    } catch (err) {
-      console.error(err);
-
+    } catch (err: any) {
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to load Search Visibility data.',
+        err?.message || 'Failed to load Search Console data.',
       );
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }
+  }, [startDate, endDate]);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    setLoading(true);
+    void load();
+  }, [load]);
 
-  /*
-   * =========================================================
-   * CHANGE GOOGLE PROPERTY
-   * =========================================================
-   */
+  async function handleRefresh() {
+    setRefreshing(true);
+    await load();
+  }
 
-  async function changeProperty(
-    property: string,
-  ) {
+  async function handleSelectProperty(siteUrl: string) {
+    if (!siteUrl || selecting) return;
     try {
-      setShowPropertyMenu(false);
-      setError('');
-      setRefreshing(true);
-
-      await selectGoogleProperty(
-        property,
-      );
-
-      setSelectedProperty(property);
-
-      const [
-        analyticsData,
-        queriesData,
-        pagesData,
-        opportunitiesData,
-      ] = await Promise.all([
-        getGoogleAnalytics(
-          startDate,
-          endDate,
-        ),
-        getGoogleQueries(
-          startDate,
-          endDate,
-        ),
-        getGooglePages(
-          startDate,
-          endDate,
-        ),
-        getGoogleOpportunities(
-          startDate,
-          endDate,
-        ),
-      ]);
-
-      setAnalytics(
-        analyticsData,
-      );
-
-      setQueries(
-        queriesData.rows ?? [],
-      );
-
-      setPages(
-        pagesData.rows ?? [],
-      );
-
-      setOpportunities(
-        opportunitiesData.opportunities ??
-          [],
-      );
-
-      setConnection(
-        (current) =>
-          current
-            ? {
-                ...current,
-                selectedProperty:
-                  property,
-              }
-            : current,
-      );
-    } catch (err) {
-      console.error(err);
-
+      setSelecting(true);
+      await selectGoogleProperty(siteUrl);
+      setProperty(siteUrl);
+      setLoading(true);
+      await load();
+    } catch (err: any) {
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to change Search Console property.',
+        err?.message || 'Failed to select property.',
       );
     } finally {
-      setRefreshing(false);
+      setSelecting(false);
     }
   }
 
-  /*
-   * =========================================================
-   * ANALYZE OPPORTUNITY
-   * =========================================================
-   */
-
-  async function handleAnalyzeOpportunity(
-    opportunity: GoogleOpportunityRow,
-  ) {
-    if (analysisLoading) {
-      return;
-    }
-
+  async function openQueryDrawer(row: any) {
+    setDrawerQuery(row);
+    setAnalysis(null);
+    setAnalysisError('');
+    setAnalysisLoading(true);
     try {
-      setAnalysisLoading(true);
-      setAnalysisError('');
-      setAnalysis(null);
-      setAnalysisQuery(
-        opportunity.query,
+      const result = await analyzeGoogleOpportunity(
+        startDate,
+        endDate,
+        String(row.query || row.keys?.[0] || ''),
+        row.page ? String(row.page) : undefined,
       );
-      setShowAnalysis(true);
-
-      const result =
-        await analyzeGoogleOpportunity(
-          startDate,
-          endDate,
-          opportunity.query,
-          opportunity.page ?? undefined,
-        );
-
       setAnalysis(result);
-    } catch (err) {
-      console.error(err);
-
+    } catch (err: any) {
       setAnalysisError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to analyze this opportunity.',
+        err?.message || 'Analysis unavailable.',
       );
     } finally {
       setAnalysisLoading(false);
     }
   }
 
-  function closeAnalysis() {
-    if (analysisLoading) {
+  async function toggleOppAnalysis(opp: any) {
+    const key =
+      String(opp.query || '') + '::' + String(opp.page || '');
+    const existing = oppAnalysis[key];
+    if (existing?.loading) return;
+    if (existing?.data) {
+      setOppAnalysis((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
       return;
     }
-
-    setShowAnalysis(false);
-    setAnalysis(null);
-    setAnalysisError('');
-    setAnalysisQuery('');
+    setOppAnalysis((prev) => ({
+      ...prev,
+      [key]: { loading: true, data: null, error: '' },
+    }));
+    try {
+      const result = await analyzeGoogleOpportunity(
+        startDate,
+        endDate,
+        String(opp.query || ''),
+        opp.page ? String(opp.page) : undefined,
+      );
+      setOppAnalysis((prev) => ({
+        ...prev,
+        [key]: { loading: false, data: result, error: '' },
+      }));
+    } catch (err: any) {
+      setOppAnalysis((prev) => ({
+        ...prev,
+        [key]: {
+          loading: false,
+          data: null,
+          error: err?.message || 'Analysis unavailable.',
+        },
+      }));
+    }
   }
 
-  /*
-   * =========================================================
-   * METRICS
-   * =========================================================
-   */
+  const trendPoints: TrendPoint[] = useMemo(() => {
+    const rows = Array.isArray((analytics as any)?.rows)
+      ? (analytics as any).rows
+      : [];
+    return rows
+      .map((r: any) => ({
+        x: String(
+          r.date || r.day || r.keys?.[0] || r.key || '',
+        ),
+        y: num(
+          r.clicks ?? r.value ?? 0,
+        ),
+        previous:
+          r.previousClicks !== undefined &&
+          r.previousClicks !== null
+            ? num(r.previousClicks)
+            : undefined,
+      }))
+      .filter((p: TrendPoint) => p.x);
+  }, [analytics]);
 
-  const totalClicks =
-    analytics?.clicks ?? 0;
+  const filteredQueries = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return queries;
+    return queries.filter((row: any) =>
+      String(row.query || row.keys?.[0] || '')
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [queries, search]);
 
-  const totalImpressions =
-    analytics?.impressions ?? 0;
+  const filteredPages = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return pages;
+    return pages.filter((row: any) =>
+      String(row.page || row.keys?.[0] || row.url || '')
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [pages, search]);
 
-  const ctr =
-    analytics?.ctr ?? 0;
+  const rising = useMemo(
+    () =>
+      (queries as any[])
+        .filter(
+          (r) =>
+            r.clicksChange !== undefined &&
+            num(r.clicksChange) > 0,
+        )
+        .sort(
+          (a, b) =>
+            num(b.clicksChange) - num(a.clicksChange),
+        )
+        .slice(0, 5),
+    [queries],
+  );
+  const declining = useMemo(
+    () =>
+      (queries as any[])
+        .filter(
+          (r) =>
+            r.clicksChange !== undefined &&
+            num(r.clicksChange) < 0,
+        )
+        .sort(
+          (a, b) =>
+            num(a.clicksChange) - num(b.clicksChange),
+        )
+        .slice(0, 5),
+    [queries],
+  );
+  const lowCtr = useMemo(
+    () =>
+      (queries as any[])
+        .filter(
+          (r) =>
+            num(r.impressions) >= 500 &&
+            num(r.ctr) < 0.03 &&
+            num(r.position) <= 20,
+        )
+        .sort(
+          (a, b) =>
+            num(b.impressions) - num(a.impressions),
+        )
+        .slice(0, 5),
+    [queries],
+  );
 
-  const averagePosition =
-    analytics?.averagePosition ?? 0;
+  const queryColumns: DataTableColumn<any>[] = [
+    {
+      key: 'query',
+      label: 'Query',
+      priority: 'high',
+      sortable: true,
+      sortValue: (r) => String(r.query || r.keys?.[0] || ''),
+      render: (r) => (
+        <span className="font-semibold text-rk-ink">
+          {String(r.query || r.keys?.[0] || '—')}
+        </span>
+      ),
+    },
+    {
+      key: 'clicks',
+      label: 'Clicks',
+      align: 'right',
+      priority: 'high',
+      sortable: true,
+      sortValue: (r) => num(r.clicks),
+      render: (r) => (
+        <span className="rk-number">{fmtInt(r.clicks)}</span>
+      ),
+    },
+    {
+      key: 'impressions',
+      label: 'Impressions',
+      align: 'right',
+      priority: 'medium',
+      sortable: true,
+      sortValue: (r) => num(r.impressions),
+      render: (r) => (
+        <span className="rk-number">
+          {fmtInt(r.impressions)}
+        </span>
+      ),
+    },
+    {
+      key: 'ctr',
+      label: 'CTR',
+      align: 'right',
+      priority: 'medium',
+      sortable: true,
+      sortValue: (r) => num(r.ctr),
+      render: (r) => (
+        <span className="rk-number">{fmtCtr(r.ctr)}</span>
+      ),
+    },
+    {
+      key: 'position',
+      label: 'Position',
+      align: 'right',
+      priority: 'high',
+      sortable: true,
+      sortValue: (r) => num(r.position),
+      render: (r) => (
+        <span className="rk-number">
+          {fmtPos(r.position)}
+        </span>
+      ),
+    },
+    ...(queries.some(
+      (r: any) => r.clicksChange !== undefined,
+    )
+      ? [
+          {
+            key: 'change',
+            label: 'Change',
+            align: 'right' as const,
+            priority: 'low' as const,
+            sortable: true,
+            sortValue: (r: any) =>
+              num(r.clicksChange),
+            render: (r: any) => (
+              <ChangeIndicator
+                value={`${num(r.clicksChange) > 0 ? '+' : ''}${fmtInt(r.clicksChange)}`}
+                direction={
+                  num(r.clicksChange) > 0
+                    ? 'up'
+                    : num(r.clicksChange) < 0
+                      ? 'down'
+                      : 'flat'
+                }
+              />
+            ),
+          },
+        ]
+      : []),
+  ];
 
-  /*
-   * =========================================================
-   * SORTED DATA
-   * =========================================================
-   */
+  const pageColumns: DataTableColumn<any>[] = [
+    {
+      key: 'page',
+      label: 'Page',
+      priority: 'high',
+      render: (r) => (
+        <span
+          className="block max-w-[320px] truncate font-medium text-rk-ink"
+          title={String(
+            r.page || r.keys?.[0] || r.url || '—',
+          )}
+        >
+          {String(
+            r.page || r.keys?.[0] || r.url || '—',
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'clicks',
+      label: 'Clicks',
+      align: 'right',
+      priority: 'high',
+      sortable: true,
+      sortValue: (r) => num(r.clicks),
+      render: (r) => (
+        <span className="rk-number">{fmtInt(r.clicks)}</span>
+      ),
+    },
+    {
+      key: 'impressions',
+      label: 'Impressions',
+      align: 'right',
+      priority: 'medium',
+      sortable: true,
+      sortValue: (r) => num(r.impressions),
+      render: (r) => (
+        <span className="rk-number">
+          {fmtInt(r.impressions)}
+        </span>
+      ),
+    },
+    {
+      key: 'ctr',
+      label: 'CTR',
+      align: 'right',
+      priority: 'medium',
+      sortable: true,
+      sortValue: (r) => num(r.ctr),
+      render: (r) => (
+        <span className="rk-number">{fmtCtr(r.ctr)}</span>
+      ),
+    },
+    {
+      key: 'position',
+      label: 'Position',
+      align: 'right',
+      priority: 'high',
+      sortable: true,
+      sortValue: (r) => num(r.position),
+      render: (r) => (
+        <span className="rk-number">
+          {fmtPos(r.position)}
+        </span>
+      ),
+    },
+  ];
 
-  const topQueries =
-    [...queries]
-      .sort(
-        (a, b) =>
-          b.clicks - a.clicks,
-      )
-      .slice(0, 10);
-
-  const topPages =
-    [...pages]
-      .sort(
-        (a, b) =>
-          b.clicks - a.clicks,
-      )
-      .slice(0, 10);
-
-  const topOpportunities =
-    [...opportunities]
-      .sort(
-        (a, b) =>
-          b.score - a.score,
-      )
-      .slice(0, 10);
+  const showSeoDetail =
+    effectivePersona === 'SEO_SPECIALIST' ||
+    effectivePersona === 'ADMIN';
 
   return (
-    <div className="min-h-screen bg-[#f7f8fb] text-[#111827]">
-      <Sidebar
-        mobileOpen={mobileOpen}
-        onClose={() =>
-          setMobileOpen(false)
+    <AppShell
+      mobileOpen={navOpen}
+      onClose={() => setNavOpen(false)}
+      onMenu={() => setNavOpen(true)}
+    >
+      <PageHeader
+        eyebrow="Visibility"
+        title="Search Visibility"
+        description="Measured Google Search Console performance — what is happening, what changed, and what to do next."
+        actions={
+          <div className="flex gap-2">
+            <SecondaryButton
+              onClick={() => void handleRefresh()}
+              disabled={refreshing || loading}
+            >
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </SecondaryButton>
+            <Link href="/opportunities">
+              <PrimaryButton type="button">
+                Opportunity Engine
+              </PrimaryButton>
+            </Link>
+          </div>
+        }
+        meta={
+          <div className="flex flex-wrap items-center gap-2">
+            <DataSourceBadge
+              source="Google Search Console"
+              connected={connected === true}
+            />
+            {!loading && (
+              <FreshnessBadge
+                label={`${startDate} → ${endDate}`}
+              />
+            )}
+          </div>
         }
       />
 
-      <main className="lg:pl-[270px]">
-        <header className="flex h-[72px] items-center border-b border-[#e5e7eb] bg-white px-5 lg:px-8">
-          <button
-            className="mr-4 lg:hidden"
-            onClick={() =>
-              setMobileOpen(true)
-            }
-            aria-label="Open menu"
+      {loading ? (
+        <div className="mt-6">
+          <LoadingBlock title="Loading Search Console data" />
+        </div>
+      ) : error && connected !== true ? (
+        <div className="mt-6">
+          <ErrorState
+            title="Search data failed to load"
+            description={error}
+            onRetry={() => {
+              setLoading(true);
+              void load();
+            }}
+          />
+        </div>
+      ) : connected === false ? (
+        <div className="mt-6">
+          <NotConnectedState
+            title="Google Search Console is not connected"
+            description="Connect Search Console in Integrations to see measured clicks, impressions, queries and opportunities here. RENKOO will not claim search data until the connection exists."
+            connectLabel="Open integrations"
+            connectHref="/integrations"
+          />
+        </div>
+      ) : properties.length === 0 ? (
+        <div className="mt-6">
+          <EmptyState
+            title="No Search Console property found"
+            description="No verified property is available on the connected Google account. Verify a property in Search Console, then refresh."
+            actionLabel="Refresh"
+            onAction={() => {
+              setLoading(true);
+              void load();
+            }}
+          />
+        </div>
+      ) : (
+        <div className="mt-6 space-y-6">
+          <Panel
+            eyebrow="Context"
+            title="Property & period"
+            description="All signals below are measured from the selected property and period."
           >
-            <Menu />
-          </button>
-
-          <div>
-            <div className="text-sm font-semibold">
-              RENKO / Search Visibility
-            </div>
-
-            <div className="text-xs text-[#9ca3af]">
-              Google Search Console performance intelligence
-            </div>
-          </div>
-
-          <div className="ml-auto">
-            <button
-              onClick={() =>
-                loadData(true)
-              }
-              disabled={
-                loading ||
-                refreshing
-              }
-              className="flex items-center gap-2 rounded-none border border-[#e5e7eb] bg-white px-4 py-2 text-xs font-bold  transition hover:bg-[#f7f8fb] disabled:opacity-50"
-            >
-              <RefreshCw
-                size={15}
-                className={
-                  refreshing
-                    ? 'animate-spin'
-                    : ''
-                }
-              />
-
-              Refresh
-            </button>
-          </div>
-        </header>
-
-        <section className="mx-auto max-w-[1440px] p-5 lg:p-8">
-
-          {/* =================================================
-              HEADER
-          ================================================= */}
-
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <div className="flex items-center gap-2 text-[#111827]">
-                <Search size={20} />
-
-                <span className="text-xs font-semibold uppercase tracking-[0.14em]">
-                  Search Visibility
-                </span>
-              </div>
-
-              <h1 className="mt-2 text-3xl font-bold">
-                Search Performance
-              </h1>
-
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6b7280]">
-                Understand how your website appears
-                in Google Search, which queries drive
-                traffic and where the biggest SEO
-                opportunities exist.
-              </p>
-            </div>
-
-            {/* PROPERTY */}
-
-            <div className="relative w-full xl:w-[420px]">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#9ca3af]">
-                Search Console Property
-              </div>
-
-              {loading ? (
-                <div className="flex h-[58px] items-center gap-3 rounded-none border border-[#e5e7eb] bg-white px-4">
-                  <RefreshCw
-                    size={18}
-                    className="animate-spin text-[#111827]"
-                  />
-
-                  <span className="text-sm font-medium">
-                    Loading property...
+            <FilterBar
+              selects={[
+                {
+                  key: 'property',
+                  label: 'Property',
+                  value: property,
+                  options: properties.map((p: any) => ({
+                    value: String(p.siteUrl || p.url),
+                    label: String(p.siteUrl || p.url),
+                  })),
+                  onChange: (v) =>
+                    void handleSelectProperty(v),
+                },
+                {
+                  key: 'period',
+                  label: 'Period',
+                  value: period,
+                  options: PERIODS,
+                  onChange: setPeriod,
+                },
+                {
+                  key: 'view',
+                  label: 'View',
+                  value: tab,
+                  options: [
+                    { value: 'queries', label: 'Queries' },
+                    { value: 'pages', label: 'Pages' },
+                    {
+                      value: 'opportunities',
+                      label: 'Opportunities',
+                    },
+                  ],
+                  onChange: (v) => setTab(v as Tab),
+                },
+              ]}
+              searchValue={search}
+              searchPlaceholder="Search queries or pages…"
+              onSearchChange={setSearch}
+              meta={
+                selecting ? (
+                  <span className="text-xs text-rk-muted">
+                    Switching property…
                   </span>
-                </div>
-              ) : !connection?.connected ? (
-                <div className="rounded-none border border-[#d1d5db] bg-[#f3f4f6] p-4">
-                  <div className="text-sm font-bold text-[#374151]">
-                    Google Search Console not connected
-                  </div>
+                ) : undefined
+              }
+            />
+          </Panel>
 
-                  <div className="mt-1 text-xs text-[#4b5563]">
-                    Connect Google Search Console from
-                    Integrations before viewing search
-                    visibility data.
-                  </div>
-                </div>
-              ) : properties.length === 0 ? (
-                <div className="rounded-none border border-[#e5e7eb] bg-white p-4 text-sm text-[#6b7280]">
-                  No Search Console properties available.
+          {error ? (
+            <ErrorState
+              title="Partial load failure"
+              description={error}
+              onRetry={() => {
+                setLoading(true);
+                void load();
+              }}
+            />
+          ) : null}
+
+          <section aria-label="Key signals">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Metric
+                label="Clicks"
+                value={
+                  analytics == null
+                    ? '—'
+                    : fmtInt(
+                        (analytics as any)?.clicks,
+                      )
+                }
+                detail={`Measured ${period}-day total`}
+              />
+              <Metric
+                label="Impressions"
+                value={
+                  analytics == null
+                    ? '—'
+                    : fmtInt(
+                        (analytics as any)?.impressions,
+                      )
+                }
+                detail="Search exposure"
+              />
+              <Metric
+                label="CTR"
+                value={
+                  analytics == null
+                    ? '—'
+                    : fmtCtr((analytics as any)?.ctr)
+                }
+                detail="Clicks ÷ impressions"
+              />
+              <Metric
+                label="Avg. position"
+                value={
+                  analytics == null
+                    ? '—'
+                    : fmtPos(
+                        (analytics as any)
+                          ?.averagePosition,
+                      )
+                }
+                detail="Lower is better"
+              />
+            </div>
+          </section>
+
+          <Panel
+            eyebrow="Primary visual"
+            title="Search performance trend"
+            description="Measured clicks across the selected period."
+          >
+            <TrendChart
+              state={
+                trendPoints.length > 0 ? 'ready' : 'empty'
+              }
+              points={trendPoints}
+              summary={`Daily measured clicks from ${startDate} to ${endDate}.`}
+              formatValue={(v) => fmtInt(v)}
+              emptyTitle="No daily trend available"
+              emptyDescription="The performance summary has totals but no daily rows for this period. Query and page tables below use the same measured data."
+            />
+          </Panel>
+
+          {(rising.length > 0 ||
+            declining.length > 0 ||
+            lowCtr.length > 0) && (
+            <section
+              aria-label="What changed"
+              className="grid gap-3 lg:grid-cols-3"
+            >
+              {rising.length > 0 && (
+                <InsightBlock
+                  eyebrow="What changed"
+                  title="Rising queries"
+                >
+                  <ul className="mt-2 space-y-1.5">
+                    {rising.map((r: any, i: number) => (
+                      <li
+                        key={i}
+                        className="flex items-center justify-between gap-2 text-sm"
+                      >
+                        <span className="truncate font-medium text-rk-ink">
+                          {String(
+                            r.query || r.keys?.[0] || '—',
+                          )}
+                        </span>
+                        <ChangeIndicator
+                          value={`+${fmtInt(r.clicksChange)}`}
+                          direction="up"
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </InsightBlock>
+              )}
+              {declining.length > 0 && (
+                <InsightBlock
+                  eyebrow="What changed"
+                  title="Declining queries"
+                >
+                  <ul className="mt-2 space-y-1.5">
+                    {declining.map((r: any, i: number) => (
+                      <li
+                        key={i}
+                        className="flex items-center justify-between gap-2 text-sm"
+                      >
+                        <span className="truncate font-medium text-rk-ink">
+                          {String(
+                            r.query || r.keys?.[0] || '—',
+                          )}
+                        </span>
+                        <ChangeIndicator
+                          value={fmtInt(r.clicksChange)}
+                          direction="down"
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </InsightBlock>
+              )}
+              {lowCtr.length > 0 && (
+                <InsightBlock
+                  eyebrow="What matters"
+                  title="High exposure, low CTR"
+                >
+                  <ul className="mt-2 space-y-1.5">
+                    {lowCtr.map((r: any, i: number) => (
+                      <li
+                        key={i}
+                        className="flex items-center justify-between gap-2 text-sm"
+                      >
+                        <span className="truncate font-medium text-rk-ink">
+                          {String(
+                            r.query || r.keys?.[0] || '—',
+                          )}
+                        </span>
+                        <span className="rk-number text-xs text-rk-secondary">
+                          {fmtInt(r.impressions)} impr ·{' '}
+                          {fmtCtr(r.ctr)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </InsightBlock>
+              )}
+            </section>
+          )}
+
+          {tab === 'queries' && (
+            <Panel
+              eyebrow="Query intelligence"
+              title="Queries"
+              description="Open a query for measured evidence and recommended next step."
+            >
+              <DataTable
+                caption="Search queries with measured performance"
+                columns={queryColumns}
+                rows={filteredQueries}
+                keyOf={(r: any, i: number) =>
+                  String(r.query || r.keys?.[0] || i)
+                }
+                onRowClick={(r) => void openQueryDrawer(r)}
+                emptyTitle="No queries in this period"
+                emptyDescription="No measured queries match the current filters."
+                pageSize={15}
+              />
+            </Panel>
+          )}
+
+          {tab === 'pages' && (
+            <Panel
+              eyebrow="Page intelligence"
+              title="Pages"
+              description="Which measured pages earn the exposure."
+            >
+              <DataTable
+                caption="Pages with measured search performance"
+                columns={pageColumns}
+                rows={filteredPages}
+                keyOf={(r: any, i: number) =>
+                  String(
+                    r.page || r.keys?.[0] || r.url || i,
+                  )
+                }
+                emptyTitle="No pages in this period"
+                emptyDescription="No measured pages match the current filters."
+                pageSize={15}
+              />
+            </Panel>
+          )}
+
+          {tab === 'opportunities' && (
+            <Panel
+              eyebrow="Opportunities"
+              title="Search opportunities"
+              description="Measured gaps worth acting on. Tracked execution lives in the Opportunity Engine."
+              actions={
+                <Link href="/opportunities">
+                  <SecondaryButton type="button">
+                    View opportunity
+                  </SecondaryButton>
+                </Link>
+              }
+            >
+              {opportunities.length === 0 ? (
+                <EmptyState
+                  title="No search opportunities detected"
+                  description="No measured opportunity patterns (e.g. high-impression low-CTR, position 5–20) were found in this period."
+                />
+              ) : (
+                <ul className="divide-y divide-rk-border">
+                  {opportunities.map((opp: any, i: number) => {
+                    const key =
+                      String(opp.query || '') +
+                      '::' +
+                      String(opp.page || '');
+                    const st = oppAnalysis[key];
+                    return (
+                      <li key={key + i} className="py-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-rk-ink">
+                            {String(
+                              opp.query || opp.title || '—',
+                            )}
+                          </span>
+                          {opp.priority ? (
+                            <PriorityChip
+                              priority={String(opp.priority)}
+                            />
+                          ) : null}
+                          {opp.score !== undefined &&
+                          opp.score !== null ? (
+                            <ScoreBadge
+                              score={num(opp.score)}
+                            />
+                          ) : null}
+                        </div>
+                        {opp.description ? (
+                          <p className="rk-body mt-1">
+                            {String(opp.description)}
+                          </p>
+                        ) : null}
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <SecondaryButton
+                            type="button"
+                            onClick={() =>
+                              void toggleOppAnalysis(opp)
+                            }
+                          >
+                            {st?.loading
+                              ? 'Analyzing…'
+                              : st?.data
+                                ? 'Hide evidence'
+                                : 'Open evidence'}
+                          </SecondaryButton>
+                          <Link href="/opportunities">
+                            <SecondaryButton type="button">
+                              View opportunity
+                            </SecondaryButton>
+                          </Link>
+                        </div>
+                        {st?.error ? (
+                          <p className="mt-2 text-sm text-rk-danger">
+                            {st.error}
+                          </p>
+                        ) : null}
+                        {st?.data ? (
+                          <div className="mt-3">
+                            <RecommendationCallout
+                              title="Recommended next step"
+                              text={String(
+                                (st.data as any)
+                                  ?.summary ||
+                                  (st.data as any)
+                                    ?.recommendations?.[0]
+                                    ?.text ||
+                                  (st.data as any)
+                                    ?.recommendations?.[0] ||
+                                  'Review the evidence and decide the next step.',
+                              )}
+                              actionLabel="Open Opportunity Engine"
+                              actionHref="/opportunities"
+                            />
+                          </div>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </Panel>
+          )}
+
+          <RecommendationCallout
+            title="What should I do?"
+            text={
+              declining.length > 0
+                ? `${declining.length} measured declining quer${declining.length === 1 ? 'y needs' : 'ies need'} attention first — open the query for evidence, then track the fix in the Opportunity Engine.`
+                : lowCtr.length > 0
+                  ? 'High-impression, low-CTR queries are the cheapest wins: titles and snippets first, measured by the next crawl period.'
+                  : 'Performance looks stable for this period. Keep monitoring; new movement will appear here once measured.'
+            }
+            actionLabel="Open Opportunity Engine"
+            actionHref="/opportunities"
+          />
+
+          <NextAction
+            label="See what changed after action"
+            detail="Re-crawl and reconnect: monitoring measures crawl-over-crawl movement."
+            href="/monitoring"
+          />
+        </div>
+      )}
+
+      <Drawer
+        open={drawerQuery !== null}
+        onClose={() => setDrawerQuery(null)}
+        eyebrow="Query evidence"
+        title={String(
+          drawerQuery?.query ||
+            drawerQuery?.keys?.[0] ||
+            'Query',
+        )}
+        description="Measured Search Console evidence and the recommended next step."
+        state={
+          analysisLoading
+            ? 'loading'
+            : analysisError && !analysis
+              ? 'error'
+              : 'ready'
+        }
+        errorDescription={analysisError}
+        onRetry={() =>
+          drawerQuery && void openQueryDrawer(drawerQuery)
+        }
+      >
+        {drawerQuery && (
+          <>
+            <DrawerMeta
+              items={[
+                {
+                  label: 'Clicks',
+                  value: fmtInt(drawerQuery.clicks),
+                },
+                {
+                  label: 'Impressions',
+                  value: fmtInt(drawerQuery.impressions),
+                },
+                {
+                  label: 'CTR',
+                  value: fmtCtr(drawerQuery.ctr),
+                },
+                {
+                  label: 'Position',
+                  value: fmtPos(drawerQuery.position),
+                },
+                ...(showSeoDetail && drawerQuery.page
+                  ? [
+                      {
+                        label: 'Page',
+                        value: String(drawerQuery.page),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+            <DrawerSection title="Why this matters">
+              <p className="rk-body">
+                {num(drawerQuery.impressions) >= 500 &&
+                num(drawerQuery.ctr) < 0.03
+                  ? 'High exposure with low CTR: the result is seen but not chosen. Titles, meta descriptions and intent match are the usual levers.'
+                  : num(drawerQuery.position) > 3 &&
+                      num(drawerQuery.position) <= 20
+                    ? 'Ranking on page one or two without top placement: small relevance and authority gains can move this measurably.'
+                    : 'Measured performance for this query in the selected period.'}
+              </p>
+            </DrawerSection>
+            <DrawerSection title="Recommended next step">
+              {analysisLoading ? (
+                <LoadingBlock title="Analyzing opportunity" />
+              ) : analysis ? (
+                <div className="space-y-2">
+                  {Array.isArray(
+                    (analysis as any)?.recommendations,
+                  ) &&
+                  (analysis as any).recommendations.length >
+                    0 ? (
+                    (analysis as any).recommendations
+                      .slice(0, 5)
+                      .map((rec: any, i: number) => (
+                        <p
+                          key={i}
+                          className="rk-body"
+                        >
+                          {String(
+                            rec?.text || rec || '',
+                          )}
+                        </p>
+                      ))
+                  ) : (
+                    <p className="rk-body">
+                      {String(
+                        (analysis as any)?.summary ||
+                          'No specific recommendation returned. Track this query in the Opportunity Engine.',
+                      )}
+                    </p>
+                  )}
+                  {(analysis as any)?.priority ? (
+                    <p className="mt-2">
+                      <PriorityChip
+                        priority={String(
+                          (analysis as any).priority,
+                        )}
+                      />
+                    </p>
+                  ) : null}
                 </div>
               ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setShowPropertyMenu(
-                        (value) => !value,
-                      )
-                    }
-                    className="flex w-full items-center gap-3 rounded-none border border-[#e5e7eb] bg-white p-3 text-left "
-                  >
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-none bg-[#f3f4f6] text-[#111827]">
-                      <Globe2 size={19} />
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-bold">
-                        {selectedProperty ||
-                          'Select property'}
-                      </div>
-
-                      <div className="text-xs text-[#6b7280]">
-                        Google Search Console
-                      </div>
-                    </div>
-
-                    <ChevronDown
-                      size={18}
-                      className={
-                        showPropertyMenu
-                          ? 'rotate-180 text-[#9ca3af]'
-                          : 'text-[#9ca3af]'
-                      }
-                    />
-                  </button>
-
-                  {showPropertyMenu && (
-                    <div className="absolute left-0 right-0 top-[82px] z-50 rounded-none border border-[#e5e7eb] bg-white p-2 ">
-                      {properties.map(
-                        (property) => (
-                          <button
-                            key={
-                              property.siteUrl
-                            }
-                            onClick={() =>
-                              changeProperty(
-                                property.siteUrl,
-                              )
-                            }
-                            className="flex w-full items-center gap-3 rounded-none p-3 text-left hover:bg-[#f7f8fb]"
-                          >
-                            <Globe2
-                              size={17}
-                              className="text-[#6b7280]"
-                            />
-
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-semibold">
-                                {
-                                  property.siteUrl
-                                }
-                              </div>
-
-                              <div className="text-xs text-[#6b7280]">
-                                {
-                                  property.permissionLevel
-                                }
-                              </div>
-                            </div>
-                          </button>
-                        ),
-                      )}
-                    </div>
-                  )}
-                </>
+                <p className="rk-body">
+                  {analysisError ||
+                    'Analysis is unavailable for this query right now.'}
+                </p>
               )}
-            </div>
-          </div>
-
-          {/* =================================================
-              ERROR
-          ================================================= */}
-
-          {error && (
-            <div className="mt-6 flex gap-3 rounded-none border border-[#d1d5db] bg-[#fafafa] p-4">
-              <AlertTriangle
-                size={19}
-                className="shrink-0 text-[#4b5563]"
+            </DrawerSection>
+            <DrawerSection title="Outcome">
+              <NextAction
+                label="Track in Opportunity Engine"
+                detail="Persisted opportunities carry evidence into execution."
+                href="/opportunities"
               />
-
-              <div>
-                <div className="text-sm font-bold text-[#374151]">
-                  Search Visibility error
-                </div>
-
-                <div className="mt-1 text-xs leading-5 text-[#4b5563]">
-                  {error}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* =================================================
-              LOADING
-          ================================================= */}
-
-          {loading && (
-            <div className="mt-6 rounded-none border border-[#e5e7eb] bg-white p-8 ">
-              <div className="flex items-center gap-3">
-                <RefreshCw
-                  size={20}
-                  className="animate-spin text-[#111827]"
-                />
-
-                <div>
-                  <div className="text-sm font-semibold tracking-[-0.01em]">
-                    Loading Search Visibility
-                  </div>
-
-                  <div className="mt-1 text-xs text-[#6b7280]">
-                    Fetching Google Search Console data...
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* =================================================
-              MAIN
-          ================================================= */}
-
-          {!loading &&
-            connection?.connected &&
-            selectedProperty && (
-              <>
-                {/* DATE */}
-
-                <div className="mt-6 flex items-center justify-between rounded-none border border-[#e5e7eb] bg-white px-5 py-4 ">
-                  <div>
-                    <div className="text-sm font-semibold tracking-[-0.01em]">
-                      Last 28 days
-                    </div>
-
-                    <div className="mt-1 text-xs text-[#6b7280]">
-                      {startDate} → {endDate}
-                    </div>
-                  </div>
-
-                  <div className="text-xs font-semibold text-[#9ca3af]">
-                    Google Search Console
-                  </div>
-                </div>
-
-                {/* METRICS */}
-
-                <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                  <Metric
-                    title="Clicks"
-                    value={formatNumber(
-                      totalClicks,
-                    )}
-                    icon={
-                      <TrendingUp
-                        size={18}
-                      />
-                    }
-                  />
-
-                  <Metric
-                    title="Impressions"
-                    value={formatNumber(
-                      totalImpressions,
-                    )}
-                    icon={
-                      <BarChart3
-                        size={18}
-                      />
-                    }
-                  />
-
-                  <Metric
-                    title="Average CTR"
-                    value={`${formatPercent(
-                      ctr,
-                    )}%`}
-                    icon={
-                      <Target
-                        size={18}
-                      />
-                    }
-                  />
-
-                  <Metric
-                    title="Average Position"
-                    value={averagePosition.toFixed(
-                      1,
-                    )}
-                    icon={
-                      <Search
-                        size={18}
-                      />
-                    }
-                  />
-                </div>
-
-                {/* =================================================
-                    TABS
-                ================================================= */}
-
-                <div className="mt-6 flex gap-2 overflow-x-auto rounded-none border border-[#e5e7eb] bg-white p-2 ">
-                  <TabButton
-                    active={
-                      activeTab ===
-                      'overview'
-                    }
-                    onClick={() =>
-                      setActiveTab(
-                        'overview',
-                      )
-                    }
-                  >
-                    Overview
-                  </TabButton>
-
-                  <TabButton
-                    active={
-                      activeTab ===
-                      'queries'
-                    }
-                    onClick={() =>
-                      setActiveTab(
-                        'queries',
-                      )
-                    }
-                  >
-                    Queries
-                  </TabButton>
-
-                  <TabButton
-                    active={
-                      activeTab ===
-                      'pages'
-                    }
-                    onClick={() =>
-                      setActiveTab(
-                        'pages',
-                      )
-                    }
-                  >
-                    Pages
-                  </TabButton>
-
-                  <TabButton
-                    active={
-                      activeTab ===
-                      'opportunities'
-                    }
-                    onClick={() =>
-                      setActiveTab(
-                        'opportunities',
-                      )
-                    }
-                  >
-                    Opportunities
-                  </TabButton>
-                </div>
-
-                {/* =================================================
-                    OVERVIEW
-                ================================================= */}
-
-                {activeTab ===
-                  'overview' && (
-                  <div className="mt-6 grid gap-6 xl:grid-cols-2">
-                    <DataCard
-                      title="Top Search Queries"
-                      subtitle="Queries generating the most clicks."
-                    >
-                      {topQueries.length ===
-                      0 ? (
-                        <Empty />
-                      ) : (
-                        <div className="space-y-2">
-                          {topQueries.map(
-                            (
-                              row,
-                              index,
-                            ) => (
-                              <QueryRow
-                                key={`${row.query}-${index}`}
-                                row={row}
-                              />
-                            ),
-                          )}
-                        </div>
-                      )}
-                    </DataCard>
-
-                    <DataCard
-                      title="Top Pages"
-                      subtitle="Pages receiving the most organic clicks."
-                    >
-                      {topPages.length ===
-                      0 ? (
-                        <Empty />
-                      ) : (
-                        <div className="space-y-2">
-                          {topPages.map(
-                            (
-                              row,
-                              index,
-                            ) => (
-                              <PageRow
-                                key={`${row.page}-${index}`}
-                                row={row}
-                              />
-                            ),
-                          )}
-                        </div>
-                      )}
-                    </DataCard>
-
-                    <DataCard
-                      title="SEO Opportunities"
-                      subtitle="Queries with potential for additional search traffic."
-                    >
-                      {topOpportunities.length ===
-                      0 ? (
-                        <Empty />
-                      ) : (
-                        <div className="space-y-2">
-                          {topOpportunities
-                            .slice(
-                              0,
-                              6,
-                            )
-                            .map(
-                              (
-                                opportunity,
-                                index,
-                              ) => (
-                                <OpportunityRow
-                                  key={`${opportunity.query}-${index}`}
-                                  row={
-                                    opportunity
-                                  }
-                                  onAnalyze={() =>
-                                    handleAnalyzeOpportunity(
-                                      opportunity,
-                                    )
-                                  }
-                                />
-                              ),
-                            )}
-                        </div>
-                      )}
-                    </DataCard>
-
-                    <DataCard
-                      title="Visibility Snapshot"
-                      subtitle="Current organic search performance."
-                    >
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <Snapshot
-                          label="Queries"
-                          value={queries.length}
-                        />
-
-                        <Snapshot
-                          label="Ranking pages"
-                          value={pages.length}
-                        />
-
-                        <Snapshot
-                          label="Opportunities"
-                          value={
-                            opportunities.length
-                          }
-                        />
-
-                        <Snapshot
-                          label="CTR"
-                          value={`${formatPercent(
-                            ctr,
-                          )}%`}
-                        />
-                      </div>
-                    </DataCard>
-                  </div>
-                )}
-
-                {/* =================================================
-                    QUERIES
-                ================================================= */}
-
-                {activeTab ===
-                  'queries' && (
-                  <DataCard
-                    className="mt-6"
-                    title="Search Queries"
-                    subtitle="Actual queries reported by Google Search Console."
-                  >
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th>Query</Th>
-                          <Th>Clicks</Th>
-                          <Th>Impressions</Th>
-                          <Th>CTR</Th>
-                          <Th>Position</Th>
-                        </tr>
-                      </thead>
-
-                      <tbody>
-                        {queries.map(
-                          (
-                            row,
-                            index,
-                          ) => (
-                            <tr
-                              key={`${row.query}-${index}`}
-                              className="border-b border-[#f3f4f6]"
-                            >
-                              <Td strong>
-                                {row.query}
-                              </Td>
-
-                              <Td>
-                                {formatNumber(
-                                  row.clicks,
-                                )}
-                              </Td>
-
-                              <Td>
-                                {formatNumber(
-                                  row.impressions,
-                                )}
-                              </Td>
-
-                              <Td>
-                                {formatPercent(
-                                  row.ctr,
-                                )}
-                                %
-                              </Td>
-
-                              <Td>
-                                {row.position.toFixed(
-                                  1,
-                                )}
-                              </Td>
-                            </tr>
-                          ),
-                        )}
-                      </tbody>
-                    </Table>
-
-                    {queries.length ===
-                      0 && (
-                      <Empty />
-                    )}
-                  </DataCard>
-                )}
-
-                {/* =================================================
-                    PAGES
-                ================================================= */}
-
-                {activeTab ===
-                  'pages' && (
-                  <DataCard
-                    className="mt-6"
-                    title="Search Performance by Page"
-                    subtitle="Pages receiving traffic from Google Search."
-                  >
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th>Page</Th>
-                          <Th>Clicks</Th>
-                          <Th>Impressions</Th>
-                          <Th>CTR</Th>
-                          <Th>Position</Th>
-                        </tr>
-                      </thead>
-
-                      <tbody>
-                        {pages.map(
-                          (
-                            row,
-                            index,
-                          ) => (
-                            <tr
-                              key={`${row.page}-${index}`}
-                              className="border-b border-[#f3f4f6]"
-                            >
-                              <Td strong>
-                                <div className="flex items-center gap-2">
-                                  <span className="max-w-[420px] truncate">
-                                    {row.page}
-                                  </span>
-
-                                  <ExternalLink
-                                    size={12}
-                                    className="shrink-0 text-[#9ca3af]"
-                                  />
-                                </div>
-                              </Td>
-
-                              <Td>
-                                {formatNumber(
-                                  row.clicks,
-                                )}
-                              </Td>
-
-                              <Td>
-                                {formatNumber(
-                                  row.impressions,
-                                )}
-                              </Td>
-
-                              <Td>
-                                {formatPercent(
-                                  row.ctr,
-                                )}
-                                %
-                              </Td>
-
-                              <Td>
-                                {row.position.toFixed(
-                                  1,
-                                )}
-                              </Td>
-                            </tr>
-                          ),
-                        )}
-                      </tbody>
-                    </Table>
-
-                    {pages.length ===
-                      0 && (
-                      <Empty />
-                    )}
-                  </DataCard>
-                )}
-
-                {/* =================================================
-                    OPPORTUNITIES
-                ================================================= */}
-
-                {activeTab ===
-                  'opportunities' && (
-                  <DataCard
-                    className="mt-6"
-                    title="SEO Opportunities"
-                    subtitle="Prioritized opportunities generated from Search Console performance data."
-                  >
-                    <div className="space-y-3">
-                      {opportunities.map(
-                        (
-                          row,
-                          index,
-                        ) => (
-                          <OpportunityCard
-                            key={`${row.query}-${index}`}
-                            row={row}
-                            onAnalyze={() =>
-                              handleAnalyzeOpportunity(
-                                row,
-                              )
-                            }
-                          />
-                        ),
-                      )}
-                    </div>
-
-                    {opportunities.length ===
-                      0 && (
-                      <Empty />
-                    )}
-                  </DataCard>
-                )}
-              </>
-            )}
-        </section>
-      </main>
-
-      {/* =========================================================
-          OPPORTUNITY ANALYSIS MODAL
-      ========================================================= */}
-
-      {showAnalysis && (
-        <OpportunityAnalysisModal
-          query={analysisQuery}
-          analysis={analysis}
-          loading={analysisLoading}
-          error={analysisError}
-          onClose={closeAnalysis}
-        />
-      )}
-    </div>
-  );
-}
-
-/* =========================================================
- * METRIC
- * ========================================================= */
-
-function Metric({
-  title,
-  value,
-  icon,
-}: {
-  title: string;
-  value: string | number;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="border border-[#e5e7eb] bg-white p-5 ">
-      <div className="flex items-center justify-between">
-        <div className="text-xs font-medium text-[#6b7280]">
-          {title}
-        </div>
-
-        <div className="grid h-9 w-9 place-items-center rounded-none bg-[#f3f4f6] text-[#111827]">
-          {icon}
-        </div>
-      </div>
-
-      <div className="mt-4 text-3xl font-bold">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-/* =========================================================
- * TAB BUTTON
- * ========================================================= */
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`whitespace-nowrap rounded-none px-4 py-2.5 text-xs font-bold transition ${
-        active
-          ? 'bg-slate-900 text-white'
-          : 'text-[#6b7280] hover:bg-[#f7f8fb]'
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-/* =========================================================
- * DATA CARD
- * ========================================================= */
-
-function DataCard({
-  title,
-  subtitle,
-  children,
-  className = '',
-}: {
-  title: string;
-  subtitle: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <section
-      className={`rounded-none border border-[#e5e7eb] bg-white p-5  ${className}`}
-    >
-      <div className="mb-5">
-        <h2 className="text-sm font-semibold tracking-[-0.01em]">
-          {title}
-        </h2>
-
-        <p className="mt-1 text-xs text-[#6b7280]">
-          {subtitle}
-        </p>
-      </div>
-
-      {children}
-    </section>
-  );
-}
-
-/* =========================================================
- * QUERY ROW
- * ========================================================= */
-
-function QueryRow({
-  row,
-}: {
-  row: GoogleQueryRow;
-}) {
-  return (
-    <div className="flex items-center gap-3 rounded-none border border-[#eef0f2] p-3">
-      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-none bg-[#f3f4f6] text-[#111827]">
-        <Search size={15} />
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-bold">
-          {row.query}
-        </div>
-
-        <div className="mt-1 text-[10px] text-[#9ca3af]">
-          Position {row.position.toFixed(1)}
-        </div>
-      </div>
-
-      <div className="text-right">
-        <div className="text-xs font-bold">
-          {formatNumber(row.clicks)}
-        </div>
-
-        <div className="text-[10px] text-[#9ca3af]">
-          clicks
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* =========================================================
- * PAGE ROW
- * ========================================================= */
-
-function PageRow({
-  row,
-}: {
-  row: GooglePageRow;
-}) {
-  return (
-    <div className="flex items-center gap-3 rounded-none border border-[#eef0f2] p-3">
-      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-none bg-[#f3f4f6] text-[#374151]">
-        <Globe2 size={15} />
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-bold">
-          {row.page}
-        </div>
-
-        <div className="mt-1 text-[10px] text-[#9ca3af]">
-          Position {row.position.toFixed(1)}
-        </div>
-      </div>
-
-      <div className="text-right">
-        <div className="text-xs font-bold">
-          {formatNumber(row.clicks)}
-        </div>
-
-        <div className="text-[10px] text-[#9ca3af]">
-          clicks
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* =========================================================
- * OVERVIEW OPPORTUNITY ROW
- * ========================================================= */
-
-function OpportunityRow({
-  row,
-  onAnalyze,
-}: {
-  row: GoogleOpportunityRow;
-  onAnalyze: () => void;
-}) {
-  return (
-    <div className="rounded-none border border-[#eef0f2] p-3">
-      <div className="flex items-center gap-2">
-        <span className="rounded-full bg-[#f3f4f6] px-2 py-1 text-[10px] font-bold text-[#374151]">
-          {row.type}
-        </span>
-
-        <span className="truncate text-xs font-bold">
-          {row.query}
-        </span>
-
-        <span className="ml-auto shrink-0 text-xs font-bold text-[#111827]">
-          {row.score}
-        </span>
-      </div>
-
-      <p className="mt-2 text-[11px] leading-5 text-[#6b7280]">
-        {row.recommendation}
-      </p>
-
-      <button
-        type="button"
-        onClick={onAnalyze}
-        className="mt-3 rounded-none border border-[#d1d5db] bg-[#f3f4f6] px-3 py-2 text-[10px] font-bold text-[#374151] transition hover:bg-[#e5e7eb]"
-      >
-        Analyze opportunity
-      </button>
-    </div>
-  );
-}
-
-/* =========================================================
- * FULL OPPORTUNITY CARD
- * ========================================================= */
-
-function OpportunityCard({
-  row,
-  onAnalyze,
-}: {
-  row: GoogleOpportunityRow;
-  onAnalyze: () => void;
-}) {
-  return (
-    <div className="rounded-none border border-[#eef0f2] p-4">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-[#f3f4f6] px-2 py-1 text-[10px] font-bold text-[#374151]">
-              {row.type}
-            </span>
-
-            <span className="text-sm font-semibold tracking-[-0.01em]">
-              {row.query}
-            </span>
-          </div>
-
-          <div className="mt-2 text-xs text-[#6b7280]">
-            {row.recommendation}
-          </div>
-
-          {row.page && (
-            <div className="mt-2 truncate text-[11px] text-[#9ca3af]">
-              {row.page}
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={onAnalyze}
-            className="mt-4 inline-flex items-center gap-2 rounded-none bg-slate-900 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-slate-800"
-          >
-            <Search size={14} />
-            Analyze opportunity
-          </button>
-        </div>
-
-        <div className="grid shrink-0 grid-cols-2 gap-3 sm:grid-cols-4">
-          <Snapshot
-            label="Clicks"
-            value={row.clicks}
-          />
-
-          <Snapshot
-            label="Impressions"
-            value={row.impressions}
-          />
-
-          <Snapshot
-            label="Position"
-            value={row.position.toFixed(
-              1,
-            )}
-          />
-
-          <Snapshot
-            label="Score"
-            value={row.score}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* =========================================================
- * SNAPSHOT
- * ========================================================= */
-
-function Snapshot({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | number;
-}) {
-  return (
-    <div className="rounded-none bg-[#f7f8fb] p-4">
-      <div className="text-[10px] text-[#9ca3af]">
-        {label}
-      </div>
-
-      <div className="mt-1 text-lg font-bold">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-/* =========================================================
- * EMPTY
- * ========================================================= */
-
-function Empty() {
-  return (
-    <div className="rounded-none bg-[#f7f8fb] p-6 text-center text-xs text-[#6b7280]">
-      No data available for the selected period.
-    </div>
-  );
-}
-
-/* =========================================================
- * TABLE
- * ========================================================= */
-
-function Table({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[700px] text-left text-xs">
-        {children}
-      </table>
-    </div>
-  );
-}
-
-/* =========================================================
- * TH
- * ========================================================= */
-
-function Th({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <th className="border-b border-[#eef0f2] px-3 py-3 font-semibold text-[#9ca3af]">
-      {children}
-    </th>
-  );
-}
-
-/* =========================================================
- * TD
- * ========================================================= */
-
-function Td({
-  children,
-  strong = false,
-}: {
-  children: React.ReactNode;
-  strong?: boolean;
-}) {
-  return (
-    <td
-      className={`px-3 py-3 ${
-        strong
-          ? 'font-semibold text-[#374151]'
-          : 'text-[#6b7280]'
-      }`}
-    >
-      {children}
-    </td>
-  );
-}
-
-/* =========================================================
- * OPPORTUNITY ANALYSIS MODAL
- * ========================================================= */
-
-function OpportunityAnalysisModal({
-  query,
-  analysis,
-  loading,
-  error,
-  onClose,
-}: {
-  query: string;
-  analysis: GoogleOpportunityAnalysis | null;
-  loading: boolean;
-  error: string;
-  onClose: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-[1000px] flex-col overflow-hidden rounded-none bg-white ">
-
-        {/* HEADER */}
-
-        <div className="flex shrink-0 items-center justify-between border-b border-[#e5e7eb] px-5 py-4">
-          <div className="min-w-0">
-            <div className="text-xs font-bold uppercase tracking-wide text-[#111827]">
-              RENKO Opportunity Analysis
-            </div>
-
-            <div className="mt-1 truncate text-lg font-bold text-[#111827]">
-              {query}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={loading}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-none border border-[#e5e7eb] text-[#6b7280] transition hover:bg-[#f7f8fb] disabled:opacity-40"
-            aria-label="Close analysis"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* BODY */}
-
-        <div className="overflow-y-auto p-5">
-          {loading && (
-            <div className="flex min-h-[350px] items-center justify-center">
-              <div className="text-center">
-                <div className="mx-auto grid h-14 w-14 place-items-center rounded-none bg-[#f3f4f6] text-[#111827]">
-                  <RefreshCw
-                    size={25}
-                    className="animate-spin"
-                  />
-                </div>
-
-                <div className="mt-4 text-sm font-bold">
-                  RENKO is analyzing this opportunity
-                </div>
-
-                <div className="mt-2 text-xs text-[#6b7280]">
-                  Comparing search visibility, ranking,
-                  clicks, CTR and page mapping.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {!loading && error && (
-            <div className="rounded-none border border-[#d1d5db] bg-[#fafafa] p-5">
-              <div className="flex gap-3">
-                <AlertTriangle
-                  size={19}
-                  className="shrink-0 text-[#4b5563]"
-                />
-
-                <div>
-                  <div className="text-sm font-bold text-[#374151]">
-                    Opportunity analysis failed
-                  </div>
-
-                  <div className="mt-1 text-xs leading-5 text-[#4b5563]">
-                    {error}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {!loading &&
-            !error &&
-            analysis && (
-              <div className="space-y-5">
-
-                {/* TOP SUMMARY */}
-
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <AnalysisMetric
-                    label="Priority"
-                    value={
-                      analysis.priority
-                    }
-                  />
-
-                  <AnalysisMetric
-                    label="Opportunity"
-                    value={
-                      analysis.opportunityType
-                    }
-                  />
-
-                  <AnalysisMetric
-                    label="Ranking Stage"
-                    value={
-                      analysis.rankingStage
-                    }
-                  />
-                </div>
-
-                {/* SEARCH DATA */}
-
-                <section className="rounded-none border border-[#e5e7eb] p-5">
-                  <div>
-                    <h3 className="text-sm font-semibold tracking-[-0.01em]">
-                      Search Performance
-                    </h3>
-
-                    <p className="mt-1 text-xs text-[#6b7280]">
-                      Actual Search Console data used by RENKO.
-                    </p>
-                  </div>
-
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <AnalysisMetric
-                      label="Clicks"
-                      value={formatNumber(
-                        analysis.clicks,
-                      )}
-                    />
-
-                    <AnalysisMetric
-                      label="Impressions"
-                      value={formatNumber(
-                        analysis.impressions,
-                      )}
-                    />
-
-                    <AnalysisMetric
-                      label="CTR"
-                      value={`${formatPercent(
-                        analysis.ctr,
-                      )}%`}
-                    />
-
-                    <AnalysisMetric
-                      label="Position"
-                      value={analysis.position.toFixed(
-                        1,
-                      )}
-                    />
-                  </div>
-
-                  {analysis.page && (
-                    <div className="mt-4 rounded-none bg-[#f7f8fb] p-4">
-                      <div className="text-[10px] font-bold uppercase tracking-wide text-[#9ca3af]">
-                        Ranking page
-                      </div>
-
-                      <div className="mt-1 break-all text-xs font-semibold text-[#374151]">
-                        {analysis.page}
-                      </div>
-                    </div>
-                  )}
-                </section>
-
-                {/* CHECKS */}
-
-                <section className="rounded-none border border-[#e5e7eb] p-5">
-                  <div>
-                    <h3 className="text-sm font-semibold tracking-[-0.01em]">
-                      RENKO Checks
-                    </h3>
-
-                    <p className="mt-1 text-xs text-[#6b7280]">
-                      Signals evaluated for this opportunity.
-                    </p>
-                  </div>
-
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                    <AnalysisCheck
-                      title="Search Visibility"
-                      check={
-                        analysis.checks
-                          .searchVisibility
-                      }
-                    />
-
-                    <AnalysisCheck
-                      title="Ranking"
-                      check={
-                        analysis.checks
-                          .ranking
-                      }
-                    />
-
-                    <AnalysisCheck
-                      title="Clicks"
-                      check={
-                        analysis.checks
-                          .clicks
-                      }
-                    />
-
-                    <AnalysisCheck
-                      title="CTR"
-                      check={
-                        analysis.checks
-                          .ctr
-                      }
-                    />
-
-                    <AnalysisCheck
-                      title="Page Mapping"
-                      check={
-                        analysis.checks
-                          .pageMapping
-                      }
-                    />
-                  </div>
-                </section>
-
-                {/* RECOMMENDATIONS */}
-
-                <section className="rounded-none border border-[#e5e7eb] p-5">
-                  <div>
-                    <h3 className="text-sm font-semibold tracking-[-0.01em]">
-                      RENKO Recommendations
-                    </h3>
-
-                    <p className="mt-1 text-xs text-[#6b7280]">
-                      Actions generated from the opportunity analysis.
-                    </p>
-                  </div>
-
-                  {analysis.recommendations
-                    .length === 0 ? (
-                    <div className="mt-5 rounded-none bg-[#f7f8fb] p-5 text-xs text-[#6b7280]">
-                      No additional recommendations available.
-                    </div>
-                  ) : (
-                    <div className="mt-5 space-y-3">
-                      {analysis.recommendations.map(
-                        (
-                          recommendation,
-                          index,
-                        ) => (
-                          <div
-                            key={`${recommendation}-${index}`}
-                            className="flex gap-3 rounded-none border border-[#eef0f2] p-4"
-                          >
-                            <div className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-none bg-[#f3f4f6] text-[#111827]">
-                              <Target
-                                size={14}
-                              />
-                            </div>
-
-                            <div className="text-xs leading-5 text-[#374151]">
-                              {recommendation}
-                            </div>
-                          </div>
-                        ),
-                      )}
-                    </div>
-                  )}
-                </section>
-              </div>
-            )}
-        </div>
-
-        {/* FOOTER */}
-
-        {!loading && (
-          <div className="flex shrink-0 justify-end border-t border-[#e5e7eb] bg-[#f7f8fb] px-5 py-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-none bg-slate-900 px-5 py-2.5 text-xs font-bold text-white transition hover:bg-slate-800"
-            >
-              Close
-            </button>
-          </div>
+            </DrawerSection>
+          </>
         )}
-      </div>
-    </div>
+      </Drawer>
+    </AppShell>
   );
-}
-
-/* =========================================================
- * ANALYSIS METRIC
- * ========================================================= */
-
-function AnalysisMetric({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | number;
-}) {
-  return (
-    <div className="rounded-none bg-[#f7f8fb] p-4">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-[#9ca3af]">
-        {label}
-      </div>
-
-      <div className="mt-2 break-words text-sm font-bold text-[#111827]">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-/* =========================================================
- * ANALYSIS CHECK
- * ========================================================= */
-
-function AnalysisCheck({
-  title,
-  check,
-}: {
-  title: string;
-  check: {
-    status: string;
-    impressions?: number;
-    position?: number;
-    clicks?: number;
-    ctr?: number;
-    page?: string | null;
-  };
-}) {
-  const status =
-    check.status?.toUpperCase() ||
-    'UNKNOWN';
-
-  const positive =
-    status === 'PASS' ||
-    status === 'GOOD' ||
-    status === 'OK' ||
-    status === 'HEALTHY';
-
-  return (
-    <div className="rounded-none border border-[#eef0f2] p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-xs font-bold">
-          {title}
-        </div>
-
-        <span
-          className={`rounded-full px-2 py-1 text-[10px] font-bold ${
-            positive
-              ? 'bg-[#f3f4f6] text-[#374151]'
-              : status === 'WARNING' ||
-                  status === 'REVIEW'
-                ? 'bg-[#f3f4f6] text-[#374151]'
-                : 'bg-slate-100 text-[#4b5563]'
-          }`}
-        >
-          {status}
-        </span>
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        {check.impressions !==
-          undefined && (
-          <MiniValue
-            label="Impressions"
-            value={formatNumber(
-              check.impressions,
-            )}
-          />
-        )}
-
-        {check.position !==
-          undefined && (
-          <MiniValue
-            label="Position"
-            value={check.position.toFixed(
-              1,
-            )}
-          />
-        )}
-
-        {check.clicks !==
-          undefined && (
-          <MiniValue
-            label="Clicks"
-            value={formatNumber(
-              check.clicks,
-            )}
-          />
-        )}
-
-        {check.ctr !==
-          undefined && (
-          <MiniValue
-            label="CTR"
-            value={`${formatPercent(
-              check.ctr,
-            )}%`}
-          />
-        )}
-      </div>
-
-      {check.page && (
-        <div className="mt-3 truncate text-[10px] text-[#9ca3af]">
-          {check.page}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* =========================================================
- * MINI VALUE
- * ========================================================= */
-
-function MiniValue({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | number;
-}) {
-  return (
-    <div>
-      <div className="text-[10px] text-[#9ca3af]">
-        {label}
-      </div>
-
-      <div className="mt-1 text-xs font-bold text-[#374151]">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-/* =========================================================
- * FORMATTERS
- * ========================================================= */
-
-function formatNumber(
-  value: number,
-) {
-  return new Intl.NumberFormat(
-    'en-US',
-  ).format(value);
-}
-
-function formatPercent(
-  value: number,
-) {
-  if (!Number.isFinite(value)) {
-    return '0.00';
-  }
-
-  // Google Search Console CTR is normally returned as a decimal:
-  // 0.1 = 10%, 0.025 = 2.5%.
-  // Keep this defensive if an API returns a percentage such as 10.
-  const percentage =
-    Math.abs(value) <= 1
-      ? value * 100
-      : value;
-
-  return percentage.toFixed(2);
 }

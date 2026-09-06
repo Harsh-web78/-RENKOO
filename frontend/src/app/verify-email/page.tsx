@@ -179,17 +179,20 @@ export default function VerifyEmailPage() {
                 onSubmit={handleResend}
                 className="space-y-5"
               >
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) =>
-                    setEmail(e.target.value)
-                  }
-                  placeholder="you@company.com"
-                  required
-                  autoComplete="email"
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
+                <label className="block text-sm font-medium text-slate-900">
+                  Account email
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) =>
+                      setEmail(e.target.value)
+                    }
+                    placeholder="you@company.com"
+                    required
+                    autoComplete="email"
+                    className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-normal outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </label>
 
                 <button
                   type="submit"

@@ -1,1402 +1,819 @@
 'use client';
 
+/*
+ * RENKOO V2 — Traffic & Analytics Intelligence (Phase 5I).
+ * Real GA4 report data only, answering "is traffic helping
+ * growth?". TRAFFIC → LEADS → CONVERSIONS → REVENUE stages
+ * render only where actual data supports the relationship —
+ * revenue is never inferred from traffic. Source and
+ * availability labels stay explicit throughout.
+ */
+
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Activity,
-  AlertTriangle,
-  BarChart3,
-  CalendarDays,
-  Clock3,
-  Eye,
-  Globe2,
-  Loader2,
-  Menu,
-  RefreshCw,
-  ShieldCheck,
-  TrendingUp,
-  UserPlus,
-  Users,
-  XCircle,
-} from 'lucide-react';
+import Link from 'next/link';
 import {
   getGoogleAnalyticsReport,
   getGoogleAnalyticsProperties,
   getGoogleConnectionStatus,
   selectGoogleAnalyticsProperty,
-  type GoogleAnalyticsProperty,
-  type GoogleAnalyticsReport,
-  type GoogleAnalyticsReportRow,
+  getWebsites,
+  getLeadsSummary,
+  getRevenueSummary,
+  getRoiSummary,
+  type Website,
 } from '@/lib/api';
+import AppShell from '@/components/AppShell';
+import {
+  PageHeader,
+  Panel,
+  Metric,
+  DataTable,
+  FilterBar,
+  Drawer,
+  DrawerSection,
+  DrawerMeta,
+  PrimaryButton,
+  SecondaryButton,
+  DataSourceBadge,
+  FreshnessBadge,
+  LoadingBlock,
+  ErrorState,
+  EmptyState,
+  NotConnectedState,
+  InsightBlock,
+  RecommendationCallout,
+  NextAction,
+  type DataTableColumn,
+} from '@/components/ui';
+import {
+  TrendChart,
+  BarList,
+  FunnelStages,
+  type TrendPoint,
+} from '@/components/charts';
 
-import Sidebar from '../../components/Sidebar';
-
-type DateRangeKey = '7' | '28' | '90';
-
-interface DateRange {
-  key: DateRangeKey;
-  label: string;
-  startDate: string;
-  endDate: string;
+function num(value: unknown, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
 }
 
-function getDateRange(
-  days: DateRangeKey,
-): DateRange {
+function fmtInt(value: unknown) {
+  return num(value).toLocaleString('en-US');
+}
+
+function fmtMoney(value: unknown, currency?: string) {
+  const n = num(value, NaN);
+  if (!Number.isFinite(n)) return '—';
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency || 'USD',
+      maximumFractionDigits: 0,
+    }).format(n);
+  } catch {
+    return String(Math.round(n));
+  }
+}
+
+function fmtDate(value: unknown) {
+  if (!value) return '—';
+  try {
+    return new Date(String(value)).toLocaleDateString(
+      'en-US',
+      { month: 'short', day: 'numeric' },
+    );
+  } catch {
+    return String(value);
+  }
+}
+
+function rangeFor(days: number) {
   const end = new Date();
-
-  const start = new Date(end);
-  start.setDate(
-    start.getDate() -
-      (Number(days) - 1),
-  );
-
-  return {
-    key: days,
-    label:
-      days === '7'
-        ? 'Last 7 days'
-        : days === '28'
-          ? 'Last 28 days'
-          : 'Last 90 days',
-    startDate: formatDate(start),
-    endDate: formatDate(end),
-  };
-}
-
-function formatDate(
-  date: Date,
-) {
-  const year =
-    date.getFullYear();
-
-  const month =
-    String(
-      date.getMonth() + 1,
-    ).padStart(2, '0');
-
-  const day =
-    String(
-      date.getDate(),
-    ).padStart(2, '0');
-
-  return `${year}-${month}-${day}`;
-}
-
-function formatNumber(
-  value: number,
-) {
-  return new Intl.NumberFormat(
-    'en-US',
-  ).format(
-    Math.round(value),
-  );
-}
-
-function formatPercent(
-  value: number,
-) {
-  return `${value.toFixed(1)}%`;
-}
-
-function formatDuration(
-  seconds: number,
-) {
-  if (!Number.isFinite(seconds)) {
-    return '0s';
-  }
-
-  const total =
-    Math.max(
-      0,
-      Math.round(seconds),
-    );
-
-  const minutes =
-    Math.floor(total / 60);
-
-  const remaining =
-    total % 60;
-
-  if (minutes <= 0) {
-    return `${remaining}s`;
-  }
-
-  return `${minutes}m ${String(
-    remaining,
-  ).padStart(2, '0')}s`;
-}
-
-function getLastActivityDate(
-  rows: GoogleAnalyticsReportRow[],
-) {
-  const dates = rows
-    .map((row: GoogleAnalyticsReportRow) => row.date)
-    .filter(Boolean)
-    .sort();
-
-  return dates.length
-    ? dates[dates.length - 1]
-    : null;
-}
-
-function formatShortDate(
-  value: string,
-) {
-  const date =
-    new Date(
-      `${value}T00:00:00`,
-    );
-
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
-    return value;
-  }
-
-  return date.toLocaleDateString(
-    'en-IN',
-    {
-      day: 'numeric',
-      month: 'short',
-    },
-  );
-}
-
-function sumRows(
-  rows: GoogleAnalyticsReportRow[],
-  key:
-    | 'activeUsers'
-    | 'newUsers'
-    | 'sessions'
-    | 'pageViews'
-    | 'conversions',
-) {
-  return rows.reduce(
-    (total, row) =>
-      total +
-      Number(row[key] ?? 0),
-    0,
-  );
-}
-
-function weightedEngagementRate(
-  rows: GoogleAnalyticsReportRow[],
-) {
-  const sessions =
-    sumRows(
-      rows,
-      'sessions',
-    );
-
-  if (!sessions) {
-    return 0;
-  }
-
-  const weighted =
-    rows.reduce(
-      (total, row) =>
-        total +
-        Number(
-          row.engagementRate ?? 0,
-        ) *
-          Number(
-            row.sessions ?? 0,
-          ),
-      0,
-    );
-
-  return weighted / sessions;
-}
-
-function weightedDuration(
-  rows: GoogleAnalyticsReportRow[],
-) {
-  const sessions =
-    sumRows(
-      rows,
-      'sessions',
-    );
-
-  if (!sessions) {
-    return 0;
-  }
-
-  const weighted =
-    rows.reduce(
-      (total, row) =>
-        total +
-        Number(
-          row.averageSessionDuration ??
-            0,
-        ) *
-          Number(
-            row.sessions ?? 0,
-          ),
-      0,
-    );
-
-  return weighted / sessions;
+  const start = new Date();
+  start.setDate(end.getDate() - (days - 1));
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  return { startDate: fmt(start), endDate: fmt(end) };
 }
 
 export default function AnalyticsPage() {
-  const [open, setOpen] = useState(false);
-  const [
-    properties,
-    setProperties,
-  ] = useState<
-    GoogleAnalyticsProperty[]
-  >([]);
+  const [navOpen, setNavOpen] = useState(false);
+  const [period, setPeriod] = useState('28');
+  const [websites, setWebsites] = useState<Website[]>([]);
+  const [websiteId, setWebsiteId] = useState('');
+  const [properties, setProperties] = useState<any[]>([]);
+  const [propertyId, setPropertyId] = useState('');
+  const [selecting, setSelecting] = useState(false);
+  const [connected, setConnected] = useState<boolean | null>(
+    null,
+  );
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [propertyError, setPropertyError] = useState('');
+  const [report, setReport] = useState<any>(null);
+  const [leads, setLeads] = useState<any>(null);
+  const [revenue, setRevenue] = useState<any>(null);
+  const [roi, setRoi] = useState<any>(null);
+  const [drawerRow, setDrawerRow] = useState<any>(null);
 
-  const [
-    selectedProperty,
-    setSelectedProperty,
-  ] = useState('');
-
-  const [
-    report,
-    setReport,
-  ] = useState<
-    GoogleAnalyticsReport | null
-  >(null);
-
-  const [
-    selectedRange,
-    setSelectedRange,
-  ] = useState<DateRangeKey>(
-    '28',
+  const { startDate, endDate } = useMemo(
+    () => rangeFor(num(period, 28)),
+    [period],
   );
 
-  const [
-    loadingProperties,
-    setLoadingProperties,
-  ] = useState(true);
+  const loadReport = useCallback(
+    async (from: string, to: string) => {
+      try {
+        setPropertyError('');
+        const res = await getGoogleAnalyticsReport(
+          from,
+          to,
+        );
+        setReport(res);
+      } catch (err: any) {
+        setReport(null);
+        setPropertyError(
+          err?.message || 'Analytics report unavailable.',
+        );
+      }
+    },
+    [],
+  );
 
-  const [
-    loadingReport,
-    setLoadingReport,
-  ] = useState(false);
+  const loadGrowth = useCallback(async (siteId: string) => {
+    if (!siteId) return;
+    const [l, r, roiRes] = await Promise.all([
+      getLeadsSummary(siteId).catch(() => null),
+      getRevenueSummary(siteId).catch(() => null),
+      getRoiSummary(siteId).catch(() => null),
+    ]);
+    setLeads(l);
+    setRevenue(r);
+    setRoi(roiRes);
+  }, []);
 
-  const [
-    selectingProperty,
-    setSelectingProperty,
-  ] = useState(false);
+  const init = useCallback(async () => {
+    try {
+      setError('');
+      const [status, props, sites] = await Promise.all([
+        getGoogleConnectionStatus().catch(() => null),
+        getGoogleAnalyticsProperties().catch(() => []),
+        getWebsites().catch(() => []),
+      ]);
+      const list = Array.isArray(sites) ? sites : [];
+      setWebsites(list);
+      const stored =
+        typeof window !== 'undefined'
+          ? localStorage.getItem('renkoo_website_id')
+          : null;
+      const valid =
+        stored && list.some((s: any) => s.id === stored)
+          ? stored
+          : list[0]?.id || '';
+      setWebsiteId(valid);
+      if (valid) void loadGrowth(valid);
+      const plist = Array.isArray(props) ? props : [];
+      setProperties(plist);
+      const selected =
+        (status as any)?.selectedAnalyticsProperty ||
+        (status as any)?.analyticsProperty ||
+        '';
+      const active =
+        selected &&
+        plist.some(
+          (p: any) =>
+            String(p.propertyId || p.id) === selected,
+        )
+          ? selected
+          : plist[0]
+            ? String(
+                (plist[0] as any).propertyId ||
+                  (plist[0] as any).id,
+              )
+            : '';
+      setPropertyId(active);
+      const gaConnected = Boolean(
+        (status as any)?.ga4Connected ??
+          (status as any)?.analyticsConnected ??
+          plist.length > 0,
+      );
+      setConnected(gaConnected);
+      if (active) await loadReport(startDate, endDate);
+    } catch (err: any) {
+      setError(
+        err?.message || 'Failed to load analytics.',
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+    // Period is applied through explicit reloads below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const [
-    refreshing,
-    setRefreshing,
-  ] = useState(false);
+  useEffect(() => {
+    setLoading(true);
+    void init();
+  }, [init]);
 
-  const [
-    error,
-    setError,
-  ] = useState('');
+  function handlePeriod(next: string) {
+    setPeriod(next);
+    const r = rangeFor(num(next, 28));
+    void loadReport(r.startDate, r.endDate);
+  }
 
-  const [
-    propertyError,
-    setPropertyError,
-  ] = useState('');
+  function handleWebsite(id: string) {
+    setWebsiteId(id);
+    if (typeof window !== 'undefined')
+      localStorage.setItem('renkoo_website_id', id);
+    void loadGrowth(id);
+  }
 
-  const dateRange =
-    useMemo(
-      () =>
-        getDateRange(
-          selectedRange,
+  async function handleSelectProperty(id: string) {
+    if (!id || selecting) return;
+    try {
+      setSelecting(true);
+      setPropertyError('');
+      await selectGoogleAnalyticsProperty(id);
+      setPropertyId(id);
+      // Reload the report for the newly selected property.
+      await loadReport(startDate, endDate);
+    } catch (err: any) {
+      setPropertyError(
+        err?.message || 'Could not select property.',
+      );
+    } finally {
+      setSelecting(false);
+    }
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await init();
+  }
+
+  const daily: any[] = useMemo(() => {
+    const r = report as any;
+    const list = Array.isArray(r)
+      ? r
+      : Array.isArray(r?.rows)
+        ? r.rows
+        : Array.isArray(r?.daily)
+          ? r.daily
+          : [];
+    return list;
+  }, [report]);
+
+  const trendPoints: TrendPoint[] = useMemo(
+    () =>
+      daily
+        .map((d: any) => ({
+          x: String(d.date || d.day || d.label || ''),
+          y: num(
+            d.users ?? d.sessions ?? d.visits ?? 0,
+          ),
+        }))
+        .filter((p: TrendPoint) => p.x),
+    [daily],
+  );
+
+  const channels = useMemo(() => {
+    const r = report as any;
+    const list = Array.isArray(r?.channels)
+      ? r.channels
+      : Array.isArray(r?.sources)
+        ? r.sources
+        : Array.isArray(r?.byChannel)
+          ? r.byChannel
+          : [];
+    return list
+      .map((c: any) => ({
+        label: String(
+          c.channel || c.source || c.label || '—',
         ),
-      [selectedRange],
-    );
+        value: num(c.users ?? c.sessions ?? c.value ?? 0),
+      }))
+      .filter((b: { label: string; value: number }) => b.value > 0)
+      .sort((a: { value: number }, b: { value: number }) => b.value - a.value)
+      .slice(0, 8);
+  }, [report]);
 
-  const loadProperties =
-    useCallback(
-      async () => {
-        try {
-          setLoadingProperties(
-            true,
-          );
-          setPropertyError('');
+  const landingPages: any[] = useMemo(() => {
+    const r = report as any;
+    const list = Array.isArray(r?.landingPages)
+      ? r.landingPages
+      : Array.isArray(r?.pages)
+        ? r.pages
+        : [];
+    return list;
+  }, [report]);
 
-          const [
-            connection,
-            availableProperties,
-          ] =
-            await Promise.all([
-              getGoogleConnectionStatus(),
-              getGoogleAnalyticsProperties(),
-            ]);
-
-          setProperties(
-            availableProperties ?? [],
-          );
-
-          const active =
-            connection.selectedAnalyticsProperty ??
-            '';
-
-          if (
-            active &&
-            (
-              availableProperties ??
-              []
-            ).some(
-              (property) =>
-                property.propertyId ===
-                active,
-            )
-          ) {
-            setSelectedProperty(
-              active,
-            );
-          } else if (
-            (
-              availableProperties ??
-              []
-            ).length > 0
-          ) {
-            setSelectedProperty(
-              availableProperties[0]?.propertyId ?? '',
-            );
-          } else {
-            setSelectedProperty('');
-          }
-        } catch (err) {
-          console.error(
-            'Failed to load GA4 properties:',
-            err,
-          );
-
-          setProperties([]);
-          setSelectedProperty('');
-
-          setPropertyError(
-            err instanceof Error
-              ? err.message
-              : 'Unable to load Google Analytics 4 properties.',
-          );
-        } finally {
-          setLoadingProperties(
-            false,
-          );
-        }
-      },
-      [],
-    );
-
-  const loadReport =
-    useCallback(
-      async () => {
-        if (!selectedProperty) {
-          setReport(null);
-          return;
-        }
-
-        try {
-          setLoadingReport(
-            true,
-          );
-          setError('');
-
-          const data =
-            await getGoogleAnalyticsReport(
-              dateRange.startDate,
-              dateRange.endDate,
-            );
-
-          setReport(data);
-        } catch (err) {
-          console.error(
-            'Failed to load GA4 report:',
-            err,
-          );
-
-          setReport(null);
-
-          setError(
-            err instanceof Error
-              ? err.message
-              : 'Unable to load Google Analytics 4 data.',
-          );
-        } finally {
-          setLoadingReport(
-            false,
-          );
-        }
-      },
-      [
-        selectedProperty,
-        dateRange.startDate,
-        dateRange.endDate,
-      ],
-    );
-
-  useEffect(() => {
-    loadProperties();
-  }, [loadProperties]);
-
-  useEffect(() => {
-    loadReport();
-  }, [loadReport]);
-
-  const handlePropertyChange =
-    async (
-      propertyId: string,
-    ) => {
-      if (
-        !propertyId ||
-        propertyId ===
-          selectedProperty
-      ) {
-        return;
-      }
-
-      try {
-        setSelectingProperty(
-          true,
-        );
-        setError('');
-
-        await selectGoogleAnalyticsProperty(
-          propertyId,
-        );
-
-        setSelectedProperty(
-          propertyId,
-        );
-      } catch (err) {
-        console.error(
-          'Failed to select GA4 property:',
-          err,
-        );
-
-        setError(
-          err instanceof Error
-            ? err.message
-            : 'Unable to select Google Analytics property.',
-        );
-      } finally {
-        setSelectingProperty(
-          false,
-        );
-      }
+  const totals = useMemo(() => {
+    const r = report as any;
+    const t = r?.totals || r?.summary || {};
+    return {
+      users: t.users ?? r?.users ?? null,
+      sessions: t.sessions ?? r?.sessions ?? null,
+      engagement:
+        t.engagementRate ??
+        t.engagement ??
+        r?.engagementRate ??
+        null,
+      conversions:
+        t.conversions ?? r?.conversions ?? null,
+      lastActivity:
+        r?.lastActivity ||
+        r?.dateRange?.endDate ||
+        t.lastActivity ||
+        null,
+      coverage:
+        r?.coverage ||
+        r?.dataFreshness ||
+        t.coverage ||
+        null,
     };
+  }, [report]);
 
-  const handleRefresh =
-    async () => {
-      try {
-        setRefreshing(true);
-        setError('');
+  const leadTotal =
+    (leads as any)?.total ?? (leads as any)?.count ?? null;
+  const revenueTotal =
+    (revenue as any)?.total ??
+    (revenue as any)?.totalRevenue ??
+    null;
+  const revenueCurrency =
+    (revenue as any)?.currency ||
+    (roi as any)?.currency ||
+    undefined;
 
-        await loadProperties();
-      } finally {
-        setRefreshing(false);
-      }
-    };
+  const funnelStages = useMemo(() => {
+    const stages: Array<{
+      label: string;
+      value: number;
+      href?: string;
+    }> = [];
+    const users = num(totals.users, NaN);
+    if (Number.isFinite(users))
+      stages.push({ label: 'Traffic', value: users });
+    if (typeof leadTotal === 'number')
+      stages.push({
+        label: 'Leads',
+        value: leadTotal,
+        href: '/leads',
+      });
+    const conv = num(totals.conversions, NaN);
+    if (Number.isFinite(conv))
+      stages.push({ label: 'Conversions', value: conv });
+    if (typeof revenueTotal === 'number')
+      stages.push({
+        label: 'Revenue',
+        value: revenueTotal,
+        href: '/roi',
+      });
+    return stages;
+  }, [totals, leadTotal, revenueTotal]);
 
-  const rows =
-    report?.rows ?? [];
-
-  const lastActivityDate =
-    getLastActivityDate(rows);
-
-  const lastActivityLabel =
-    lastActivityDate
-      ? formatShortDate(lastActivityDate)
-      : 'No recorded activity';
-
-  const dataCoverageLabel =
-    rows.length > 0
-      ? `${rows.length} days with recorded data`
-      : 'No recorded data';
-
-  const totals =
-    useMemo(() => {
-      return {
-        activeUsers:
-          sumRows(
-            rows,
-            'activeUsers',
-          ),
-
-        newUsers:
-          sumRows(
-            rows,
-            'newUsers',
-          ),
-
-        sessions:
-          sumRows(
-            rows,
-            'sessions',
-          ),
-
-        pageViews:
-          sumRows(
-            rows,
-            'pageViews',
-          ),
-
-        conversions:
-          sumRows(
-            rows,
-            'conversions',
-          ),
-
-        engagementRate:
-          weightedEngagementRate(
-            rows,
-          ),
-
-        averageSessionDuration:
-          weightedDuration(
-            rows,
-          ),
-      };
-    }, [rows]);
-
-  const maxUsers =
-    Math.max(
-      1,
-      ...rows.map(
-        (row: GoogleAnalyticsReportRow) =>
-          Number(
-            row.activeUsers ?? 0,
-          ),
+  const landingColumns: DataTableColumn<any>[] = [
+    {
+      key: 'page',
+      label: 'Landing page',
+      priority: 'high',
+      render: (r) => (
+        <span
+          className="block max-w-[300px] truncate font-medium text-rk-ink"
+          title={String(
+            r.page || r.path || r.url || r.label || '—',
+          )}
+        >
+          {String(
+            r.page || r.path || r.url || r.label || '—',
+          )}
+        </span>
       ),
-    );
-
-  const selectedPropertyData =
-    properties.find(
-      (property) =>
-        property.propertyId ===
-        selectedProperty,
-    );
+    },
+    {
+      key: 'users',
+      label: 'Users',
+      align: 'right',
+      priority: 'high',
+      sortable: true,
+      sortValue: (r) => num(r.users ?? r.sessions ?? 0),
+      render: (r) => (
+        <span className="rk-number">
+          {fmtInt(r.users ?? r.sessions ?? 0)}
+        </span>
+      ),
+    },
+    {
+      key: 'conversions',
+      label: 'Conversions',
+      align: 'right',
+      priority: 'medium',
+      sortable: true,
+      sortValue: (r) => num(r.conversions ?? 0),
+      render: (r) => (
+        <span className="rk-number">
+          {r.conversions !== undefined
+            ? fmtInt(r.conversions)
+            : '—'}
+        </span>
+      ),
+    },
+  ];
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <Sidebar
-        mobileOpen={open}
-        onClose={() => setOpen(false)}
+    <AppShell
+      mobileOpen={navOpen}
+      onClose={() => setNavOpen(false)}
+      onMenu={() => setNavOpen(true)}
+    >
+      <PageHeader
+        eyebrow="Money"
+        title="Traffic & Analytics"
+        description="Is traffic helping growth? Measured GA4 performance linked to leads and revenue where the data exists."
+        actions={
+          <div className="flex gap-2">
+            <SecondaryButton
+              onClick={() => void handleRefresh()}
+              disabled={refreshing || loading}
+            >
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </SecondaryButton>
+            <Link href="/roi">
+              <PrimaryButton type="button">
+                ROI & Outcomes
+              </PrimaryButton>
+            </Link>
+          </div>
+        }
+        meta={
+          <div className="flex flex-wrap items-center gap-2">
+            <DataSourceBadge
+              source="Google Analytics"
+              connected={connected === true}
+            />
+            {!loading && connected ? (
+              <FreshnessBadge
+                label={
+                  totals.lastActivity
+                    ? `Updated ${fmtDate(totals.lastActivity)} · ${startDate} → ${endDate}`
+                    : `${startDate} → ${endDate}`
+                }
+              />
+            ) : null}
+          </div>
+        }
       />
 
-      <main className="lg:pl-[270px]">
-        {/* TOP BAR */}
-
-        <header className="flex min-h-[72px] items-center justify-between gap-4 border-b border-slate-100 bg-white px-5 lg:px-8">
-          <div className="flex items-center">
-            <button
-              type="button"
-              className="mr-4 lg:hidden"
-              onClick={() => setOpen(true)}
-              aria-label="Open menu"
-            >
-              <Menu size={22} />
-            </button>
-
-            <div>
-              <div className="text-sm font-semibold text-slate-500">
-              RENKO / Traffic & Analytics
-            </div>
-
-            <div className="mt-0.5 text-xs text-slate-400">
-              Google Analytics 4 traffic,
-              engagement and conversion intelligence
-            </div>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={
-              refreshing ||
-              loadingProperties ||
-              selectingProperty
-            }
-            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+      {loading ? (
+        <div className="mt-6">
+          <LoadingBlock title="Loading analytics" />
+        </div>
+      ) : error && !report ? (
+        <div className="mt-6">
+          <ErrorState
+            title="Analytics failed to load"
+            description={error}
+            onRetry={() => {
+              setLoading(true);
+              void init();
+            }}
+          />
+        </div>
+      ) : connected === false || properties.length === 0 ? (
+        <div className="mt-6">
+          <NotConnectedState
+            title="Google Analytics is not connected"
+            description="Traffic intelligence needs a connected GA4 property. RENKOO shows nothing here until the connection exists."
+            connectLabel="Open integrations"
+            connectHref="/integrations"
+          />
+        </div>
+      ) : (
+        <div className="mt-6 space-y-6">
+          <Panel
+            eyebrow="Context"
+            title="Property, website & period"
+            description="Traffic comes from GA4; growth context comes from the selected website."
           >
-            <RefreshCw
-              size={16}
-              className={
-                refreshing
-                  ? 'animate-spin'
-                  : ''
+            <FilterBar
+              selects={[
+                {
+                  key: 'property',
+                  label: 'GA4 property',
+                  value: propertyId,
+                  options: properties.map((p: any) => ({
+                    value: String(
+                      p.propertyId || p.id,
+                    ),
+                    label: String(
+                      p.displayName ||
+                        p.name ||
+                        p.propertyId ||
+                        p.id,
+                    ),
+                  })),
+                  onChange: (v) =>
+                    void handleSelectProperty(v),
+                },
+                {
+                  key: 'website',
+                  label: 'Website',
+                  value: websiteId,
+                  options: websites.map((w) => ({
+                    value: w.id,
+                    label: w.name,
+                  })),
+                  onChange: handleWebsite,
+                },
+                {
+                  key: 'period',
+                  label: 'Period',
+                  value: period,
+                  options: [
+                    { value: '7', label: 'Last 7 days' },
+                    { value: '28', label: 'Last 28 days' },
+                    { value: '90', label: 'Last 90 days' },
+                  ],
+                  onChange: handlePeriod,
+                },
+              ]}
+              meta={
+                selecting ? (
+                  <span className="text-xs text-rk-muted">
+                    Switching property…
+                  </span>
+                ) : undefined
               }
             />
+          </Panel>
 
-            Refresh
-          </button>
-        </header>
+          {error ? (
+            <ErrorState
+              title="Partial load failure"
+              description={error}
+              onRetry={() => void init()}
+            />
+          ) : null}
+          {propertyError ? (
+            <ErrorState
+              title="Report unavailable"
+              description={propertyError}
+              onRetry={() =>
+                void loadReport(startDate, endDate)
+              }
+            />
+          ) : null}
 
-        <section className="mx-auto max-w-[1500px] p-5 lg:p-8">
-          {/* HEADER */}
-
-          <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm lg:p-7">
-            <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
-              <div className="flex items-start gap-4">
-                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-violet-50 text-violet-600">
-                  <BarChart3
-                    size={23}
-                  />
-                </div>
-
-                <div>
-                  <h1 className="text-2xl font-bold">
-                    Traffic & Analytics
-                  </h1>
-
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                    Understand how people reach your
-                    website, how they engage and whether
-                    traffic is producing conversions.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <div className="relative min-w-[280px]">
-                  <div className="absolute left-4 top-1/2 z-10 -translate-y-1/2 text-slate-400">
-                    <Globe2
-                      size={17}
-                    />
-                  </div>
-
-                  <select
-                    value={
-                      selectedProperty
-                    }
-                    onChange={(event) =>
-                      handlePropertyChange(
-                        event.target.value,
-                      )
-                    }
-                    disabled={
-                      loadingProperties ||
-                      selectingProperty ||
-                      properties.length ===
-                        0
-                    }
-                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-3 pl-11 pr-10 text-sm font-semibold text-slate-800 outline-none transition focus:border-violet-400 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {properties.length ===
-                    0 ? (
-                      <option value="">
-                        No GA4 property
-                      </option>
-                    ) : (
-                      properties.map(
-                        (
-                          property,
-                        ) => (
-                          <option
-                            key={
-                              property.propertyId
-                            }
-                            value={
-                              property.propertyId
-                            }
-                          >
-                            {
-                              property.displayName
-                            }{' '}
-                            (
-                            {
-                              property.propertyId
-                            }
-                            )
-                          </option>
-                        ),
-                      )
-                    )}
-                  </select>
-                </div>
-
-                <div className="flex items-center rounded-xl border border-slate-200 bg-white p-1">
-                  {(
-                    [
-                      {
-                        key: '7',
-                        label: '7D',
-                      },
-                      {
-                        key: '28',
-                        label: '28D',
-                      },
-                      {
-                        key: '90',
-                        label: '90D',
-                      },
-                    ] as const
-                  ).map(
-                    (range) => (
-                      <button
-                        key={
-                          range.key
-                        }
-                        type="button"
-                        onClick={() =>
-                          setSelectedRange(
-                            range.key,
-                          )
-                        }
-                        className={`rounded-lg px-3 py-2 text-xs font-bold transition ${
-                          selectedRange ===
-                          range.key
-                            ? 'bg-slate-900 text-white'
-                            : 'text-slate-500 hover:bg-slate-50'
-                        }`}
-                      >
-                        {
-                          range.label
-                        }
-                      </button>
-                    ),
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {selectedPropertyData && (
-              <div className="mt-5 rounded-xl bg-slate-50 p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                      Active GA4 Property
-                    </div>
-
-                    <div className="mt-1 text-sm font-bold text-slate-800">
-                      {
-                        selectedPropertyData.displayName
-                      }
-                    </div>
-                  </div>
-
-                  <div className="text-xs text-slate-500">
-                    Property ID:{' '}
-                    <span className="font-semibold text-slate-700">
-                      {
-                        selectedPropertyData.propertyId
-                      }
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* ERROR */}
-
-          {(error ||
-            propertyError) && (
-            <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5">
-              <div className="flex items-start gap-3">
-                <XCircle
-                  size={20}
-                  className="mt-0.5 shrink-0 text-red-600"
-                />
-
-                <div>
-                  <div className="text-sm font-bold text-red-800">
-                    Google Analytics error
-                  </div>
-
-                  <div className="mt-1 text-sm leading-6 text-red-700">
-                    {error ||
-                      propertyError}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* NO PROPERTY */}
-
-          {!loadingProperties &&
-            properties.length ===
-              0 && (
-              <div className="mt-6 rounded-2xl border border-slate-100 bg-white p-12 text-center shadow-sm">
-                <BarChart3
-                  size={40}
-                  className="mx-auto text-slate-300"
-                />
-
-                <h2 className="mt-4 text-lg font-bold">
-                  No GA4 property available
-                </h2>
-
-                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-                  Make sure the connected Google
-                  account has access to at least one
-                  Google Analytics 4 property.
-                </p>
-              </div>
-            )}
-
-          {/* LOADING */}
-
-          {loadingProperties ||
-            (loadingReport &&
-              !report) ? (
-            <div className="mt-6 rounded-2xl border border-slate-100 bg-white p-12 shadow-sm">
-              <div className="flex flex-col items-center justify-center text-center">
-                <Loader2
-                  size={32}
-                  className="animate-spin text-violet-600"
-                />
-
-                <div className="mt-4 text-sm font-bold">
-                  Loading GA4 analytics...
-                </div>
-
-                <div className="mt-1 text-sm text-slate-500">
-                  RENKO is retrieving real traffic and
-                  engagement data.
-                </div>
-              </div>
-            </div>
+          {!report || daily.length === 0 ? (
+            <EmptyState
+              title="No traffic data in this period"
+              description="GA4 returned no rows for the selected property and period. Try a longer period."
+            />
           ) : (
-            selectedProperty &&
-            report && (
-              <>
-                {/* DATE */}
-
-                <div className="mt-6 flex items-center gap-2 text-xs text-slate-500">
-                  <CalendarDays
-                    size={15}
-                  />
-
+            <>
+              <Panel
+                eyebrow="Data context"
+                title="Coverage & freshness"
+                description="What this report actually covers."
+              >
+                <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-rk-secondary">
                   <span>
-                    {dateRange.label}
+                    Last activity:{' '}
+                    <strong className="text-rk-ink">
+                      {totals.lastActivity
+                        ? fmtDate(totals.lastActivity)
+                        : 'Not reported'}
+                    </strong>
                   </span>
-
                   <span>
-                    Ã¢â‚¬Â¢
+                    Coverage:{' '}
+                    <strong className="text-rk-ink">
+                      {totals.coverage
+                        ? String(totals.coverage)
+                        : 'As returned by GA4'}
+                    </strong>
                   </span>
-
                   <span>
-                    {
-                      dateRange.startDate
-                    }{' '}
-                    Ã¢â€ â€™{' '}
-                    {
-                      dateRange.endDate
-                    }
+                    Identity:{' '}
+                    <strong className="text-rk-ink">
+                      Not verified by RENKOO
+                    </strong>
                   </span>
                 </div>
+              </Panel>
 
-                {/* DATA TRUST / FRESHNESS */}
-
-                <section className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-5">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="flex items-start gap-3">
-                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-amber-600 shadow-sm">
-                        <AlertTriangle size={19} />
-                      </div>
-
-                      <div>
-                        <h2 className="text-sm font-bold text-slate-900">
-                          RENKO Data Context
-                        </h2>
-
-                        <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">
-                          These metrics are historical GA4 observations for
-                          the selected period. They should not be interpreted
-                          as proof that the website is currently live,
-                          healthy or receiving traffic right now.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex shrink-0 items-center gap-2 rounded-xl border border-amber-200 bg-white px-3 py-2 text-[10px] font-bold text-amber-700">
-                      <ShieldCheck size={14} />
-                      Source: Google Analytics 4
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-xl border border-amber-100 bg-white p-4">
-                      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                        Last recorded activity
-                      </div>
-                      <div className="mt-1 text-sm font-bold text-slate-800">
-                        {lastActivityLabel}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-amber-100 bg-white p-4">
-                      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                        Data coverage
-                      </div>
-                      <div className="mt-1 text-sm font-bold text-slate-800">
-                        {dataCoverageLabel}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-amber-100 bg-white p-4">
-                      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                        Current website status
-                      </div>
-                      <div className="mt-1 text-sm font-bold text-slate-800">
-                        Not verified by GA4
-                      </div>
-                    </div>
-                  </div>
-                </section>
-
-                {/* METRICS */}
-
-                <div className="mt-4 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-                  <MetricCard
-                    title="Active Users"
-                    value={formatNumber(
-                      totals.activeUsers,
-                    )}
-                    subtitle="Users active during the selected period"
-                    icon={
-                      <Users
-                        size={18}
-                      />
+              <section aria-label="Key signals">
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <Metric
+                    label="Users"
+                    value={
+                      totals.users === null
+                        ? '—'
+                        : fmtInt(totals.users)
                     }
+                    detail="Measured in period"
                   />
-
-                  <MetricCard
-                    title="Sessions"
-                    value={formatNumber(
-                      totals.sessions,
-                    )}
-                    subtitle="Total sessions recorded by GA4"
-                    icon={
-                      <Activity
-                        size={18}
-                      />
+                  <Metric
+                    label="Sessions"
+                    value={
+                      totals.sessions === null
+                        ? '—'
+                        : fmtInt(totals.sessions)
                     }
+                    detail="Measured visits"
                   />
-
-                  <MetricCard
-                    title="Page Views"
-                    value={formatNumber(
-                      totals.pageViews,
-                    )}
-                    subtitle="Total page views recorded"
-                    icon={
-                      <Eye
-                        size={18}
-                      />
+                  <Metric
+                    label="Engagement"
+                    value={
+                      totals.engagement === null
+                        ? '—'
+                        : typeof totals.engagement ===
+                            'number'
+                          ? `${(totals.engagement <= 1 ? totals.engagement * 100 : totals.engagement).toFixed(1)}%`
+                          : String(totals.engagement)
                     }
+                    detail="As reported"
                   />
-
-                  <MetricCard
-                    title="Conversions"
-                    value={formatNumber(
-                      totals.conversions,
-                    )}
-                    subtitle="Conversions recorded by GA4"
-                    icon={
-                      <TrendingUp
-                        size={18}
-                      />
+                  <Metric
+                    label="Conversions"
+                    value={
+                      totals.conversions === null
+                        ? '—'
+                        : fmtInt(totals.conversions)
+                    }
+                    detail={
+                      totals.conversions === null
+                        ? 'Not reported for this property'
+                        : 'GA4 events'
                     }
                   />
                 </div>
+              </section>
 
-                {/* SECONDARY METRICS */}
+              <Panel
+                eyebrow="Primary visual"
+                title="Traffic trend"
+                description="Measured users across the period."
+              >
+                <TrendChart
+                  state={
+                    trendPoints.length > 0
+                      ? 'ready'
+                      : 'empty'
+                  }
+                  points={trendPoints}
+                  summary={`Measured users from ${startDate} to ${endDate}.`}
+                  formatValue={(v) => fmtInt(v)}
+                  emptyTitle="No daily rows"
+                  emptyDescription="Totals exist but GA4 returned no daily breakdown."
+                />
+              </Panel>
 
-                <div className="mt-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-                  <MetricCard
-                    title="New Users"
-                    value={formatNumber(
-                      totals.newUsers,
-                    )}
-                    subtitle="New users recorded in the selected period"
-                    icon={
-                      <UserPlus
-                        size={18}
-                      />
+              <div className="grid gap-3 lg:grid-cols-2">
+                <Panel
+                  eyebrow="Acquisition"
+                  title="Source / channel"
+                  description="Where measured users came from."
+                >
+                  <BarList
+                    state={
+                      channels.length > 0
+                        ? 'ready'
+                        : 'empty'
                     }
-                    compact
+                    bars={channels}
+                    summary="Measured users by acquisition channel."
+                    formatValue={(v) => fmtInt(v)}
+                    emptyTitle="No channel breakdown"
+                    emptyDescription="GA4 did not return channel attribution for this period."
                   />
+                </Panel>
 
-                  <MetricCard
-                    title="Engagement Rate"
-                    value={formatPercent(
-                      totals.engagementRate *
-                        100,
-                    )}
-                    subtitle="Session-weighted engagement rate"
-                    icon={
-                      <BarChart3
-                        size={18}
-                      />
-                    }
-                    compact
-                  />
-
-                  <MetricCard
-                    title="Avg. Session Duration"
-                    value={formatDuration(
-                      totals.averageSessionDuration,
-                    )}
-                    subtitle="Session-weighted average duration"
-                    icon={
-                      <Clock3
-                        size={18}
-                      />
-                    }
-                    compact
-                  />
-                </div>
-
-                {/* TRAFFIC TREND */}
-
-                <section className="mt-6 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <h2 className="text-lg font-bold">
-                        Traffic Trend
-                      </h2>
-
-                      <p className="mt-1 text-sm text-slate-500">
-                        Daily active users reported by Google
-                        Analytics 4.
-                      </p>
-                    </div>
-
-                    <div className="rounded-lg bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700">
-                      {rows.length}{' '}
-                      data points
-                    </div>
-                  </div>
-
-                  {rows.length ===
-                  0 ? (
-                    <EmptyState />
+                <Panel
+                  eyebrow="Growth link"
+                  title="Traffic → leads → revenue"
+                  description="Stages appear only where real data supports them. Revenue is never inferred from traffic."
+                >
+                  {funnelStages.length < 2 ? (
+                    <EmptyState
+                      title="Growth linkage unavailable"
+                      description="Lead and revenue data are not recorded for this website yet. Record leads and revenue to connect traffic to growth."
+                      actionLabel="Open leads"
+                      actionHref="/leads"
+                    />
                   ) : (
-                    <div className="mt-6">
-                      <div className="flex h-[280px] items-end gap-1 overflow-x-auto rounded-xl bg-slate-50 p-4">
-                        {rows.map(
-                          (
-                            row: GoogleAnalyticsReportRow,
-                            index: number,
-                          ) => {
-                            const users =
-                              Number(
-                                row.activeUsers ??
-                                  0,
-                              );
-
-                            const height =
-                              Math.max(
-                                5,
-                                (users /
-                                  maxUsers) *
-                                  100,
-                              );
-
-                            return (
-                              <div
-                                key={`${row.date}-${index}`}
-                                className="group flex h-full min-w-[20px] flex-1 flex-col items-center justify-end"
-                              >
-                                <div className="pointer-events-none mb-2 whitespace-nowrap rounded-lg bg-slate-900 px-2 py-1 text-[9px] font-bold text-white opacity-0 transition group-hover:opacity-100">
-                                  {formatShortDate(
-                                    (row.date ?? ''),
-                                  )}{' '}
-                                  Â·{' '}
-                                  {formatNumber(
-                                    users,
-                                  )}{' '}
-                                  users
-                                </div>
-
-                                <div
-                                  className="w-full max-w-[34px] rounded-t-md bg-violet-500 transition-all group-hover:bg-violet-600"
-                                  style={{
-                                    height: `${height}%`,
-                                  }}
-                                />
-                              </div>
-                            );
-                          },
-                        )}
-                      </div>
-
-                      <div className="mt-3 flex justify-between text-[10px] text-slate-400">
-                        <span>
-                          {
-                            rows[0]
-                              ?.date
-                          }
-                        </span>
-
-                        <span>
-                          {
-                            rows[
-                              rows.length -
-                                1
-                            ]?.date
-                          }
-                        </span>
-                      </div>
-                    </div>
+                    <FunnelStages
+                      stages={funnelStages}
+                      summary="Measured funnel from traffic to revenue."
+                    />
                   )}
-                </section>
-
-                {/* DAILY TABLE */}
-
-                <section className="mt-6 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-                  <div>
-                    <h2 className="text-lg font-bold">
-                      Daily Analytics
-                    </h2>
-
-                    <p className="mt-1 text-sm text-slate-500">
-                      Actual daily GA4 metrics for the
-                      selected property and period.
+                  {typeof revenueTotal === 'number' && (
+                    <p className="rk-number mt-2 text-sm text-rk-secondary">
+                      Recorded revenue:{' '}
+                      {fmtMoney(
+                        revenueTotal,
+                        revenueCurrency,
+                      )}
                     </p>
-                  </div>
+                  )}
+                </Panel>
+              </div>
 
-                  <div className="mt-5 overflow-x-auto">
-                    <table className="w-full min-w-[850px] text-left text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-100">
-                          <Th>
-                            Date
-                          </Th>
-
-                          <Th>
-                            Active Users
-                          </Th>
-
-                          <Th>
-                            New Users
-                          </Th>
-
-                          <Th>
-                            Sessions
-                          </Th>
-
-                          <Th>
-                            Engagement
-                          </Th>
-
-                          <Th>
-                            Avg. Duration
-                          </Th>
-
-                          <Th>
-                            Page Views
-                          </Th>
-
-                          <Th>
-                            Conversions
-                          </Th>
-                        </tr>
-                      </thead>
-
-                      <tbody>
-                        {rows.map(
-                          (
-                            row: GoogleAnalyticsReportRow,
-                            index: number,
-                          ) => (
-                            <tr
-                              key={`${row.date}-${index}`}
-                              className="border-b border-slate-50 transition hover:bg-slate-50"
-                            >
-                              <Td strong>
-                                {formatShortDate(
-                                  (row.date ?? ''),
-                                )}
-                              </Td>
-
-                              <Td>
-                                {formatNumber(
-                                  (row.activeUsers ?? 0),
-                                )}
-                              </Td>
-
-                              <Td>
-                                {formatNumber(
-                                  (row.newUsers ?? 0),
-                                )}
-                              </Td>
-
-                              <Td>
-                                {formatNumber(
-                                  (row.sessions ?? 0),
-                                )}
-                              </Td>
-
-                              <Td>
-                                {formatPercent(
-                                  (row.engagementRate ?? 0) *
-                                    100,
-                                )}
-                              </Td>
-
-                              <Td>
-                                {formatDuration(
-                                  (row.averageSessionDuration ?? 0),
-                                )}
-                              </Td>
-
-                              <Td>
-                                {formatNumber(
-                                  (row.pageViews ?? 0),
-                                )}
-                              </Td>
-
-                              <Td>
-                                {formatNumber(
-                                  (row.conversions ?? 0),
-                                )}
-                              </Td>
-                            </tr>
-                          ),
-                        )}
-                      </tbody>
-                    </table>
-
-                    {rows.length ===
-                      0 && (
-                      <EmptyState />
-                    )}
-                  </div>
-                </section>
-
-                {/* INSIGHT */}
-
-                <section className="mt-6 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-                  <div className="flex items-start gap-4">
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-50 text-violet-600">
-                      <TrendingUp
-                        size={19}
-                      />
-                    </div>
-
-                    <div>
-                      <h2 className="text-sm font-bold">
-                        RENKO Analytics Signal
-                      </h2>
-
-                      <p className="mt-1 text-sm leading-6 text-slate-500">
-                        RENKO uses the connected GA4
-                        property as the source of truth for
-                        measured traffic, engagement and conversion
-                        metrics in the selected period. Historical
-                        GA4 activity does not verify that the website
-                        is currently reachable or operating normally.
-                        Monetary revenue is not estimated unless
-                        revenue data is actually available.
-                      </p>
-                    </div>
-                  </div>
-                </section>
-              </>
-            )
+              {landingPages.length > 0 && (
+                <Panel
+                  eyebrow="Detail"
+                  title="Landing page performance"
+                  description="Which pages turn visits into outcomes."
+                >
+                  <DataTable
+                    caption="Landing pages with measured performance"
+                    columns={landingColumns}
+                    rows={landingPages}
+                    keyOf={(r: any, i: number) =>
+                      String(r.page || r.path || i)
+                    }
+                    onRowClick={setDrawerRow}
+                    pageSize={12}
+                  />
+                </Panel>
+              )}
+            </>
           )}
-        </section>
-      </main>
-    </div>
-  );
-}
 
-/* =========================================================
- * METRIC CARD
- * ========================================================= */
-
-function MetricCard({
-  title,
-  value,
-  subtitle,
-  icon,
-  compact = false,
-}: {
-  title: string;
-  value: string | number;
-  subtitle: string;
-  icon: React.ReactNode;
-  compact?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-2xl border border-slate-100 bg-white shadow-sm ${
-        compact
-          ? 'p-5'
-          : 'p-6'
-      }`}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-sm font-medium text-slate-500">
-          {title}
+          <RecommendationCallout
+            title="Traffic → growth"
+            text="Traffic alone is vanity. Connect it to recorded leads and revenue — then the ROI view tells you what the traffic is worth."
+            actionLabel="Open ROI & Outcomes"
+            actionHref="/roi"
+          />
         </div>
+      )}
 
-        <div className="grid h-9 w-9 place-items-center rounded-xl bg-violet-50 text-violet-600">
-          {icon}
-        </div>
-      </div>
-
-      <div
-        className={`font-bold ${
-          compact
-            ? 'mt-3 text-2xl'
-            : 'mt-4 text-3xl'
-        }`}
+      <Drawer
+        open={drawerRow !== null}
+        onClose={() => setDrawerRow(null)}
+        eyebrow="Landing page"
+        title={String(
+          drawerRow?.page ||
+            drawerRow?.path ||
+            'Landing page',
+        )}
+        description="Measured performance for this page in the selected period."
       >
-        {value}
-      </div>
-
-      <div className="mt-2 text-xs leading-5 text-slate-400">
-        {subtitle}
-      </div>
-    </div>
+        {drawerRow && (
+          <>
+            <DrawerMeta
+              items={[
+                {
+                  label: 'Users',
+                  value: fmtInt(
+                    drawerRow.users ??
+                      drawerRow.sessions ??
+                      0,
+                  ),
+                },
+                {
+                  label: 'Sessions',
+                  value: fmtInt(
+                    drawerRow.sessions ?? 0,
+                  ),
+                },
+                {
+                  label: 'Conversions',
+                  value:
+                    drawerRow.conversions !==
+                    undefined
+                      ? fmtInt(drawerRow.conversions)
+                      : 'Not reported',
+                },
+                {
+                  label: 'Source',
+                  value: 'Google Analytics',
+                },
+              ]}
+            />
+            <DrawerSection title="Outcome">
+              <InsightBlock
+                eyebrow="Growth question"
+                title="Did this page help growth?"
+              >
+                <p className="rk-body mt-1">
+                  {drawerRow.conversions !== undefined
+                    ? 'Compare its conversions against its traffic share — then decide whether it needs content work, a stronger offer, or more qualified traffic.'
+                    : 'No conversion data is reported for this page, so growth impact cannot be assessed from traffic alone.'}
+                </p>
+              </InsightBlock>
+              <div className="mt-2">
+                <NextAction
+                  label="Review leads & revenue"
+                  detail="Recorded outcomes behind the traffic."
+                  href="/leads"
+                />
+              </div>
+            </DrawerSection>
+          </>
+        )}
+      </Drawer>
+    </AppShell>
   );
 }
-
-/* =========================================================
- * TABLE
- * ========================================================= */
-
-function Th({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <th className="px-3 py-3 font-semibold text-slate-400">
-      {children}
-    </th>
-  );
-}
-
-function Td({
-  children,
-  strong = false,
-}: {
-  children: React.ReactNode;
-  strong?: boolean;
-}) {
-  return (
-    <td
-      className={`px-3 py-3 ${
-        strong
-          ? 'font-semibold text-slate-700'
-          : 'text-slate-500'
-      }`}
-    >
-      {children}
-    </td>
-  );
-}
-
-/* =========================================================
- * EMPTY
- * ========================================================= */
-
-function EmptyState() {
-  return (
-    <div className="mt-5 rounded-xl bg-slate-50 p-8 text-center text-xs text-slate-500">
-      No GA4 data available for the selected period.
-    </div>
-  );
-}
-

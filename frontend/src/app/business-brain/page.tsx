@@ -10,12 +10,18 @@ import {
   CheckCircle2,
   Play,
   ListTodo,
+  Menu,
 } from 'lucide-react';
 
 import Sidebar from '../../components/Sidebar';
 import {
+  DataSourceBadge,
+  FreshnessBadge,
+} from '../../components/ui/badge';
+import {
   getWebsites,
   getBusinessBrain,
+  getBusinessContext,
   updateBusinessBrain,
   analyzeBusinessBrain,
   getBusinessBrainRecommendations,
@@ -24,6 +30,7 @@ import {
   updateActionStatus,
   Website,
   BusinessBrain,
+  BusinessContext,
   BusinessBrainRecommendation,
   RenkooAction,
 } from '../../lib/api';
@@ -175,9 +182,17 @@ function brainToForm(
 export default function BusinessBrainPage() {
   const [websites, setWebsites] = useState<Website[]>([]);
   const [websiteId, setWebsiteId] = useState('');
+  const [mobileOpen, setMobileOpen] =
+    useState(false);
 
   const [brain, setBrain] =
     useState<BusinessBrain | null>(null);
+
+  const [context, setContext] =
+    useState<BusinessContext | null>(null);
+
+  const [loadingContext, setLoadingContext] =
+    useState(false);
 
   const [form, setForm] =
     useState<BrainForm>(EMPTY_FORM);
@@ -208,6 +223,7 @@ export default function BusinessBrainPage() {
   useEffect(() => {
     if (!websiteId) {
       setBrain(null);
+      setContext(null);
       setForm(EMPTY_FORM);
       setRecommendations([]);
       setActions([]);
@@ -216,10 +232,32 @@ export default function BusinessBrainPage() {
 
     void Promise.all([
       loadBrain(),
+      loadContext(),
       loadRecommendations(),
       loadActions(),
     ]);
   }, [websiteId]);
+
+  async function loadContext() {
+    if (!websiteId) {
+      setContext(null);
+      return;
+    }
+
+    try {
+      setLoadingContext(true);
+
+      const data = await getBusinessContext(
+        websiteId,
+      );
+
+      setContext(data);
+    } catch {
+      setContext(null);
+    } finally {
+      setLoadingContext(false);
+    }
+  }
 
   async function loadWebsites() {
     try {
@@ -349,6 +387,7 @@ export default function BusinessBrainPage() {
       setForm(brainToForm(normalized));
 
       await Promise.all([
+        loadContext(),
         loadRecommendations(),
         loadActions(),
       ]);
@@ -437,6 +476,8 @@ export default function BusinessBrainPage() {
 
       setBrain(normalized);
       setForm(brainToForm(normalized));
+
+      await loadContext();
 
       setSuccess(
         'Business Brain saved successfully.',
@@ -667,8 +708,27 @@ export default function BusinessBrainPage() {
       (item) => item.id === websiteId,
     );
 
-  const hasBrain =
-    Boolean(brain);
+  const hasBrain = Boolean(
+    brain &&
+      (brain.businessName ||
+        brain.industry ||
+        brain.description ||
+        brain.targetAudience ||
+        brain.primaryGoal ||
+        brain.city ||
+        brain.country ||
+        brain.brandTone ||
+        brain.uniqueSellingPoint ||
+        (Array.isArray(brain.services) &&
+          brain.services.length > 0) ||
+        (Array.isArray(brain.products) &&
+          brain.products.length > 0) ||
+        (Array.isArray(brain.primaryKeywords) &&
+          brain.primaryKeywords.length > 0) ||
+        (Array.isArray(brain.targetLocations) &&
+          brain.targetLocations.length > 0) ||
+        brain.aiSummary),
+  );
 
   const score =
     brain &&
@@ -684,33 +744,45 @@ export default function BusinessBrainPage() {
     );
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-[#f7f8fb]">
       <Sidebar
-        mobileOpen={false}
-        onClose={() => {}}
+        mobileOpen={mobileOpen}
+        onClose={() => setMobileOpen(false)}
       />
 
       <main className="lg:ml-64">
-        <div className="mx-auto max-w-7xl p-5 lg:p-8">
+        <div className="mx-auto max-w-[1440px] p-5 lg:p-8">
 
           {/* HEADER */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <Brain
-                  size={24}
-                  className="text-violet-600"
-                />
+            <div className="flex items-start gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  setMobileOpen(true)
+                }
+                aria-label="Open menu"
+                className="mt-1 border border-[#e5e7eb] bg-white p-2 text-[#111827] lg:hidden"
+              >
+                <Menu size={20} />
+              </button>
+              <div>
+                <div className="flex items-center gap-2">
+                  <Brain
+                    size={24}
+                    className="text-[#111827]"
+                  />
 
-                <h1 className="text-2xl font-bold text-slate-900">
-                  Business Brain
-                </h1>
+                  <h1 className="text-3xl font-semibold tracking-[-0.04em] text-[#111827]">
+                    Business Brain
+                  </h1>
+                </div>
+
+                <p className="mt-1 text-sm text-[#6b7280]">
+                  Your business context powering
+                  RENKOO AI.
+                </p>
               </div>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Your business context powering
-                RENKOO AI.
-              </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -724,7 +796,7 @@ export default function BusinessBrainPage() {
                 disabled={
                   websites.length === 0
                 }
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium outline-none focus:border-violet-400"
+                className="rounded-none border border-[#e5e7eb] bg-white px-4 py-2 text-sm font-medium outline-none focus:border-[#111827]"
               >
                 {websites.length === 0 ? (
                   <option value="">
@@ -754,7 +826,7 @@ export default function BusinessBrainPage() {
                   saving ||
                   !websiteId
                 }
-                className="flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex items-center gap-2 rounded-none bg-[#111827] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#374151] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {analyzing ? (
                   <RefreshCw
@@ -772,9 +844,27 @@ export default function BusinessBrainPage() {
             </div>
           </div>
 
+          {websiteId ? (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <DataSourceBadge
+                source="Business Brain"
+                connected={hasBrain}
+              />
+              <FreshnessBadge
+                label={
+                  brain?.lastAnalyzedAt
+                    ? `Analyzed ${new Date(
+                        brain.lastAnalyzedAt,
+                      ).toLocaleDateString()}`
+                    : 'Never analyzed'
+                }
+              />
+            </div>
+          ) : null}
+
           {/* ERROR */}
           {error && (
-            <div className="mt-6 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            <div className="mt-6 flex items-start gap-2 rounded-none border border-red-200 bg-[#fafafa] p-4 text-sm text-[#4b5563]">
               <AlertTriangle
                 size={17}
                 className="mt-0.5 shrink-0"
@@ -786,7 +876,7 @@ export default function BusinessBrainPage() {
 
           {/* SUCCESS */}
           {success && (
-            <div className="mt-6 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-700">
+            <div className="mt-6 flex items-center gap-2 rounded-none border border-emerald-200 bg-[#f3f4f6] p-4 text-sm font-semibold text-[#374151]">
               <CheckCircle2 size={17} />
               <span>{success}</span>
             </div>
@@ -794,28 +884,28 @@ export default function BusinessBrainPage() {
 
           {/* LOADING */}
           {loading ? (
-            <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-10">
-              <div className="flex items-center gap-3 text-sm text-slate-500">
+            <div className="mt-8 rounded-none border border-[#e5e7eb] bg-white p-10">
+              <div className="flex items-center gap-3 text-sm text-[#6b7280]">
                 <RefreshCw
                   size={20}
-                  className="animate-spin text-violet-600"
+                  className="animate-spin text-[#111827]"
                 />
 
                 Loading Business Brain...
               </div>
             </div>
           ) : !websiteId ? (
-            <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-10 text-center">
+            <div className="mt-8 rounded-none border border-[#e5e7eb] bg-white p-10 text-center">
               <Brain
                 size={40}
-                className="mx-auto text-slate-300"
+                className="mx-auto text-[#c4c8ce]"
               />
 
-              <h2 className="mt-4 text-lg font-bold text-slate-900">
+              <h2 className="mt-4 text-lg font-bold text-[#111827]">
                 No website configured
               </h2>
 
-              <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
+              <p className="mx-auto mt-2 max-w-md text-sm text-[#6b7280]">
                 Add a website first to build
                 its Business Brain.
               </p>
@@ -823,15 +913,20 @@ export default function BusinessBrainPage() {
           ) : (
             <div className="mt-8 space-y-5">
 
+              <UnderstandingPanel
+                context={context}
+                loading={loadingContext}
+              />
+
               {/* BUSINESS IDENTITY */}
-              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <section className="rounded-none border border-[#e5e7eb] bg-white p-6 ">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h2 className="text-sm font-bold text-slate-900">
+                    <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
                       Business Identity
                     </h2>
 
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-[#6b7280]">
                       Core information about the
                       business.
                     </p>
@@ -847,7 +942,7 @@ export default function BusinessBrainPage() {
                       analyzing ||
                       !websiteId
                     }
-                    className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex items-center justify-center gap-2 rounded-none border border-[#e5e7eb] bg-white px-4 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#f7f8fb] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {saving ? (
                       <RefreshCw
@@ -969,7 +1064,7 @@ export default function BusinessBrainPage() {
                   />
 
                   <div className="md:col-span-2">
-                    <label className="text-xs font-semibold text-slate-600">
+                    <label className="text-xs font-semibold text-[#4b5563]">
                       Business Description
                     </label>
 
@@ -984,7 +1079,7 @@ export default function BusinessBrainPage() {
                         )
                       }
                       rows={5}
-                      className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                      className="mt-2 w-full rounded-none border border-[#e5e7eb] px-4 py-3 text-sm outline-none transition focus:border-[#111827] focus:ring-2 focus:ring-[#f3f4f6]"
                       placeholder="Describe what the business does..."
                     />
                   </div>
@@ -1048,24 +1143,24 @@ export default function BusinessBrainPage() {
               </section>
 
               {/* SCORE */}
-              {hasBrain && (
-                <section className="rounded-2xl border border-violet-100 bg-white p-6 shadow-sm">
+              {hasBrain ? (
+                <section className="rounded-none border border-[#e5e7eb] bg-white p-6 ">
                   <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <h2 className="text-sm font-bold text-slate-900">
+                      <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
                         Business Brain Score
                       </h2>
 
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="mt-1 text-xs text-[#6b7280]">
                         Profile completeness based on
                         the configured business context.
                       </p>
                     </div>
 
                     <div className="text-right">
-                      <div className="text-3xl font-bold text-violet-600">
+                      <div className="text-3xl font-bold text-[#111827]">
                         {score}
-                        <span className="text-base text-slate-400">
+                        <span className="text-base text-[#9ca3af]">
                           /100
                         </span>
                       </div>
@@ -1074,7 +1169,7 @@ export default function BusinessBrainPage() {
 
                   <div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-100">
                     <div
-                      className="h-full rounded-full bg-violet-600 transition-all duration-500"
+                      className="h-full rounded-full bg-[#111827] transition-all duration-500"
                       style={{
                         width: `${Math.min(
                           100,
@@ -1087,24 +1182,64 @@ export default function BusinessBrainPage() {
                     />
                   </div>
                 </section>
+              ) : (
+                <section className="rounded-none border border-[#e5e7eb] bg-white p-6 text-center">
+                  <Brain
+                    size={28}
+                    className="mx-auto text-[#c4c8ce]"
+                  />
+                  <h2 className="mt-2 text-sm font-semibold text-[#111827]">
+                    No Business Brain yet
+                  </h2>
+                  <p className="mx-auto mt-1 max-w-md text-xs text-[#6b7280]">
+                    Add business details above or run
+                    analysis to build the profile.
+                    No score is shown until real
+                    business context exists.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleAnalyze();
+                    }}
+                    disabled={
+                      analyzing ||
+                      saving ||
+                      !websiteId
+                    }
+                    className="mx-auto mt-4 flex items-center gap-2 bg-[#111827] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#374151] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {analyzing ? (
+                      <RefreshCw
+                        size={16}
+                        className="animate-spin"
+                      />
+                    ) : (
+                      <Sparkles size={16} />
+                    )}
+                    {analyzing
+                      ? 'Analyzing...'
+                      : 'Analyze Business Brain'}
+                  </button>
+                </section>
               )}
 
               {/* RECOMMENDATIONS */}
-              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <section className="rounded-none border border-[#e5e7eb] bg-white p-6 ">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="flex items-center gap-2">
                       <Sparkles
                         size={18}
-                        className="text-violet-600"
+                        className="text-[#111827]"
                       />
 
-                      <h2 className="text-sm font-bold text-slate-900">
+                      <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
                         Growth Recommendations
                       </h2>
                     </div>
 
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-[#6b7280]">
                       AI-generated opportunities from
                       your Business Brain analysis.
                     </p>
@@ -1119,7 +1254,7 @@ export default function BusinessBrainPage() {
                       loadingRecommendations ||
                       !websiteId
                     }
-                    className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex items-center justify-center gap-2 rounded-none border border-[#e5e7eb] px-3 py-2 text-xs font-semibold text-[#374151] hover:bg-[#f7f8fb] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <RefreshCw
                       size={14}
@@ -1135,26 +1270,26 @@ export default function BusinessBrainPage() {
                 </div>
 
                 {loadingRecommendations ? (
-                  <div className="mt-6 flex items-center gap-2 text-sm text-slate-500">
+                  <div className="mt-6 flex items-center gap-2 text-sm text-[#6b7280]">
                     <RefreshCw
                       size={16}
-                      className="animate-spin text-violet-600"
+                      className="animate-spin text-[#111827]"
                     />
 
                     Loading recommendations...
                   </div>
                 ) : recommendations.length === 0 ? (
-                  <div className="mt-6 rounded-xl bg-slate-50 p-6 text-center">
+                  <div className="mt-6 rounded-none bg-[#f7f8fb] p-6 text-center">
                     <Sparkles
                       size={28}
-                      className="mx-auto text-slate-300"
+                      className="mx-auto text-[#c4c8ce]"
                     />
 
-                    <p className="mt-2 text-sm font-medium text-slate-600">
+                    <p className="mt-2 text-sm font-medium text-[#4b5563]">
                       No recommendations yet
                     </p>
 
-                    <p className="mt-1 text-xs text-slate-400">
+                    <p className="mt-1 text-xs text-[#9ca3af]">
                       Run Business Brain analysis to
                       generate real recommendations.
                     </p>
@@ -1189,7 +1324,7 @@ export default function BusinessBrainPage() {
                             key={
                               recommendation.id
                             }
-                            className="rounded-xl border border-slate-200 p-4 transition hover:border-violet-200 hover:shadow-sm"
+                            className="rounded-none border border-[#e5e7eb] p-4 transition hover:border-[#d1d5db] hover:"
                           >
                             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 
@@ -1200,20 +1335,20 @@ export default function BusinessBrainPage() {
                                     className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
                                       priority ===
                                       'CRITICAL'
-                                        ? 'bg-red-100 text-red-700'
+                                        ? 'bg-[#f3f4f6] text-[#4b5563]'
                                         : priority ===
                                           'HIGH'
-                                        ? 'bg-red-50 text-red-700'
+                                        ? 'bg-[#fafafa] text-[#4b5563]'
                                         : priority ===
                                           'MEDIUM'
-                                        ? 'bg-amber-50 text-amber-700'
-                                        : 'bg-slate-100 text-slate-600'
+                                        ? 'bg-[#f3f4f6] text-[#374151]'
+                                        : 'bg-slate-100 text-[#4b5563]'
                                     }`}
                                   >
                                     {priority}
                                   </span>
 
-                                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#6b7280]">
                                     {
                                       recommendation.type
                                     }
@@ -1229,20 +1364,20 @@ export default function BusinessBrainPage() {
                                   )}
                                 </div>
 
-                                <h3 className="mt-2 text-sm font-bold text-slate-900">
+                                <h3 className="mt-2 text-sm font-bold text-[#111827]">
                                   {
                                     recommendation.title
                                   }
                                 </h3>
 
-                                <p className="mt-1 text-xs leading-5 text-slate-500">
+                                <p className="mt-1 text-xs leading-5 text-[#6b7280]">
                                   {
                                     recommendation.description
                                   }
                                 </p>
 
                                 {recommendation.actionText && (
-                                  <p className="mt-2 text-xs font-medium text-violet-700">
+                                  <p className="mt-2 text-xs font-medium text-[#374151]">
                                     ?{' '}
                                     {
                                       recommendation.actionText
@@ -1254,7 +1389,7 @@ export default function BusinessBrainPage() {
                                   recommendation.effort) && (
                                   <div className="mt-3 flex flex-wrap gap-2">
                                     {recommendation.impact && (
-                                      <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
+                                      <span className="rounded-none bg-[#f3f4f6] px-2.5 py-1 text-[10px] font-semibold text-[#374151]">
                                         Impact:{' '}
                                         {
                                           recommendation.impact
@@ -1263,7 +1398,7 @@ export default function BusinessBrainPage() {
                                     )}
 
                                     {recommendation.effort && (
-                                      <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
+                                      <span className="rounded-none bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-[#4b5563]">
                                         Effort:{' '}
                                         {
                                           recommendation.effort
@@ -1280,14 +1415,14 @@ export default function BusinessBrainPage() {
                                   <div className="flex flex-col items-end gap-2">
 
                                     <span
-                                      className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold ${
+                                      className={`flex items-center gap-1.5 rounded-none px-3 py-2 text-xs font-bold ${
                                         linkedAction.status ===
                                         'DONE'
-                                          ? 'bg-emerald-50 text-emerald-700'
+                                          ? 'bg-[#f3f4f6] text-[#374151]'
                                           : linkedAction.status ===
                                             'IN_PROGRESS'
-                                          ? 'bg-amber-50 text-amber-700'
-                                          : 'bg-violet-50 text-violet-700'
+                                          ? 'bg-[#f3f4f6] text-[#374151]'
+                                          : 'bg-[#fafafa] text-[#374151]'
                                       }`}
                                     >
                                       {linkedAction.status ===
@@ -1324,7 +1459,7 @@ export default function BusinessBrainPage() {
                                           actionLoading ===
                                           linkedAction.id
                                         }
-                                        className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex items-center gap-1.5 rounded-none bg-[#f3f4f6]0 px-3 py-2 text-xs font-bold text-white transition hover:bg-[#374151] disabled:cursor-not-allowed disabled:opacity-50"
                                       >
                                         <Play size={13} />
                                         Start
@@ -1345,7 +1480,7 @@ export default function BusinessBrainPage() {
                                           actionLoading ===
                                           linkedAction.id
                                         }
-                                        className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex items-center gap-1.5 rounded-none bg-[#111827] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#374151] disabled:cursor-not-allowed disabled:opacity-50"
                                       >
                                         <CheckCircle2
                                           size={13}
@@ -1377,7 +1512,7 @@ export default function BusinessBrainPage() {
                                       isCreating ||
                                       isCompleted
                                     }
-                                    className="relative z-10 flex min-w-[130px] cursor-pointer items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-violet-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="relative z-10 flex min-w-[130px] cursor-pointer items-center justify-center gap-2 rounded-none bg-[#111827] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#374151] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     {isCreating ? (
                                       <>
@@ -1409,21 +1544,21 @@ export default function BusinessBrainPage() {
               </section>
 
               {/* ACTIONS */}
-              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <section className="rounded-none border border-[#e5e7eb] bg-white p-6 ">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="flex items-center gap-2">
                       <ListTodo
                         size={18}
-                        className="text-violet-600"
+                        className="text-[#111827]"
                       />
 
-                      <h2 className="text-sm font-bold text-slate-900">
+                      <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
                         Actions
                       </h2>
                     </div>
 
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-[#6b7280]">
                       Execute recommendations and
                       track their status.
                     </p>
@@ -1435,7 +1570,7 @@ export default function BusinessBrainPage() {
                       void loadActions();
                     }}
                     disabled={!websiteId}
-                    className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    className="flex items-center justify-center gap-2 rounded-none border border-[#e5e7eb] px-3 py-2 text-xs font-semibold text-[#374151] hover:bg-[#f7f8fb] disabled:opacity-50"
                   >
                     <RefreshCw size={14} />
                     Refresh
@@ -1443,17 +1578,17 @@ export default function BusinessBrainPage() {
                 </div>
 
                 {websiteActions.length === 0 ? (
-                  <div className="mt-5 rounded-xl bg-slate-50 p-6 text-center">
+                  <div className="mt-5 rounded-none bg-[#f7f8fb] p-6 text-center">
                     <ListTodo
                       size={28}
-                      className="mx-auto text-slate-300"
+                      className="mx-auto text-[#c4c8ce]"
                     />
 
-                    <p className="mt-2 text-sm font-medium text-slate-600">
+                    <p className="mt-2 text-sm font-medium text-[#4b5563]">
                       No actions created yet
                     </p>
 
-                    <p className="mt-1 text-xs text-slate-400">
+                    <p className="mt-1 text-xs text-[#9ca3af]">
                       Create an action from a
                       recommendation above.
                     </p>
@@ -1464,14 +1599,14 @@ export default function BusinessBrainPage() {
                       (action) => (
                         <div
                           key={action.id}
-                          className="rounded-xl border border-slate-200 p-4"
+                          className="rounded-none border border-[#e5e7eb] p-4"
                         >
                           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
 
-                                <span className="text-sm font-bold text-slate-900">
+                                <span className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
                                   {action.title}
                                 </span>
 
@@ -1479,14 +1614,14 @@ export default function BusinessBrainPage() {
                                   className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
                                     action.status ===
                                     'DONE'
-                                      ? 'bg-emerald-50 text-emerald-700'
+                                      ? 'bg-[#f3f4f6] text-[#374151]'
                                       : action.status ===
                                         'IN_PROGRESS'
-                                      ? 'bg-amber-50 text-amber-700'
+                                      ? 'bg-[#f3f4f6] text-[#374151]'
                                       : action.status ===
                                         'DISMISSED'
-                                      ? 'bg-red-50 text-red-700'
-                                      : 'bg-slate-100 text-slate-600'
+                                      ? 'bg-[#fafafa] text-[#4b5563]'
+                                      : 'bg-slate-100 text-[#4b5563]'
                                   }`}
                                 >
                                   {action.status.replace(
@@ -1495,12 +1630,12 @@ export default function BusinessBrainPage() {
                                   )}
                                 </span>
 
-                                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">
+                                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-[#6b7280]">
                                   {action.priority}
                                 </span>
                               </div>
 
-                              <p className="mt-2 text-xs leading-5 text-slate-500">
+                              <p className="mt-2 text-xs leading-5 text-[#6b7280]">
                                 {action.description}
                               </p>
 
@@ -1530,7 +1665,7 @@ export default function BusinessBrainPage() {
                                     actionLoading ===
                                     action.id
                                   }
-                                  className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="flex items-center gap-1.5 rounded-none bg-[#f3f4f6]0 px-3 py-2 text-xs font-bold text-white transition hover:bg-[#374151] disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   {actionLoading ===
                                   action.id ? (
@@ -1562,7 +1697,7 @@ export default function BusinessBrainPage() {
                                     actionLoading ===
                                     action.id
                                   }
-                                  className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="flex items-center gap-1.5 rounded-none bg-[#111827] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#374151] disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   {actionLoading ===
                                   action.id ? (
@@ -1582,7 +1717,7 @@ export default function BusinessBrainPage() {
 
                               {action.status ===
                                 'DONE' && (
-                                <span className="flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
+                                <span className="flex items-center gap-1.5 rounded-none bg-[#f3f4f6] px-3 py-2 text-xs font-bold text-[#374151]">
                                   <CheckCircle2
                                     size={14}
                                   />
@@ -1592,7 +1727,7 @@ export default function BusinessBrainPage() {
 
                               {action.status ===
                                 'DISMISSED' && (
-                                <span className="rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+                                <span className="rounded-none bg-[#fafafa] px-3 py-2 text-xs font-bold text-[#4b5563]">
                                   Dismissed
                                 </span>
                               )}
@@ -1607,19 +1742,19 @@ export default function BusinessBrainPage() {
               </section>
 
               {/* AI CONTEXT */}
-              <section className="rounded-2xl border border-violet-100 bg-violet-50 p-6">
+              <section className="rounded-none border border-[#e5e7eb] bg-[#fafafa] p-6">
                 <div className="flex items-start gap-3">
                   <Sparkles
                     size={20}
-                    className="mt-0.5 shrink-0 text-violet-600"
+                    className="mt-0.5 shrink-0 text-[#111827]"
                   />
 
                   <div>
-                    <h2 className="text-sm font-bold text-violet-900">
+                    <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
                       AI Context
                     </h2>
 
-                    <p className="mt-1 text-xs leading-5 text-violet-700">
+                    <p className="mt-1 text-xs leading-5 text-[#374151]">
                       This Business Brain becomes
                       the context used by RENKOO's
                       AI-powered SEO, content,
@@ -1627,7 +1762,7 @@ export default function BusinessBrainPage() {
                     </p>
 
                     {brain?.aiSummary && (
-                      <div className="mt-4 rounded-xl border border-violet-200 bg-white/70 p-4 text-sm leading-6 text-violet-900">
+                      <div className="mt-4 rounded-none border border-[#d1d5db] bg-white/70 p-4 text-sm leading-6 text-[#111827]">
                         {brain.aiSummary}
                       </div>
                     )}
@@ -1637,16 +1772,16 @@ export default function BusinessBrainPage() {
 
               {/* WEBSITE INFO */}
               {selectedWebsite && (
-                <section className="rounded-2xl border border-slate-200 bg-white p-5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                <section className="rounded-none border border-[#e5e7eb] bg-white p-5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#9ca3af]">
                     Connected Website
                   </p>
 
-                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                  <p className="mt-1 text-sm font-semibold text-[#111827]">
                     {selectedWebsite.name}
                   </p>
 
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-[#6b7280]">
                     {selectedWebsite.url}
                   </p>
                 </section>
@@ -1671,7 +1806,7 @@ function Field({
 }) {
   return (
     <div>
-      <label className="text-xs font-semibold text-slate-600">
+      <label className="text-xs font-semibold text-[#4b5563]">
         {label}
       </label>
 
@@ -1680,7 +1815,7 @@ function Field({
         onChange={(e) =>
           onChange(e.target.value)
         }
-        className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+        className="mt-2 w-full rounded-none border border-[#e5e7eb] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#111827] focus:ring-2 focus:ring-[#f3f4f6]"
       />
     </div>
   );
@@ -1704,12 +1839,12 @@ function ArrayCard({
     safeValue.join(', ');
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 className="text-sm font-bold text-slate-900">
+    <section className="rounded-none border border-[#e5e7eb] bg-white p-5 ">
+      <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
         {title}
       </h2>
 
-      <p className="mt-1 text-xs text-slate-500">
+      <p className="mt-1 text-xs text-[#6b7280]">
         Separate multiple items with commas.
       </p>
 
@@ -1718,7 +1853,7 @@ function ArrayCard({
         onChange={(e) =>
           onChange(e.target.value)
         }
-        className="mt-4 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+        className="mt-4 w-full rounded-none border border-[#e5e7eb] px-4 py-3 text-sm outline-none transition focus:border-[#111827] focus:ring-2 focus:ring-[#f3f4f6]"
         placeholder={`Add ${title.toLowerCase()}...`}
       />
 
@@ -1728,7 +1863,7 @@ function ArrayCard({
             (item, index) => (
               <span
                 key={`${item}-${index}`}
-                className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700"
+                className="rounded-none bg-slate-100 px-3 py-1.5 text-xs font-medium text-[#374151]"
               >
                 {item}
               </span>
@@ -1736,11 +1871,282 @@ function ArrayCard({
           )}
         </div>
       ) : (
-        <p className="mt-3 text-xs text-slate-400">
+        <p className="mt-3 text-xs text-[#9ca3af]">
           No data available yet.
         </p>
       )}
     </section>
+  );
+}
+
+const DATA_SOURCE_LABELS: Array<{
+  key: keyof BusinessContext['dataAvailability'];
+  label: string;
+}> = [
+  { key: 'crawl', label: 'Technical crawl' },
+  { key: 'competitors', label: 'Competitors' },
+  { key: 'aiVisibility', label: 'AI visibility' },
+  { key: 'geo', label: 'GEO' },
+  { key: 'leads', label: 'Leads' },
+  { key: 'revenue', label: 'Revenue' },
+  { key: 'recommendations', label: 'Recommendations' },
+];
+
+const GOAL_SOURCE_HINTS: Array<{
+  keywords: string[];
+  hint: string;
+}> = [
+  {
+    keywords: ['lead', 'enquiry', 'demo', 'quote', 'booking'],
+    hint: 'Search, content and GEO opportunities receive higher business relevance.',
+  },
+  {
+    keywords: ['local'],
+    hint: 'GEO opportunities receive higher business relevance.',
+  },
+  {
+    keywords: ['sale', 'revenue', 'purchase', 'order', 'shop'],
+    hint: 'Search, content and backlink opportunities receive higher business relevance.',
+  },
+  {
+    keywords: ['traffic', 'visibility', 'ranking', 'growth'],
+    hint: 'Search, technical, competitor, backlink, GEO and AEO opportunities receive higher business relevance.',
+  },
+  {
+    keywords: ['brand', 'awareness', 'authority'],
+    hint: 'GEO, AEO and backlink opportunities receive higher business relevance.',
+  },
+];
+
+function goalHint(goal: string | null): string {
+  if (!goal) {
+    return 'Set a primary business goal to let RENKOO weigh opportunities by business relevance. Until then, prioritization uses pure evidence scoring.';
+  }
+
+  const lower = goal.toLowerCase();
+  const match = GOAL_SOURCE_HINTS.find((entry) =>
+    entry.keywords.some((keyword) =>
+      lower.includes(keyword),
+    ),
+  );
+
+  if (!match) {
+    return `Goal "${goal}" is saved. It does not match a known prioritization pattern yet, so scoring still uses pure evidence.`;
+  }
+
+  return `Goal "${goal}": ${match.hint}`;
+}
+
+function buildUnderstanding(
+  context: BusinessContext,
+): string[] {
+  const lines: string[] = [];
+  const profile = context.profile;
+  const name =
+    profile?.businessName ||
+    context.website.name ||
+    'This business';
+
+  const offerings = [
+    ...context.offerings.services,
+    ...context.offerings.products,
+  ].slice(0, 5);
+
+  lines.push(
+    offerings.length > 0
+      ? `${name} offers ${offerings.join(', ')}${offerings.length === 5 ? ', and more' : ''}.`
+      : `RENKOO does not yet know what ${name} sells.`,
+  );
+
+  lines.push(
+    context.priorities.targetAudience
+      ? `It serves ${context.priorities.targetAudience}.`
+      : 'Its target audience is not described yet.',
+  );
+
+  lines.push(
+    context.priorities.targetLocations.length > 0
+      ? `It operates in ${context.priorities.targetLocations.slice(0, 5).join(', ')}.`
+      : 'Its operating markets are not configured yet.',
+  );
+
+  lines.push(
+    context.priorities.primaryGoal
+      ? `What matters most: ${context.priorities.primaryGoal}.`
+      : 'No primary business goal is set yet.',
+  );
+
+  return lines;
+}
+
+function UnderstandingPanel({
+  context,
+  loading,
+}: {
+  context: BusinessContext | null;
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <section className="rounded-none border border-[#e5e7eb] bg-white p-6">
+        <p className="text-sm text-[#6b7280]">
+          Loading business understanding...
+        </p>
+      </section>
+    );
+  }
+
+  if (!context) {
+    return (
+      <section className="rounded-none border border-[#e5e7eb] bg-white p-6">
+        <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
+          RENKOO Understanding
+        </h2>
+        <p className="mt-2 text-sm text-[#6b7280]">
+          Business context is unavailable right now. Configure
+          the profile below and run an analysis.
+        </p>
+      </section>
+    );
+  }
+
+  const connected = DATA_SOURCE_LABELS.filter(
+    (source) => context.dataAvailability[source.key],
+  );
+  const unavailable = DATA_SOURCE_LABELS.filter(
+    (source) => !context.dataAvailability[source.key],
+  );
+
+  return (
+    <div className="space-y-5">
+      <section className="rounded-none border border-[#111827] bg-[#111827] p-6 text-white">
+        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">
+          RENKOO Understanding · deterministic, no AI judgment
+        </div>
+        <ul className="mt-3 space-y-2">
+          {buildUnderstanding(context).map((line, index) => (
+            <li
+              key={index}
+              className="text-sm leading-6 text-[#e5e7eb]"
+            >
+              {line}
+            </li>
+          ))}
+        </ul>
+        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-[#374151] pt-4 text-xs text-[#9ca3af]">
+          <span>
+            Context confidence{' '}
+            <span className="font-bold text-white">
+              {context.contextConfidence}%
+            </span>
+          </span>
+          <span className="hidden sm:inline">·</span>
+          <span>{context.confidenceFormula}</span>
+        </div>
+      </section>
+
+      <section className="rounded-none border border-[#e5e7eb] bg-white p-6">
+        <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
+          Data Coverage
+        </h2>
+        <p className="mt-1 text-xs text-[#6b7280]">
+          Only sources with real data are listed as connected.
+        </p>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">
+              Connected ({connected.length})
+            </div>
+            {connected.length > 0 ? (
+              <ul className="mt-2 space-y-1.5">
+                {connected.map((source) => (
+                  <li
+                    key={source.key}
+                    className="text-sm text-[#374151]"
+                  >
+                    ✓ {source.label}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-[#6b7280]">
+                No data sources connected yet.
+              </p>
+            )}
+          </div>
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#9ca3af]">
+              Not connected ({unavailable.length})
+            </div>
+            {unavailable.length > 0 ? (
+              <ul className="mt-2 space-y-1.5">
+                {unavailable.map((source) => (
+                  <li
+                    key={source.key}
+                    className="text-sm text-[#9ca3af]"
+                  >
+                    — {source.label}: no data available
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-[#6b7280]">
+                Every tracked source is connected.
+              </p>
+            )}
+          </div>
+        </div>
+        {context.competitors.length > 0 && (
+          <div className="mt-4 border-t border-[#f0f1f3] pt-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#6b7280]">
+              Competitive context ({context.competitors.length})
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {context.competitors.map((competitor) => (
+                <span
+                  key={competitor.id}
+                  className="border border-[#e5e7eb] bg-[#fafafa] px-3 py-1.5 text-xs font-medium text-[#374151]"
+                >
+                  {competitor.name}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-none border border-[#e5e7eb] bg-white p-6">
+        <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
+          Priority Impact
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-[#6b7280]">
+          {goalHint(context.priorities.primaryGoal)}
+        </p>
+        <p className="mt-2 text-xs leading-5 text-[#9ca3af]">
+          Business relevance adds at most +5 to an opportunity
+          score and is always recorded transparently. Evidence
+          scoring decides everything else.
+        </p>
+      </section>
+
+      {context.missing.length > 0 && (
+        <section className="rounded-none border border-amber-200 bg-amber-50 p-6">
+          <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#92400e]">
+            Missing Context ({context.missing.length})
+          </h2>
+          <ul className="mt-2 space-y-1.5">
+            {context.missing.map((item, index) => (
+              <li
+                key={index}
+                className="text-sm leading-6 text-[#92400e]"
+              >
+                · {item}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
   );
 }
 

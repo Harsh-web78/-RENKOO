@@ -1,22 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+/*
+ * RENKOO V2 — Competitor War Room overview (Phase 5F).
+ * Real comparison-engine data only: tracked competitors,
+ * latest crawl status, score/issues/critical signals, and
+ * entry points into per-competitor detail. Add/delete/crawl
+ * use the existing APIs with an approval gate for deletion.
+ */
 
-import {
-  Users,
-  Plus,
-  RefreshCw,
-  Trash2,
-  Play,
-  ExternalLink,
-  AlertTriangle,
-  CheckCircle2,
-  XCircle,
-  BarChart3,
-} from 'lucide-react';
-
-import Sidebar from '../../components/Sidebar';
-
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   getWebsites,
   getCompetitors,
@@ -24,2051 +17,836 @@ import {
   deleteCompetitor,
   crawlCompetitor,
   getLatestCompetitorCrawl,
-  Website,
-  Competitor,
-} from '../../lib/api';
+  type Website,
+  type Competitor,
+} from '@/lib/api';
+import AppShell from '@/components/AppShell';
+import {
+  PageHeader,
+  Panel,
+  Metric,
+  DataTable,
+  FilterBar,
+  Drawer,
+  DrawerSection,
+  DrawerMeta,
+  PrimaryButton,
+  SecondaryButton,
+  DangerButton,
+  ConfirmDialog,
+  DataSourceBadge,
+  FreshnessBadge,
+  StatusChip,
+  LoadingBlock,
+  ErrorState,
+  EmptyState,
+  InsightBlock,
+  EvidenceList,
+  NextAction,
+  type DataTableColumn,
+} from '@/components/ui';
 
-/*
- * =========================================================
- * TYPES
- * =========================================================
- */
-
-type CrawlStatus =
-  | 'RUNNING'
-  | 'COMPLETED'
-  | 'FAILED'
-  | 'PENDING'
-  | string;
-
-interface CrawlSummary {
-  id?: string;
-  competitorId?: string;
-
-  status?: CrawlStatus;
-
-  pagesCrawled?: number;
-  pagesDiscovered?: number;
-
-  score?: number;
-  totalIssues?: number;
-
-  critical?: number;
-  high?: number;
-  medium?: number;
-  low?: number;
-
-  startedAt?: string;
-  completedAt?: string;
-  createdAt?: string;
+function num(value: unknown, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
 }
 
-interface LatestCrawlResponse {
-  competitor?: {
-    id?: string;
-    name?: string;
-    url?: string;
-    domain?: string;
-  };
-
-  crawl?: CrawlSummary;
+function fmtInt(value: unknown) {
+  return num(value).toLocaleString('en-US');
 }
 
-type CompetitorWithCrawl = Omit<
-  Competitor,
-  'crawls'
-> & {
-  crawls?: CrawlSummary[];
-};
+function fmtDate(value: unknown) {
+  if (!value) return '—';
+  try {
+    return new Date(String(value)).toLocaleDateString(
+      'en-US',
+      { month: 'short', day: 'numeric', year: 'numeric' },
+    );
+  } catch {
+    return String(value);
+  }
+}
 
-/*
- * =========================================================
- * CONSTANTS
- * =========================================================
- */
-
-const POLL_INTERVAL = 2000;
-
-/*
- * Maximum time frontend will wait for one crawl.
- *
- * Backend can continue running after this, but the UI will
- * stop showing the local loading state.
- */
-const MAX_POLL_TIME = 10 * 60 * 1000;
-
-/*
- * =========================================================
- * PAGE
- * =========================================================
- */
+interface Row {
+  competitor: Competitor;
+  crawl: any;
+  crawlState: 'idle' | 'loading' | 'crawling' | 'error';
+  crawlError: string;
+}
 
 export default function CompetitorsPage() {
-  /*
-   * =======================================================
-   * WEBSITE STATE
-   * =======================================================
-   */
-
+  const [navOpen, setNavOpen] = useState(false);
   const [websites, setWebsites] = useState<Website[]>([]);
+  const [websiteId, setWebsiteId] = useState('');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [rows, setRows] = useState<Row[]>([]);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newUrl, setNewUrl] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<Row | null>(
+    null,
+  );
+  const [deleting, setDeleting] = useState(false);
+  const [drawerRow, setDrawerRow] = useState<Row | null>(
+    null,
+  );
 
-  const [websiteId, setWebsiteId] =
-    useState<string>('');
-
-  /*
-   * =======================================================
-   * COMPETITOR STATE
-   * =======================================================
-   */
-
-  const [
-    competitors,
-    setCompetitors,
-  ] = useState<CompetitorWithCrawl[]>([]);
-
-  /*
-   * =======================================================
-   * FORM STATE
-   * =======================================================
-   */
-
-  const [name, setName] =
-    useState<string>('');
-
-  const [url, setUrl] =
-    useState<string>('');
-
-  /*
-   * =======================================================
-   * LOADING STATE
-   * =======================================================
-   */
-
-  const [loading, setLoading] =
-    useState<boolean>(true);
-
-  const [creating, setCreating] =
-    useState<boolean>(false);
-
-  /*
-   * =======================================================
-   * CRAWL STATE
-   *
-   * competitor id currently being crawled
-   * =======================================================
-   */
-
-  const [crawling, setCrawling] =
-    useState<string | null>(null);
-
-  /*
-   * =======================================================
-   * CRAWL STATUS
-   *
-   * Keeps latest crawl information for each competitor.
-   * =======================================================
-   */
-
-  const [crawlStates, setCrawlStates] =
-    useState<
-      Record<string, CrawlSummary | undefined>
-    >({});
-
-  /*
-   * =======================================================
-   * ERROR
-   * =======================================================
-   */
-
-  const [error, setError] =
-    useState<string>('');
-
-  /*
-   * =======================================================
-   * POLLING REFS
-   *
-   * Refs are used so polling does not create stale
-   * closures or multiple timers.
-   * =======================================================
-   */
-
-  const pollTimerRef =
-    useRef<ReturnType<typeof setTimeout> | null>(
-      null,
-    );
-
-  const pollStartedAtRef =
-    useRef<number>(0);
-
-  const pollingCompetitorRef =
-    useRef<string | null>(null);
-
-  /*
-   * =======================================================
-   * CLEANUP POLLING
-   * =======================================================
-   */
-
-  const stopPolling = useCallback(() => {
-    if (pollTimerRef.current) {
-      clearTimeout(
-        pollTimerRef.current,
-      );
-
-      pollTimerRef.current = null;
-    }
-
-    pollingCompetitorRef.current =
-      null;
-
-    pollStartedAtRef.current = 0;
-  }, []);
-
-  /*
-   * =======================================================
-   * LOAD INITIAL DATA
-   * =======================================================
-   */
-
-  const loadInitial =
-    useCallback(async () => {
-      try {
-        setLoading(true);
-        setError('');
-
-        const [
-          sites,
-          comps,
-        ] = await Promise.all([
-          getWebsites(),
-          getCompetitors(),
-        ]);
-
-        /*
-         * Defensive array handling.
-         */
-
-        const websiteList =
-          Array.isArray(sites)
-            ? sites
-            : [];
-
-        const competitorList =
-          Array.isArray(comps)
-            ? comps
-            : [];
-
-        /*
-         * Save data.
-         */
-
-        setWebsites(
-          websiteList,
-        );
-
-        setCompetitors(
-          competitorList as CompetitorWithCrawl[],
-        );
-
-        /*
-         * =================================================
-         * WEBSITE SELECTION
-         * =================================================
-         */
-
-        if (
-          websiteList.length > 0
-        ) {
-          /*
-           * Keep currently selected website if it still
-           * exists.
-           */
-
-          const currentStillExists =
-            websiteList.some(
-              (website) =>
-                website.id ===
-                websiteId,
-            );
-
-          if (
-            !currentStillExists
-          ) {
-            const firstWebsite =
-              websiteList[0];
-
-            if (
-              firstWebsite?.id
-            ) {
-              setWebsiteId(
-                firstWebsite.id,
-              );
-
-              console.log(
-                'RENKOO selected website:',
-                firstWebsite.id,
-              );
-            }
-          }
-        } else {
-          setWebsiteId('');
-
-          console.warn(
-            'RENKOO: No websites found.',
-          );
-        }
-
-        /*
-         * =================================================
-         * LOAD LATEST CRAWL STATES
-         * =================================================
-         *
-         * This is important after page refresh.
-         *
-         * If backend is currently crawling, frontend can
-         * discover that state again.
-         */
-
-        const crawlStateEntries: Array<
-          [
-            string,
-            CrawlSummary | undefined,
-          ]
-        > = [];
-
-        for (
-          const competitor of competitorList
-        ) {
-          if (
-            !competitor?.id
-          ) {
-            continue;
-          }
-
+  const loadLatest = useCallback(
+    async (competitors: Competitor[]) => {
+      const results = await Promise.all(
+        competitors.map(async (c) => {
           try {
-            const latest =
-              (await getLatestCompetitorCrawl(
-                competitor.id,
-              )) as LatestCrawlResponse;
-
-            crawlStateEntries.push([
-              competitor.id,
-              latest?.crawl,
-            ]);
+            const crawl = await getLatestCompetitorCrawl(
+              c.id,
+            );
+            return { id: c.id, crawl };
           } catch {
-            /*
-             * No crawl yet is normal.
-             */
+            return { id: c.id, crawl: null };
           }
-        }
+        }),
+      );
+      const map = new Map(
+        results.map((r) => [r.id, r.crawl]),
+      );
+      setRows((prev) =>
+        prev.map((row) => ({
+          ...row,
+          crawl:
+            map.get(row.competitor.id) ?? row.crawl,
+        })),
+      );
+    },
+    [],
+  );
 
-        if (
-          crawlStateEntries.length > 0
-        ) {
-          setCrawlStates(
-            (current) => {
-              const next = {
-                ...current,
-              };
-
-              for (
-                const [
-                  id,
-                  crawl,
-                ] of crawlStateEntries
-              ) {
-                next[id] = crawl;
-              }
-
-              return next;
-            },
-          );
-        }
-
-        // Remember a backend crawl that is already running.
-        // A separate effect below starts polling after render, avoiding
-        // a forward-reference to pollCrawl.
-        const runningEntry = crawlStateEntries.find(
-          ([, crawl]) =>
-            String(crawl?.status || '').toUpperCase() === 'RUNNING',
+  const load = useCallback(
+    async (siteId: string) => {
+      try {
+        setError('');
+        const all = await getCompetitors();
+        const list = (Array.isArray(all) ? all : []).filter(
+          (c: any) =>
+            !siteId ||
+            String(c.websiteId || '') === siteId,
         );
-
-        if (runningEntry?.[0]) {
-          setCrawling(runningEntry[0]);
-        }
-      } catch (
-        err: unknown
-      ) {
-        console.error(
-          'RENKOO competitors load error:',
-          err,
+        setRows(
+          list.map((competitor) => ({
+            competitor,
+            crawl: null,
+            crawlState: 'loading' as const,
+            crawlError: '',
+          })),
         );
-
+        await loadLatest(list);
+        setRows((prev) =>
+          prev.map((row) =>
+            row.crawlState === 'loading'
+              ? { ...row, crawlState: 'idle' as const }
+              : row,
+          ),
+        );
+      } catch (err: any) {
         setError(
-          err instanceof Error
-            ? err.message
-            : 'Failed to load competitors',
+          err?.message || 'Failed to load competitors.',
         );
-      } finally {
-        setLoading(false);
       }
-    }, [websiteId, stopPolling]);
-
-  /*
-   * =======================================================
-   * INITIAL LOAD
-   * =======================================================
-   */
+    },
+    [loadLatest],
+  );
 
   useEffect(() => {
-    void loadInitial();
-
+    let cancelled = false;
+    async function init() {
+      try {
+        const sites = await getWebsites();
+        if (cancelled) return;
+        const list = Array.isArray(sites) ? sites : [];
+        setWebsites(list);
+        const stored =
+          typeof window !== 'undefined'
+            ? localStorage.getItem('renkoo_website_id')
+            : null;
+        const valid =
+          stored && list.some((s) => s.id === stored)
+            ? stored
+            : list[0]?.id || '';
+        setWebsiteId(valid);
+        await load(valid);
+      } catch (err: any) {
+        if (!cancelled)
+          setError(
+            err?.message || 'Failed to load workspaces.',
+          );
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void init();
     return () => {
-      stopPolling();
+      cancelled = true;
     };
-  }, [loadInitial, stopPolling]);
+  }, [load]);
 
-  /*
-   * =======================================================
-   * CREATE COMPETITOR
-   * =======================================================
-   */
+  function handleWebsite(id: string) {
+    setWebsiteId(id);
+    setDrawerRow(null);
+    if (typeof window !== 'undefined')
+      localStorage.setItem('renkoo_website_id', id);
+    setLoading(true);
+    void load(id).finally(() => setLoading(false));
+  }
 
   async function handleCreate() {
-    setError('');
-
-    /*
-     * Website validation.
-     */
-
-    if (!websiteId) {
-      setError(
-        'Please select a website before adding a competitor.',
-      );
-
-      return;
-    }
-
-    /*
-     * Name validation.
-     */
-
-    const cleanName =
-      name.trim();
-
-    if (!cleanName) {
-      setError(
-        'Competitor name is required.',
-      );
-
-      return;
-    }
-
-    if (
-      cleanName.length < 2
-    ) {
-      setError(
-        'Competitor name must be at least 2 characters.',
-      );
-
-      return;
-    }
-
-    /*
-     * URL validation.
-     */
-
-    const cleanUrl =
-      url.trim();
-
-    if (!cleanUrl) {
-      setError(
-        'Competitor URL is required.',
-      );
-
-      return;
-    }
-
-    /*
-     * Add protocol automatically.
-     */
-
-    let normalizedUrl =
-      cleanUrl;
-
-    if (
-      !normalizedUrl.startsWith(
-        'http://',
-      ) &&
-      !normalizedUrl.startsWith(
-        'https://',
-      )
-    ) {
-      normalizedUrl =
-        `https://${normalizedUrl}`;
-    }
-
-    /*
-     * Validate URL.
-     */
-
-    try {
-      const parsed =
-        new URL(
-          normalizedUrl,
-        );
-
-      if (
-        parsed.protocol !==
-          'http:' &&
-        parsed.protocol !==
-          'https:'
-      ) {
-        throw new Error(
-          'Invalid protocol',
-        );
-      }
-    } catch {
-      setError(
-        'Please enter a valid competitor URL.',
-      );
-
-      return;
-    }
-
-    /*
-     * DEBUG
-     */
-
-    console.log(
-      '========================================',
-    );
-
-    console.log(
-      'RENKOO CREATE COMPETITOR',
-    );
-
-    console.log(
-      'websiteId:',
-      websiteId,
-    );
-
-    console.log(
-      'name:',
-      cleanName,
-    );
-
-    console.log(
-      'url:',
-      normalizedUrl,
-    );
-
-    console.log(
-      '========================================',
-    );
-
+    const name = newName.trim();
+    const url = newUrl.trim();
+    if (!name || !url || !websiteId || creating) return;
     try {
       setCreating(true);
-
-      /*
-       * IMPORTANT:
-       *
-       * websiteId MUST be included.
-       *
-       * This fixes the earlier:
-       *
-       * websiteId must be longer than or equal to 1
-       * websiteId must be a string
-       */
-
-      const competitor =
-        await createCompetitor({
-          websiteId,
-          name: cleanName,
-          url: normalizedUrl,
-        });
-
-      console.log(
-        'RENKOO competitor created:',
-        competitor,
-      );
-
-      /*
-       * Add immediately to UI.
-       */
-
-      setCompetitors(
-        (current) => [
-          competitor as CompetitorWithCrawl,
-          ...current,
-        ],
-      );
-
-      /*
-       * Clear form.
-       */
-
-      setName('');
-      setUrl('');
-
-      /*
-       * Refresh from backend after creation.
-       *
-       * This guarantees websiteId / domain / server
-       * generated id are correct.
-       */
-
-      try {
-        const comps =
-          await getCompetitors();
-
-        if (
-          Array.isArray(comps)
-        ) {
-          setCompetitors(
-            comps as CompetitorWithCrawl[],
-          );
-        }
-      } catch {
-        /*
-         * Immediate local result is already available.
-         */
-      }
-    } catch (
-      err: unknown
-    ) {
-      console.error(
-        'RENKOO create competitor error:',
-        err,
-      );
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to create competitor',
+      setFormError('');
+      const created = await createCompetitor({
+        name,
+        url,
+        websiteId,
+      });
+      setRows((prev) => [
+        {
+          competitor: created,
+          crawl: null,
+          crawlState: 'idle',
+          crawlError: '',
+        },
+        ...prev,
+      ]);
+      setNewName('');
+      setNewUrl('');
+      setShowAdd(false);
+      void loadLatest([created]);
+    } catch (err: any) {
+      setFormError(
+        err?.message || 'Could not add competitor.',
       );
     } finally {
       setCreating(false);
     }
   }
 
-  /*
-   * =======================================================
-   * DELETE COMPETITOR
-   * =======================================================
-   */
-
-  async function handleDelete(
-    id: string,
-  ) {
-    const confirmed =
-      window.confirm(
-        'Remove this competitor?',
-      );
-
-    if (!confirmed) {
-      return;
-    }
-
+  async function handleCrawl(row: Row) {
+    const id = row.competitor.id;
+    setRows((prev) =>
+      prev.map((r) =>
+        r.competitor.id === id
+          ? { ...r, crawlState: 'crawling', crawlError: '' }
+          : r,
+      ),
+    );
     try {
-      setError('');
-
-      /*
-       * If this competitor is currently crawling,
-       * stop frontend polling.
-       */
-
-      if (
-        crawling === id
-      ) {
-        stopPolling();
-        setCrawling(null);
-      }
-
-      await deleteCompetitor(
-        id,
-      );
-
-      /*
-       * Remove locally.
-       */
-
-      setCompetitors(
-        (current) =>
-          current.filter(
-            (item) =>
-              item.id !== id,
-          ),
-      );
-
-      /*
-       * Remove crawl state.
-       */
-
-      setCrawlStates(
-        (current) => {
-          const next = {
-            ...current,
-          };
-
-          delete next[id];
-
-          return next;
-        },
-      );
-    } catch (
-      err: unknown
-    ) {
-      console.error(
-        'RENKOO delete competitor error:',
-        err,
-      );
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to delete competitor',
-      );
-    }
-  }
-
-  /*
-   * =======================================================
-   * UPDATE CRAWL STATE
-   * =======================================================
-   */
-
-  function updateCrawlState(
-    competitorId: string,
-    crawl:
-      | CrawlSummary
-      | undefined,
-  ) {
-    setCrawlStates(
-      (current) => ({
-        ...current,
-        [competitorId]:
-          crawl,
-      }),
-    );
-  }
-
-  /*
-   * =======================================================
-   * REFRESH ONE CRAWL
-   * =======================================================
-   */
-
-  const refreshCrawlState =
-    useCallback(
-      async (
-        competitorId: string,
-      ): Promise<
-        CrawlSummary | undefined
-      > => {
-        try {
-          const latest =
-            (await getLatestCompetitorCrawl(
-              competitorId,
-            )) as LatestCrawlResponse;
-
-          const crawl =
-            latest?.crawl;
-
-          updateCrawlState(
-            competitorId,
-            crawl,
-          );
-
-          return crawl;
-        } catch (
-          err
-        ) {
-          console.warn(
-            'RENKOO latest crawl fetch failed:',
-            competitorId,
-            err,
-          );
-
-          return undefined;
-        }
-      },
-      [],
-    );
-
-  /*
-   * =======================================================
-   * POLL CRAWL
-   * =======================================================
-   */
-
-  const pollCrawl = useCallback(async (
-    competitorId: string,
-  ) => {
-        /*
-         * Prevent multiple poll loops for same competitor.
-         */
-
-        if (
-          pollingCompetitorRef.current !==
-          competitorId
-        ) {
-          return;
-        }
-
-        /*
-         * Timeout protection.
-         */
-
-        const elapsed =
-          Date.now() -
-          pollStartedAtRef.current;
-
-        if (
-          elapsed >=
-          MAX_POLL_TIME
-        ) {
-          console.warn(
-            'RENKOO crawl polling timeout:',
-            competitorId,
-          );
-
-          setError(
-            'Crawl is taking longer than expected. The backend may still be processing it. Refresh to check the final result.',
-          );
-
-          setCrawling(
-            null,
-          );
-
-          stopPolling();
-
-          return;
-        }
-
-        /*
-         * Ask backend for latest crawl.
-         */
-
-        const crawl =
-          await refreshCrawlState(
-            competitorId,
-          );
-
-        /*
-         * If no crawl response, try again.
-         */
-
-        if (!crawl) {
-          pollTimerRef.current =
-            setTimeout(
-              () => {
-                void pollCrawl(
-                  competitorId,
-                );
-              },
-              POLL_INTERVAL,
-            );
-
-          return;
-        }
-
-        const status =
-          String(
-            crawl.status ||
-              '',
-          ).toUpperCase();
-
-        console.log(
-          'RENKOO crawl poll:',
-          {
-            competitorId,
-            crawlId:
-              crawl.id,
-            status,
-            pagesCrawled:
-              crawl.pagesCrawled,
-            pagesDiscovered:
-              crawl.pagesDiscovered,
-            score:
-              crawl.score,
-            issues:
-              crawl.totalIssues,
-          },
+      await crawlCompetitor(id);
+      const deadline = Date.now() + 10 * 60 * 1000;
+      let done = false;
+      while (!done && Date.now() < deadline) {
+        await new Promise((res) =>
+          setTimeout(res, 5000),
         );
-
-        /*
-         * =================================================
-         * COMPLETED
-         * =================================================
-         */
-
-        if (
-          status ===
-          'COMPLETED'
-        ) {
-          console.log(
-            'RENKOO competitor crawl completed:',
-            competitorId,
-            crawl,
-          );
-
-          setCrawling(
-            null,
-          );
-
-          stopPolling();
-
-          /*
-           * Refresh complete competitor list.
-           */
-
-          try {
-            const comps =
-              await getCompetitors();
-
-            if (
-              Array.isArray(
-                comps,
-              )
-            ) {
-              setCompetitors(
-                comps as CompetitorWithCrawl[],
-              );
-            }
-          } catch {
-            /*
-             * Crawl data is already displayed from
-             * crawlStates.
-             */
-          }
-
-          return;
-        }
-
-        /*
-         * =================================================
-         * FAILED
-         * =================================================
-         */
-
-        if (
-          status ===
-          'FAILED'
-        ) {
-          console.error(
-            'RENKOO competitor crawl failed:',
-            competitorId,
-            crawl,
-          );
-
-          setError(
-            'Competitor crawl failed. Check the backend console for the exact error.',
-          );
-
-          setCrawling(
-            null,
-          );
-
-          stopPolling();
-
-          return;
-        }
-
-        /*
-         * =================================================
-         * STILL RUNNING
-         * =================================================
-         */
-
-        pollTimerRef.current =
-          setTimeout(
-            () => {
-              void pollCrawl(
-                competitorId,
-              );
-            },
-            POLL_INTERVAL,
-          );
-  }, [refreshCrawlState, stopPolling]);
-
-  /*
-   * =======================================================
-   * START CRAWL
-   * =======================================================
-   */
-
-  async function handleCrawl(
-    id: string,
-  ) {
-    /*
-     * Don't start another crawl if one is already being
-     * monitored by this frontend.
-     */
-
-    if (
-      crawling &&
-      crawling !== id
-    ) {
-      setError(
-        'Another competitor crawl is already running.',
-      );
-
-      return;
-    }
-
-    if (
-      crawling === id
-    ) {
-      return;
-    }
-
-    try {
-      setError('');
-
-      /*
-       * Stop any old timer.
-       */
-
-      stopPolling();
-
-      /*
-       * Set UI immediately.
-       */
-
-      setCrawling(id);
-
-      pollingCompetitorRef.current =
-        id;
-
-      pollStartedAtRef.current =
-        Date.now();
-
-      console.log(
-        '========================================',
-      );
-
-      console.log(
-        'RENKOO START COMPETITOR CRAWL',
-      );
-
-      console.log(
-        'competitorId:',
-        id,
-      );
-
-      console.log(
-        '========================================',
-      );
-
-      /*
-       * =================================================
-       * START BACKEND CRAWL
-       * =================================================
-       *
-       * IMPORTANT:
-       *
-       * This endpoint should return quickly if backend
-       * uses startCrawl() background execution.
-       */
-
-      try {
-        const startResult =
-          await crawlCompetitor(
+        try {
+          const latest = await getLatestCompetitorCrawl(
             id,
           );
-
-        console.log(
-          'RENKOO crawl start response:',
-          startResult,
-        );
-      } catch (
-        err: unknown
-      ) {
-        /*
-         * If request failed, don't keep spinner forever.
-         */
-
-        throw err;
-      }
-
-      /*
-       * =================================================
-       * FIRST STATUS CHECK
-       * =================================================
-       */
-
-      const firstCrawl =
-        await refreshCrawlState(
-          id,
-        );
-
-      /*
-       * Show first state immediately.
-       */
-
-      if (
-        firstCrawl
-      ) {
-        console.log(
-          'RENKOO first crawl state:',
-          firstCrawl,
-        );
-      }
-
-      /*
-       * =================================================
-       * START POLLING
-       * =================================================
-       *
-       * Even if the start endpoint returned immediately,
-       * continue checking until DB says COMPLETED/FAILED.
-       */
-
-      pollTimerRef.current =
-        setTimeout(
-          () => {
-            void pollCrawl(
-              id,
+          const status = String(
+            (latest as any)?.status || '',
+          ).toUpperCase();
+          if (
+            status === 'COMPLETED' ||
+            status === 'FAILED'
+          ) {
+            done = true;
+            setRows((prev) =>
+              prev.map((r) =>
+                r.competitor.id === id
+                  ? {
+                      ...r,
+                      crawl: latest,
+                      crawlState: 'idle',
+                    }
+                  : r,
+              ),
             );
-          },
-          500,
-        );
-    } catch (
-      err: unknown
-    ) {
-      console.error(
-        'RENKOO competitor crawl error:',
-        err,
-      );
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Competitor crawl failed',
-      );
-
-      setCrawling(
-        null,
-      );
-
-      stopPolling();
-    }
-  }
-
-  /*
-   * =======================================================
-   * MANUAL REFRESH
-   * =======================================================
-   */
-
-  async function handleRefresh() {
-    /*
-     * If a crawl is currently running, don't kill its
-     * frontend polling.
-     */
-
-    const currentCrawling =
-      crawling;
-
-    await loadInitial();
-
-    /*
-     * Reconnect polling after manual refresh.
-     */
-
-    if (
-      currentCrawling
-    ) {
-      const latest =
-        await refreshCrawlState(
-          currentCrawling,
-        );
-
-      const status =
-        String(
-          latest?.status ||
-            '',
-        ).toUpperCase();
-
-      if (
-        status ===
-        'RUNNING'
-      ) {
-        /*
-         * Restart polling.
-         */
-
-        stopPolling();
-
-        pollingCompetitorRef.current =
-          currentCrawling;
-
-        pollStartedAtRef.current =
-          Date.now();
-
-        pollTimerRef.current =
-          setTimeout(
-            () => {
-              void pollCrawl(
-                currentCrawling,
-              );
-            },
-            POLL_INTERVAL,
-          );
-      } else if (
-        status ===
-          'COMPLETED' ||
-        status ===
-          'FAILED'
-      ) {
-        setCrawling(
-          null,
-        );
-
-        stopPolling();
+          }
+        } catch {
+          /* keep polling until timeout */
+        }
       }
+      setRows((prev) =>
+        prev.map((r) =>
+          r.competitor.id === id &&
+          r.crawlState === 'crawling'
+            ? { ...r, crawlState: 'idle' as const }
+            : r,
+        ),
+      );
+    } catch (err: any) {
+      setRows((prev) =>
+        prev.map((r) =>
+          r.competitor.id === id
+            ? {
+                ...r,
+                crawlState: 'error' as const,
+                crawlError:
+                  err?.message || 'Crawl failed to start.',
+              }
+            : r,
+        ),
+      );
     }
   }
 
-  /*
-   * =======================================================
-   * FILTER
-   * =======================================================
-   */
-
-  const selectedCompetitors =
-    websiteId
-      ? competitors.filter(
-          (item) =>
-            item.websiteId ===
-            websiteId,
-        )
-      : competitors;
-
-  /*
-   * =======================================================
-   * RENDER CRAWL STATUS
-   * =======================================================
-   */
-
-  function getCrawlForCompetitor(
-    competitor:
-      CompetitorWithCrawl,
-  ): CrawlSummary | undefined {
-    return (
-      crawlStates[
-        competitor.id
-      ] ||
-      competitor.crawls?.[0]
-    );
-  }
-
-  /*
-   * =======================================================
-   * FORMAT DATE
-   * =======================================================
-   */
-
-  function formatDate(
-    value:
-      | string
-      | undefined
-      | null,
-  ) {
-    if (!value) {
-      return 'Unknown';
-    }
-
+  async function handleDelete() {
+    if (!deleteTarget || deleting) return;
     try {
-      return new Date(
-        value,
-      ).toLocaleString();
-    } catch {
-      return 'Unknown';
+      setDeleting(true);
+      await deleteCompetitor(deleteTarget.competitor.id);
+      setRows((prev) =>
+        prev.filter(
+          (r) =>
+            r.competitor.id !==
+            deleteTarget.competitor.id,
+        ),
+      );
+      setDeleteTarget(null);
+    } catch (err: any) {
+      setError(
+        err?.message || 'Could not delete competitor.',
+      );
+      setDeleteTarget(null);
+    } finally {
+      setDeleting(false);
     }
   }
 
-  /*
-   * =======================================================
-   * UI
-   * =======================================================
-   */
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) =>
+      `${r.competitor.name || ''} ${r.competitor.url || ''}`
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [rows, search]);
+
+  const stats = useMemo(() => {
+    const crawled = rows.filter((r) => r.crawl);
+    const scores = crawled
+      .map((r) => num((r.crawl as any)?.score, NaN))
+      .filter((s) => Number.isFinite(s));
+    const avg = scores.length
+      ? Math.round(
+          scores.reduce((a, b) => a + b, 0) /
+            scores.length,
+        )
+      : null;
+    const critical = crawled.reduce(
+      (a, r) =>
+        a +
+        num(
+          (r.crawl as any)?.critical ??
+            (r.crawl as any)?.criticalIssues ??
+            0,
+        ),
+      0,
+    );
+    let latestCrawl: string | null = null;
+    for (const r of rows) {
+      const v =
+        (r.crawl as any)?.completedAt ||
+        (r.crawl as any)?.createdAt;
+      if (v && (!latestCrawl || String(v) > latestCrawl))
+        latestCrawl = String(v);
+    }
+    return {
+      total: rows.length,
+      crawled: crawled.length,
+      avg,
+      critical,
+      latestCrawl,
+    };
+  }, [rows]);
+
+  const columns: DataTableColumn<Row>[] = [
+    {
+      key: 'competitor',
+      label: 'Competitor',
+      priority: 'high',
+      render: (r) => (
+        <div className="min-w-0">
+          <Link
+            href={`/competitors/${r.competitor.id}`}
+            className="rk-focusable font-semibold text-rk-ink underline-offset-2 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {r.competitor.name || '—'}
+          </Link>
+          <p className="rk-metadata truncate">
+            {r.competitor.url || ''}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: 'status',
+      label: 'Crawl status',
+      priority: 'medium',
+      render: (r) =>
+        r.crawlState === 'crawling' ? (
+          <StatusChip status="RUNNING" />
+        ) : r.crawlState === 'error' ? (
+          <StatusChip status="FAILED" />
+        ) : r.crawl ? (
+          <StatusChip
+            status={String(
+              (r.crawl as any)?.status || 'COMPLETED',
+            )}
+          />
+        ) : (
+          <span className="text-xs text-rk-muted">
+            Never crawled
+          </span>
+        ),
+    },
+    {
+      key: 'score',
+      label: 'Score',
+      align: 'right',
+      priority: 'medium',
+      sortable: true,
+      sortValue: (r) => num((r.crawl as any)?.score, -1),
+      render: (r) =>
+        r.crawl &&
+        (r.crawl as any)?.score !== undefined &&
+        (r.crawl as any)?.score !== null ? (
+          <span className="rk-number">
+            {String((r.crawl as any).score)}
+          </span>
+        ) : (
+          <span className="text-xs text-rk-muted">—</span>
+        ),
+    },
+    {
+      key: 'pages',
+      label: 'Pages',
+      align: 'right',
+      priority: 'low',
+      sortable: true,
+      sortValue: (r) =>
+        num(
+          (r.crawl as any)?.pagesCrawled ??
+            (r.crawl as any)?.pages ??
+            -1,
+        ),
+      render: (r) => (
+        <span className="rk-number">
+          {r.crawl
+            ? fmtInt(
+                (r.crawl as any)?.pagesCrawled ??
+                  (r.crawl as any)?.pages ??
+                  0,
+              )
+            : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'critical',
+      label: 'Critical',
+      align: 'right',
+      priority: 'low',
+      render: (r) => (
+        <span className="rk-number">
+          {r.crawl
+            ? fmtInt(
+                (r.crawl as any)?.critical ??
+                  (r.crawl as any)?.criticalIssues ??
+                  0,
+              )
+            : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      priority: 'high',
+      render: (r) => (
+        <div
+          className="flex flex-wrap gap-1.5"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <SecondaryButton
+            onClick={() => void handleCrawl(r)}
+            disabled={r.crawlState === 'crawling'}
+          >
+            {r.crawlState === 'crawling'
+              ? 'Crawling…'
+              : 'Crawl'}
+          </SecondaryButton>
+          <Link
+            href={`/competitors/${r.competitor.id}`}
+          >
+            <SecondaryButton type="button">
+              Compare
+            </SecondaryButton>
+          </Link>
+        </div>
+      ),
+    },
+  ];
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Sidebar
-        mobileOpen={false}
-        onClose={() => {}}
+    <AppShell
+      mobileOpen={navOpen}
+      onClose={() => setNavOpen(false)}
+      onMenu={() => setNavOpen(true)}
+    >
+      <PageHeader
+        eyebrow="Market"
+        title="Competitor War Room"
+        description="Tracked competitors with measured crawl signals. Open one for the full comparison."
+        actions={
+          <div className="flex gap-2">
+            <SecondaryButton
+              onClick={() => {
+                setLoading(true);
+                void load(websiteId).finally(() =>
+                  setLoading(false),
+                );
+              }}
+              disabled={loading}
+            >
+              Refresh
+            </SecondaryButton>
+            <PrimaryButton
+              onClick={() => setShowAdd((s) => !s)}
+            >
+              Add competitor
+            </PrimaryButton>
+          </div>
+        }
+        meta={
+          <div className="flex flex-wrap items-center gap-2">
+            <DataSourceBadge
+              source="Competitor crawls"
+              connected={!loading && !error}
+            />
+            {!loading && stats.latestCrawl ? (
+              <FreshnessBadge
+                label={`Crawled ${fmtDate(stats.latestCrawl)}`}
+              />
+            ) : null}
+          </div>
+        }
       />
 
-      <main className="lg:ml-64">
-        <div className="mx-auto max-w-7xl p-5 lg:p-8">
+      {loading ? (
+        <div className="mt-6">
+          <LoadingBlock title="Loading competitors" />
+        </div>
+      ) : error && rows.length === 0 ? (
+        <div className="mt-6">
+          <ErrorState
+            title="Competitors failed to load"
+            description={error}
+            onRetry={() => {
+              setLoading(true);
+              void load(websiteId).finally(() =>
+                setLoading(false),
+              );
+            }}
+          />
+        </div>
+      ) : (
+        <div className="mt-6 space-y-6">
+          <Panel
+            eyebrow="Context"
+            title="Workspace & search"
+            description="Competitors are scoped to the selected website."
+          >
+            <FilterBar
+              searchValue={search}
+              searchPlaceholder="Search competitors…"
+              onSearchChange={setSearch}
+              selects={[
+                {
+                  key: 'website',
+                  label: 'Website',
+                  value: websiteId,
+                  options: websites.map((w) => ({
+                    value: w.id,
+                    label: w.name,
+                  })),
+                  onChange: handleWebsite,
+                },
+              ]}
+              onClearAll={() => setSearch('')}
+            />
+          </Panel>
 
-          {/* =================================================
-              HEADER
-          ================================================= */}
+          {error ? (
+            <ErrorState
+              title="Partial load failure"
+              description={error}
+              onRetry={() => void load(websiteId)}
+            />
+          ) : null}
 
-          <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <Users
-                  size={23}
-                  className="text-blue-600"
-                />
-
-                <h1 className="text-2xl font-bold text-slate-900">
-                  Competitors
-                </h1>
-              </div>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Track competitor websites and crawl
-                their SEO performance.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-
-              {/* WEBSITE SELECT */}
-
-              <select
-                value={websiteId}
-                onChange={(e) => {
-                  const value =
-                    e.target.value;
-
-                  console.log(
-                    'RENKOO website changed:',
-                    value,
-                  );
-
-                  setWebsiteId(
-                    value,
-                  );
-
-                  setError('');
-                }}
-                disabled={
-                  loading ||
-                  websites.length ===
-                    0
-                }
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium outline-none disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <option value="">
-                  {websites.length ===
-                  0
-                    ? 'No websites'
-                    : 'Select website'}
-                </option>
-
-                {websites.map(
-                  (website) => (
-                    <option
-                      key={
-                        website.id
-                      }
-                      value={
-                        website.id
-                      }
-                    >
-                      {
-                        website.name
-                      }
-                    </option>
-                  ),
-                )}
-              </select>
-
-              {/* REFRESH */}
-
-              <button
-                type="button"
-                onClick={() => {
-                  void handleRefresh();
-                }}
-                disabled={loading}
-                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <RefreshCw
-                  size={15}
-                  className={
-                    loading
-                      ? 'animate-spin'
-                      : ''
+          {showAdd && (
+            <Panel
+              eyebrow="Track"
+              title="Add competitor"
+              description="Only name and URL are stored. Crawl after adding to measure."
+            >
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  value={newName}
+                  onChange={(e) =>
+                    setNewName(e.target.value)
                   }
+                  placeholder="Competitor name"
+                  maxLength={120}
+                  className="input flex-1"
                 />
-
-                Refresh
-              </button>
-            </div>
-          </header>
-
-          {/* =================================================
-              ERROR
-          ================================================= */}
-
-          {error && (
-            <div className="mt-6 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-              <AlertTriangle
-                size={17}
-                className="mt-0.5 shrink-0"
-              />
-
-              <span>
-                {error}
-              </span>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setError('')
-                }
-                className="ml-auto text-xs font-bold underline"
-              >
-                Dismiss
-              </button>
-            </div>
+                <input
+                  value={newUrl}
+                  onChange={(e) =>
+                    setNewUrl(e.target.value)
+                  }
+                  placeholder="https://competitor.com"
+                  maxLength={300}
+                  className="input flex-1"
+                />
+                <PrimaryButton
+                  onClick={() => void handleCreate()}
+                  disabled={
+                    creating ||
+                    !newName.trim() ||
+                    !newUrl.trim()
+                  }
+                >
+                  {creating ? 'Adding…' : 'Add'}
+                </PrimaryButton>
+              </div>
+              {formError ? (
+                <p className="mt-2 text-sm text-rk-danger">
+                  {formError}
+                </p>
+              ) : null}
+            </Panel>
           )}
 
-          {/* =================================================
-              NO WEBSITE WARNING
-          ================================================= */}
-
-          {!loading &&
-            websites.length ===
-              0 && (
-              <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                <div className="flex items-center gap-2 font-semibold">
-                  <AlertTriangle
-                    size={17}
-                  />
-
-                  Add a website first
-                </div>
-
-                <p className="mt-1 text-xs">
-                  You need at least one website
-                  before adding a competitor.
-                </p>
-              </div>
-            )}
-
-          {/* =================================================
-              ADD COMPETITOR
-          ================================================= */}
-
-          <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center gap-2">
-              <Plus
-                size={18}
-                className="text-blue-600"
+          <section aria-label="Comparison summary">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Metric
+                label="Tracked"
+                value={fmtInt(stats.total)}
+                detail="Competitors"
               />
-
-              <h2 className="text-sm font-bold">
-                Add Competitor
-              </h2>
+              <Metric
+                label="Crawled"
+                value={fmtInt(stats.crawled)}
+                detail="With measured data"
+              />
+              <Metric
+                label="Avg. competitor score"
+                value={
+                  stats.avg === null
+                    ? '—'
+                    : String(stats.avg)
+                }
+                detail="Measured crawls"
+              />
+              <Metric
+                label="Critical issues"
+                value={fmtInt(stats.critical)}
+                detail="Across competitors"
+                tone={
+                  stats.critical > 0
+                    ? 'negative'
+                    : 'neutral'
+                }
+              />
             </div>
-
-            <div className="mt-5 grid gap-3 md:grid-cols-[1fr_1.5fr_auto]">
-
-              {/* NAME */}
-
-              <input
-                value={name}
-                onChange={(e) => {
-                  setName(
-                    e.target.value,
-                  );
-
-                  setError('');
-                }}
-                placeholder="Competitor name"
-                disabled={
-                  creating ||
-                  websites.length ===
-                    0
-                }
-                className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-400 disabled:bg-slate-50"
-              />
-
-              {/* URL */}
-
-              <input
-                value={url}
-                onChange={(e) => {
-                  setUrl(
-                    e.target.value,
-                  );
-
-                  setError('');
-                }}
-                placeholder="https://competitor.com"
-                disabled={
-                  creating ||
-                  websites.length ===
-                    0
-                }
-                onKeyDown={(e) => {
-                  if (
-                    e.key ===
-                    'Enter'
-                  ) {
-                    e.preventDefault();
-
-                    void handleCreate();
-                  }
-                }}
-                className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-400 disabled:bg-slate-50"
-              />
-
-              {/* ADD */}
-
-              <button
-                type="button"
-                onClick={() => {
-                  void handleCreate();
-                }}
-                disabled={
-                  creating ||
-                  loading ||
-                  websites.length ===
-                    0 ||
-                  !websiteId
-                }
-                className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {creating ? (
-                  <RefreshCw
-                    size={15}
-                    className="animate-spin"
-                  />
-                ) : (
-                  <Plus
-                    size={15}
-                  />
-                )}
-
-                {creating
-                  ? 'Adding...'
-                  : 'Add'}
-              </button>
-            </div>
-
-            {/* SELECTED WEBSITE INFO */}
-
-            {websiteId && (
-              <div className="mt-3 text-xs text-slate-400">
-                Adding competitor to:{' '}
-
-                <span className="font-semibold text-slate-600">
-                  {websites.find(
-                    (website) =>
-                      website.id ===
-                      websiteId,
-                  )?.name ||
-                    'Selected website'}
-                </span>
-              </div>
-            )}
           </section>
 
-          {/* =================================================
-              COMPETITOR LIST
-          ================================================= */}
-
-          <section className="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
-
-            <div className="flex items-center justify-between border-b border-slate-100 p-5">
-              <div>
-                <h2 className="text-sm font-bold">
-                  Competitor List
-                </h2>
-
-                <p className="mt-1 text-xs text-slate-500">
-                  {
-                    selectedCompetitors.length
-                  }{' '}
-                  competitor
-                  {selectedCompetitors.length ===
-                  1
-                    ? ''
-                    : 's'}
-                </p>
-              </div>
-            </div>
-
-            {/* LOADING */}
-
-            {loading ? (
-              <div className="flex items-center justify-center p-10">
-                <RefreshCw
-                  size={22}
-                  className="animate-spin text-blue-600"
-                />
-              </div>
-            ) : selectedCompetitors.length ===
-              0 ? (
-              /* EMPTY */
-
-              <div className="p-10 text-center">
-                <Users
-                  size={38}
-                  className="mx-auto text-slate-300"
-                />
-
-                <h3 className="mt-3 text-sm font-bold">
-                  No competitors yet
-                </h3>
-
-                <p className="mt-1 text-xs text-slate-500">
-                  Add your first competitor
-                  above.
-                </p>
-              </div>
+          <Panel
+            eyebrow="Tracked competitors"
+            title="Competitor list"
+            description="Open a row for strengths, weaknesses, gaps and opportunities."
+          >
+            {filtered.length === 0 ? (
+              <EmptyState
+                title="No competitors tracked"
+                description="Add a competitor above, crawl it, then open the comparison."
+                actionLabel={
+                  showAdd ? undefined : 'Add competitor'
+                }
+                onAction={
+                  showAdd
+                    ? undefined
+                    : () => setShowAdd(true)
+                }
+              />
             ) : (
-              /* LIST */
-
-              <div className="divide-y divide-slate-100">
-                {selectedCompetitors.map(
-                  (
-                    competitor,
-                  ) => {
-                    const crawl =
-                      getCrawlForCompetitor(
-                        competitor,
-                      );
-
-                    const isThisCrawling =
-                      crawling ===
-                      competitor.id;
-
-                    const crawlStatus =
-                      String(
-                        crawl?.status ||
-                          '',
-                      ).toUpperCase();
-
-                    return (
-                      <div
-                        key={
-                          competitor.id
-                        }
-                        className="p-5"
-                      >
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
-                          {/* INFO */}
-
-                          <div className="flex min-w-0 items-center gap-4">
-
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50">
-                              <Users
-                                size={19}
-                                className="text-blue-600"
-                              />
-                            </div>
-
-                            <div className="min-w-0">
-                              <div className="font-semibold text-slate-900">
-                                {
-                                  competitor.name
-                                }
-                              </div>
-
-                              <a
-                                href={
-                                  competitor.url
-                                }
-                                target="_blank"
-                                rel="noreferrer"
-                                className="mt-1 flex max-w-xl items-center gap-1 truncate text-xs text-slate-500 hover:text-blue-600"
-                              >
-                                <span className="truncate">
-                                  {competitor.domain ||
-                                    competitor.url}
-                                </span>
-
-                                <ExternalLink
-                                  size={
-                                    11
-                                  }
-                                  className="shrink-0"
-                                />
-                              </a>
-
-                              <div className="mt-2 text-[10px] font-medium text-slate-400">
-                                Added{' '}
-                                {formatDate(
-                                  competitor.createdAt,
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* ACTIONS */}
-
-                          <div className="flex flex-wrap items-center gap-2">
-
-                            {/* COMPARE */}
-
-                            <a
-                              href={`/competitors/${competitor.id}`}
-                              className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
-                            >
-                              <BarChart3 size={14} />
-                              Compare
-                            </a>
-
-                            {/* CRAWL */}
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void handleCrawl(
-                                  competitor.id,
-                                );
-                              }}
-                              disabled={
-                                Boolean(
-                                  crawling &&
-                                    crawling !==
-                                      competitor.id,
-                                ) ||
-                                isThisCrawling
-                              }
-                              className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {isThisCrawling ? (
-                                <RefreshCw
-                                  size={
-                                    14
-                                  }
-                                  className="animate-spin"
-                                />
-                              ) : (
-                                <Play
-                                  size={
-                                    14
-                                  }
-                                />
-                              )}
-
-                              {isThisCrawling
-                                ? 'Crawling...'
-                                : 'Crawl'}
-                            </button>
-
-                            {/* DELETE */}
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void handleDelete(
-                                  competitor.id,
-                                );
-                              }}
-                              disabled={
-                                isThisCrawling
-                              }
-                              className="rounded-xl border border-red-100 p-2 text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                              title="Delete competitor"
-                            >
-                              <Trash2
-                                size={
-                                  15
-                                }
-                              />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* =================================================
-                            CRAWL STATUS CARD
-                        ================================================= */}
-
-                        {crawl && (
-                          <div className="mt-5 rounded-xl border border-slate-100 bg-slate-50 p-4">
-
-                            {/* STATUS HEADER */}
-
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                              <div className="flex items-center gap-2">
-
-                                {isThisCrawling ||
-                                crawlStatus ===
-                                  'RUNNING' ? (
-                                  <RefreshCw
-                                    size={
-                                      15
-                                    }
-                                    className="animate-spin text-blue-600"
-                                  />
-                                ) : crawlStatus ===
-                                  'COMPLETED' ? (
-                                  <CheckCircle2
-                                    size={
-                                      15
-                                    }
-                                    className="text-green-600"
-                                  />
-                                ) : crawlStatus ===
-                                  'FAILED' ? (
-                                  <XCircle
-                                    size={
-                                      15
-                                    }
-                                    className="text-red-600"
-                                  />
-                                ) : (
-                                  <BarChart3
-                                    size={
-                                      15
-                                    }
-                                    className="text-slate-500"
-                                  />
-                                )}
-
-                                <span className="text-xs font-bold text-slate-700">
-                                  {isThisCrawling
-                                    ? 'Crawling'
-                                    : crawlStatus ===
-                                      'COMPLETED'
-                                    ? 'Completed'
-                                    : crawlStatus ===
-                                      'FAILED'
-                                    ? 'Failed'
-                                    : crawlStatus ||
-                                      'Pending'}
-                                </span>
-                              </div>
-
-                              {crawl.completedAt && (
-                                <span className="text-[10px] text-slate-400">
-                                  Completed{' '}
-                                  {formatDate(
-                                    crawl.completedAt,
-                                  )}
-                                </span>
-                              )}
-                            </div>
-
-                            {/* PROGRESS */}
-
-                            {(isThisCrawling ||
-                              crawlStatus ===
-                                'RUNNING') && (
-                              <div className="mt-4">
-                                <div className="flex items-center justify-between text-[10px] font-medium text-slate-500">
-                                  <span>
-                                    Pages crawled
-                                  </span>
-
-                                  <span>
-                                    {crawl.pagesCrawled ??
-                                      0}
-                                    {' / '}
-                                    {crawl.pagesDiscovered ??
-                                      0}
-                                  </span>
-                                </div>
-
-                                <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
-                                  <div
-                                    className="h-full rounded-full bg-blue-600 transition-all duration-500"
-                                    style={{
-                                      width:
-                                        crawl.pagesDiscovered &&
-                                        crawl.pagesDiscovered >
-                                          0
-                                          ? `${Math.min(
-                                              100,
-                                              ((crawl.pagesCrawled ??
-                                                0) /
-                                                crawl.pagesDiscovered) *
-                                                100,
-                                            )}%`
-                                          : '5%',
-                                    }}
-                                  />
-                                </div>
-
-                                <p className="mt-2 text-[10px] text-slate-400">
-                                  RENKOO is crawling
-                                  the competitor
-                                  website. This page
-                                  checks the backend
-                                  every 2 seconds.
-                                </p>
-                              </div>
-                            )}
-
-                            {/* METRICS */}
-
-                            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-
-                              <div className="rounded-lg border border-slate-200 bg-white p-3">
-                                <div className="text-[10px] font-medium text-slate-400">
-                                  Pages
-                                </div>
-
-                                <div className="mt-1 text-lg font-bold text-slate-900">
-                                  {
-                                    crawl.pagesCrawled ??
-                                    0
-                                  }
-                                </div>
-                              </div>
-
-                              <div className="rounded-lg border border-slate-200 bg-white p-3">
-                                <div className="text-[10px] font-medium text-slate-400">
-                                  Score
-                                </div>
-
-                                <div className="mt-1 text-lg font-bold text-slate-900">
-                                  {crawl.score ??
-                                    '--'}
-                                </div>
-                              </div>
-
-                              <div className="rounded-lg border border-slate-200 bg-white p-3">
-                                <div className="text-[10px] font-medium text-slate-400">
-                                  Issues
-                                </div>
-
-                                <div className="mt-1 text-lg font-bold text-slate-900">
-                                  {crawl.totalIssues ??
-                                    0}
-                                </div>
-                              </div>
-
-                              <div className="rounded-lg border border-slate-200 bg-white p-3">
-                                <div className="text-[10px] font-medium text-slate-400">
-                                  Critical
-                                </div>
-
-                                <div className="mt-1 text-lg font-bold text-red-600">
-                                  {crawl.critical ??
-                                    0}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* ISSUE BREAKDOWN */}
-
-                            {crawlStatus ===
-                              'COMPLETED' && (
-                              <div className="mt-4 flex flex-wrap gap-2">
-
-                                <span className="rounded-lg bg-red-50 px-3 py-1.5 text-[10px] font-semibold text-red-700">
-                                  Critical:{' '}
-                                  {crawl.critical ??
-                                    0}
-                                </span>
-
-                                <span className="rounded-lg bg-orange-50 px-3 py-1.5 text-[10px] font-semibold text-orange-700">
-                                  High:{' '}
-                                  {crawl.high ??
-                                    0}
-                                </span>
-
-                                <span className="rounded-lg bg-yellow-50 px-3 py-1.5 text-[10px] font-semibold text-yellow-700">
-                                  Medium:{' '}
-                                  {crawl.medium ??
-                                    0}
-                                </span>
-
-                                <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-[10px] font-semibold text-slate-600">
-                                  Low:{' '}
-                                  {crawl.low ??
-                                    0}
-                                </span>
-                              </div>
-                            )}
-
-                            {/* START DATE */}
-
-                            {crawl.startedAt && (
-                              <div className="mt-3 text-[10px] text-slate-400">
-                                Started{' '}
-                                {formatDate(
-                                  crawl.startedAt,
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  },
-                )}
-              </div>
+              <DataTable
+                caption="Tracked competitors with crawl status"
+                columns={columns}
+                rows={filtered}
+                keyOf={(r) => r.competitor.id}
+                onRowClick={setDrawerRow}
+                pageSize={12}
+              />
             )}
-          </section>
+          </Panel>
 
-          {/* =================================================
-              STATS
-          ================================================= */}
-
-          <section className="mt-5 grid gap-5 md:grid-cols-3">
-
-            <Stat
-              label="Tracked Competitors"
-              value={
-                selectedCompetitors.length
-              }
-            />
-
-            <Stat
-              label="Active"
-              value={
-                selectedCompetitors.filter(
-                  (item) =>
-                    item.isActive,
-                ).length
-              }
-            />
-
-            <Stat
-              label="Websites"
-              value={
-                websites.length
-              }
-            />
-
-          </section>
-
+          <InsightBlock
+            eyebrow="Opportunity gaps"
+            title="Turn gaps into execution"
+          >
+            <div className="mt-2">
+              <NextAction
+                label="Open Opportunity Engine"
+                detail="Competitor gaps persist as evidence-backed opportunities."
+                href="/opportunities"
+              />
+            </div>
+          </InsightBlock>
         </div>
-      </main>
-    </div>
+      )}
+
+      <Drawer
+        open={drawerRow !== null}
+        onClose={() => setDrawerRow(null)}
+        eyebrow="Competitor"
+        title={String(
+          drawerRow?.competitor.name || 'Competitor',
+        )}
+        description={String(
+          drawerRow?.competitor.url || '',
+        )}
+      >
+        {drawerRow && (
+          <>
+            <DrawerMeta
+              items={[
+                {
+                  label: 'Status',
+                  value: String(
+                    (drawerRow.crawl as any)?.status ||
+                      (drawerRow.crawlState ===
+                      'crawling'
+                        ? 'RUNNING'
+                        : 'Not crawled'),
+                  ).replace(/_/g, ' '),
+                },
+                {
+                  label: 'Score',
+                  value:
+                    (drawerRow.crawl as any)?.score !==
+                      undefined &&
+                    (drawerRow.crawl as any)?.score !==
+                      null
+                      ? String(
+                          (drawerRow.crawl as any).score,
+                        )
+                      : 'Not measured',
+                },
+                {
+                  label: 'Pages',
+                  value: fmtInt(
+                    (drawerRow.crawl as any)
+                      ?.pagesCrawled ??
+                      (drawerRow.crawl as any)?.pages ??
+                      0,
+                  ),
+                },
+                {
+                  label: 'Last crawl',
+                  value: fmtDate(
+                    (drawerRow.crawl as any)
+                      ?.completedAt ||
+                      (drawerRow.crawl as any)
+                        ?.createdAt,
+                  ),
+                },
+              ]}
+            />
+            {drawerRow.crawlError ? (
+              <DrawerSection title="Crawl note">
+                <p className="text-sm text-rk-danger">
+                  {drawerRow.crawlError}
+                </p>
+              </DrawerSection>
+            ) : null}
+            <DrawerSection title="Evidence">
+              <EvidenceList
+                items={[
+                  {
+                    text: `Latest crawl status: ${String((drawerRow.crawl as any)?.status || 'none yet')}.`,
+                    source: 'Competitor crawl',
+                  },
+                  {
+                    text: `Critical issues measured: ${fmtInt((drawerRow.crawl as any)?.critical ?? (drawerRow.crawl as any)?.criticalIssues ?? 0)}.`,
+                    source: 'Competitor crawl',
+                  },
+                ]}
+              />
+            </DrawerSection>
+            <DrawerSection title="Detail comparison">
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href={`/competitors/${drawerRow.competitor.id}`}
+                >
+                  <PrimaryButton type="button">
+                    Open full comparison
+                  </PrimaryButton>
+                </Link>
+                <SecondaryButton
+                  onClick={() => {
+                    setDrawerRow(null);
+                    void handleCrawl(drawerRow);
+                  }}
+                  disabled={
+                    drawerRow.crawlState === 'crawling'
+                  }
+                >
+                  {drawerRow.crawlState === 'crawling'
+                    ? 'Crawling…'
+                    : 'Crawl now'}
+                </SecondaryButton>
+                <DangerButton
+                  onClick={() =>
+                    setDeleteTarget(drawerRow)
+                  }
+                >
+                  Remove
+                </DangerButton>
+              </div>
+            </DrawerSection>
+          </>
+        )}
+      </Drawer>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Remove competitor?"
+        description={`"${deleteTarget?.competitor.name || ''}" and its crawl history will stop being tracked. This cannot be undone.`}
+        confirmLabel="Remove"
+        cancelLabel="Keep"
+        tone="danger"
+        confirming={deleting}
+        onConfirm={() => void handleDelete()}
+        onCancel={() => setDeleteTarget(null)}
+      />
+    </AppShell>
   );
 }
-
-/*
- * =========================================================
- * STAT
- * =========================================================
- */
-
-function Stat({
-  label,
-  value,
-}: {
-  label: string;
-  value: number;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="text-xs font-medium text-slate-500">
-        {label}
-      </div>
-
-      <div className="mt-2 text-2xl font-bold text-slate-900">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-

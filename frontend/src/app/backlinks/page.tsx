@@ -1,745 +1,1062 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import {
-  AlertTriangle,
-  ArrowUpRight,
-  CheckCircle2,
-  ExternalLink,
-  Link2,
-  Loader2,
-  RefreshCw,
-  ShieldCheck,
-  Target,
-  Zap,
-} from 'lucide-react';
+/*
+ * RENKOO V2 — Backlinks & Authority (Phase 5G).
+ * Real persisted backlink data only. Source labeling is
+ * explicit: MANUAL_IMPORT vs PROVIDER vs UNAVAILABLE. Live
+ * provider coverage is never implied when the provider is
+ * down. Filters apply to the selected values directly (no
+ * stale-state lag). Quality/authority charts render only
+ * with enough real data.
+ */
 
-import Sidebar from '../../components/Sidebar';
-
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
+  backlinkOpportunityToRecommendation,
   createActionFromRecommendation,
+  getBacklinkCompetitorGap,
+  getBacklinkHistory,
+  getBacklinkProviderStatus,
   getWebsites,
   getBacklinksOverview,
   getBacklinks,
   getBacklinkDomains,
   getBacklinkOpportunities,
-  Website,
-} from '../../lib/api';
+  importBacklinks,
+  reconcileBacklinks,
+  type Website,
+} from '@/lib/api';
+import AppShell from '@/components/AppShell';
+import {
+  PageHeader,
+  Panel,
+  Metric,
+  DataTable,
+  FilterBar,
+  Drawer,
+  DrawerSection,
+  DrawerMeta,
+  PrimaryButton,
+  SecondaryButton,
+  DataSourceBadge,
+  FreshnessBadge,
+  StatusChip,
+  LoadingBlock,
+  ErrorState,
+  EmptyState,
+  InsightBlock,
+  EvidenceList,
+  RecommendationCallout,
+  NextAction,
+  type DataTableColumn,
+} from '@/components/ui';
+import {
+  TrendChart,
+  DonutChart,
+  type TrendPoint,
+} from '@/components/charts';
 
-function number(value: unknown) {
-  if (typeof value !== 'number') return '—';
-  return new Intl.NumberFormat('en-US').format(value);
+function num(value: unknown, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
 }
 
-function priorityClass(priority: string) {
-  if (priority === 'HIGH') {
-    return 'border-red-200 bg-red-50 text-red-700';
-  }
+function fmtInt(value: unknown) {
+  return num(value).toLocaleString('en-US');
+}
 
-  if (priority === 'MEDIUM') {
-    return 'border-amber-200 bg-amber-50 text-amber-700';
+function fmtDate(value: unknown) {
+  if (!value) return '—';
+  try {
+    return new Date(String(value)).toLocaleDateString(
+      'en-US',
+      { month: 'short', day: 'numeric', year: 'numeric' },
+    );
+  } catch {
+    return String(value);
   }
+}
 
-  return 'border-slate-200 bg-slate-50 text-slate-600';
+function sourceTypeOf(row: any): string {
+  const s = String(
+    row.sourceType || row.source || row.origin || '',
+  ).toUpperCase();
+  if (s.includes('MANUAL') || s.includes('IMPORT'))
+    return 'MANUAL_IMPORT';
+  if (
+    s.includes('PROVIDER') ||
+    s.includes('API') ||
+    s.includes('LIVE')
+  )
+    return 'PROVIDER';
+  return row.id ? 'RECORDED' : 'UNAVAILABLE';
 }
 
 export default function BacklinksPage() {
+  const [navOpen, setNavOpen] = useState(false);
   const [websites, setWebsites] = useState<Website[]>([]);
   const [websiteId, setWebsiteId] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [linkTypeFilter, setLinkTypeFilter] =
+    useState('ALL');
+  const [qualityFilter, setQualityFilter] = useState('ALL');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
   const [overview, setOverview] = useState<any>(null);
   const [backlinks, setBacklinks] = useState<any[]>([]);
   const [domains, setDomains] = useState<any[]>([]);
-  const [opportunities, setOpportunities] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [message, setMessage] = useState('');
+  const [opportunities, setOpportunities] = useState<any[]>(
+    [],
+  );
+  const [provider, setProvider] = useState<any>(null);
+  const [history, setHistory] = useState<any>(null);
+  const [gap, setGap] = useState<any>(null);
+  const [drawerRow, setDrawerRow] = useState<any>(null);
+  const [importText, setImportText] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [reconciling, setReconciling] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [actionBusy, setActionBusy] = useState<
+    Record<string, boolean>
+  >({});
+  const [actionDone, setActionDone] = useState<
+    Record<string, boolean>
+  >({});
 
-  useEffect(() => {
-    void loadWebsites();
-  }, []);
-
-  useEffect(() => {
-    if (websiteId) void loadData();
-  }, [websiteId]);
-
-  async function loadWebsites() {
-    try {
-      setError('');
-      const data = await getWebsites();
-      setWebsites(data);
-
-      if (data.length > 0) {
-        setWebsiteId(data[0].id);
-      } else {
-        setLoading(false);
+  const load = useCallback(
+    async (
+      id: string,
+      filters?: {
+        status: string;
+        linkType: string;
+        quality: string;
+      },
+    ) => {
+      if (!id) return;
+      const f = filters || {
+        status: statusFilter,
+        linkType: linkTypeFilter,
+        quality: qualityFilter,
+      };
+      try {
+        setError('');
+        const serverFilters: Record<string, string> = {};
+        if (f.status !== 'ALL')
+          serverFilters.status = f.status;
+        if (f.linkType !== 'ALL')
+          serverFilters.linkType = f.linkType;
+        if (f.quality !== 'ALL')
+          serverFilters.quality = f.quality;
+        const [ov, list, doms, opps, prov, hist, cg] =
+          await Promise.all([
+            getBacklinksOverview(id).catch(() => null),
+            getBacklinks(id, serverFilters).catch(
+              () => null,
+            ),
+            getBacklinkDomains(id).catch(() => null),
+            getBacklinkOpportunities(id).catch(() => null),
+            getBacklinkProviderStatus().catch(
+              () => null,
+            ),
+            getBacklinkHistory(id).catch(() => null),
+            getBacklinkCompetitorGap(id).catch(
+              () => null,
+            ),
+          ]);
+        setOverview(ov);
+        const rows = Array.isArray(list)
+          ? list
+          : Array.isArray((list as any)?.backlinks)
+            ? (list as any).backlinks
+            : [];
+        setBacklinks(rows);
+        setDomains(
+          Array.isArray(doms)
+            ? doms
+            : Array.isArray((doms as any)?.domains)
+              ? (doms as any).domains
+              : [],
+        );
+        setOpportunities(
+          Array.isArray(opps)
+            ? opps
+            : Array.isArray((opps as any)?.opportunities)
+              ? (opps as any).opportunities
+              : [],
+        );
+        setProvider(prov);
+        setHistory(hist);
+        setGap(cg);
+      } catch (err: any) {
+        setError(
+          err?.message || 'Failed to load backlink data.',
+        );
       }
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load websites');
-      setLoading(false);
-    }
-  }
-
-  async function loadData() {
-    try {
-      setLoading(true);
-      setError('');
-      setMessage('');
-
-      const [
-        overviewData,
-        backlinkData,
-        domainData,
-        opportunityData,
-      ] = await Promise.all([
-        getBacklinksOverview(websiteId),
-        getBacklinks(websiteId),
-        getBacklinkDomains(websiteId),
-        getBacklinkOpportunities(websiteId),
-      ]);
-
-      setOverview(overviewData);
-
-      setBacklinks(
-        Array.isArray(backlinkData)
-          ? backlinkData
-          : backlinkData?.backlinks || [],
-      );
-
-      setDomains(
-        Array.isArray(domainData)
-          ? domainData
-          : domainData?.domains || [],
-      );
-
-      setOpportunities(
-        Array.isArray(opportunityData)
-          ? opportunityData
-          : opportunityData?.opportunities || [],
-      );
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load backlink intelligence');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const highPriority = useMemo(
-    () =>
-      opportunities.filter(
-        (item) =>
-          String(item.priority || item.severity || '')
-            .toUpperCase() === 'HIGH',
-      ),
-    [opportunities],
+    },
+    // Filters are passed explicitly to avoid stale closures.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
   );
 
-  async function createAction(item: any) {
-    const recommendationId =
-      item.recommendationId ||
-      item.recommendation?.id;
+  useEffect(() => {
+    let cancelled = false;
+    async function init() {
+      try {
+        const sites = await getWebsites();
+        if (cancelled) return;
+        const list = Array.isArray(sites) ? sites : [];
+        setWebsites(list);
+        const stored =
+          typeof window !== 'undefined'
+            ? localStorage.getItem('renkoo_website_id')
+            : null;
+        const valid =
+          stored && list.some((s) => s.id === stored)
+            ? stored
+            : list[0]?.id || '';
+        setWebsiteId(valid);
+        if (valid)
+          await load(valid, {
+            status: 'ALL',
+            linkType: 'ALL',
+            quality: 'ALL',
+          });
+        else if (list.length === 0)
+          setError('No website found. Add a website first.');
+      } catch (err: any) {
+        if (!cancelled)
+          setError(
+            err?.message || 'Failed to load websites.',
+          );
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
+    }
+    void init();
+    return () => {
+      cancelled = true;
+    };
+  }, [load]);
 
-    if (!recommendationId) {
-      setMessage(
-        'This opportunity is not yet linked to an actionable recommendation.',
-      );
+  function handleWebsite(id: string) {
+    setWebsiteId(id);
+    setDrawerRow(null);
+    if (typeof window !== 'undefined')
+      localStorage.setItem('renkoo_website_id', id);
+    setLoading(true);
+    void load(id, {
+      status: 'ALL',
+      linkType: 'ALL',
+      quality: 'ALL',
+    }).finally(() => {
+      setLoading(false);
+      setStatusFilter('ALL');
+      setLinkTypeFilter('ALL');
+      setQualityFilter('ALL');
+    });
+  }
+
+  function applyFilters(
+    status: string,
+    linkType: string,
+    quality: string,
+  ) {
+    // Values flow explicitly — the request never reads
+    // previous render state.
+    setStatusFilter(status);
+    setLinkTypeFilter(linkType);
+    setQualityFilter(quality);
+    if (websiteId)
+      void load(websiteId, { status, linkType, quality });
+  }
+
+  async function handleImport() {
+    const lines = importText
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (!websiteId || lines.length === 0 || importing)
       return;
-    }
-
     try {
-      setActionLoading(String(recommendationId));
-      setMessage('');
-
-      await createActionFromRecommendation(
-        String(recommendationId),
+      setImporting(true);
+      setNotice('');
+      await importBacklinks(
+        websiteId,
+        lines.map((url) => ({ url })),
+        'MANUAL_IMPORT',
       );
-
-      setMessage(
-        `Action created: ${
-          item.title ||
-          item.domain ||
-          'Backlink opportunity'
-        }`,
+      setNotice(
+        `${lines.length} URL${lines.length === 1 ? '' : 's'} imported and labeled MANUAL_IMPORT.`,
       );
-    } catch (e: any) {
-      setMessage(
-        e?.message || 'Unable to create action.',
-      );
+      setImportText('');
+      await load(websiteId);
+    } catch (err: any) {
+      setNotice(err?.message || 'Import failed.');
     } finally {
-      setActionLoading(null);
+      setImporting(false);
     }
   }
 
-  return (
-    <div className="min-h-screen bg-slate-50">
-      <Sidebar
-        mobileOpen={false}
-        onClose={() => {}}
-      />
+  async function handleReconcile() {
+    if (!websiteId || reconciling) return;
+    try {
+      setReconciling(true);
+      setNotice('');
+      const observed = backlinks
+        .map((b: any) =>
+          String(b.sourceUrl || b.url || b.source || ''),
+        )
+        .filter(Boolean);
+      await reconcileBacklinks(websiteId, observed);
+      setNotice(
+        'Backlink status reconciled against the current list.',
+      );
+      await load(websiteId);
+    } catch (err: any) {
+      setNotice(err?.message || 'Reconcile failed.');
+    } finally {
+      setReconciling(false);
+    }
+  }
 
-      <main className="lg:ml-64">
-        <div className="mx-auto max-w-7xl p-5 lg:p-8">
+  async function handleOppAction(opp: any) {
+    const key = String(opp.id || opp.title);
+    if (actionBusy[key] || actionDone[key]) return;
+    try {
+      setActionBusy((p) => ({ ...p, [key]: true }));
+      if (opp.id && websiteId) {
+        try {
+          const rec =
+            await backlinkOpportunityToRecommendation(
+              websiteId,
+              String(opp.id),
+            );
+          const recId = (rec as any)?.id;
+          if (recId)
+            await createActionFromRecommendation(
+              String(recId),
+            );
+        } catch {
+          /* fall through to done state only on success */
+          setActionBusy((p) => ({ ...p, [key]: false }));
+          return;
+        }
+      }
+      setActionDone((p) => ({ ...p, [key]: true }));
+    } finally {
+      setActionBusy((p) => ({ ...p, [key]: false }));
+    }
+  }
 
-          <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">
-                  <Link2 size={19} />
-                </div>
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return backlinks;
+    return backlinks.filter((b: any) =>
+      `${b.sourceUrl || b.url || ''} ${b.targetUrl || b.target || ''} ${b.anchor || ''} ${b.domain || ''}`
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [backlinks, search]);
 
-                <div>
-                  <h1 className="text-2xl font-bold tracking-tight text-slate-950">
-                    Backlink Intelligence
-                  </h1>
+  const stats = useMemo(() => {
+    const total = backlinks.length;
+    const follow = backlinks.filter((b: any) =>
+      String(
+        b.follow || b.linkType || b.rel || '',
+      ).toUpperCase().includes('FOLLOW') &&
+      !String(
+        b.follow || b.linkType || b.rel || '',
+      ).toUpperCase().includes('NOFOLLOW')
+        ? true
+        : String(b.nofollow) === 'false' ||
+          b.follow === true,
+    ).length;
+    const qualities = backlinks
+      .map((b: any) => num(b.quality ?? b.qualityScore, NaN))
+      .filter((n) => Number.isFinite(n));
+    const avgQ = qualities.length
+      ? Math.round(
+          qualities.reduce((a, b) => a + b, 0) /
+            qualities.length,
+        )
+      : null;
+    return {
+      total,
+      domains:
+        domains.length > 0
+          ? domains.length
+          : overview != null &&
+              Number.isFinite(
+                Number((overview as any)?.domains),
+              )
+            ? Number((overview as any).domains)
+            : null,
+      follow,
+      avgQ,
+    };
+  }, [backlinks, domains, overview]);
 
-                  <p className="mt-1 text-sm text-slate-500">
-                    Turn your link profile into authority opportunities and actions.
-                  </p>
-                </div>
-              </div>
-            </div>
+  const qualitySlices = useMemo(() => {
+    const buckets: Record<string, number> = {
+      High: 0,
+      Medium: 0,
+      Low: 0,
+    };
+    for (const b of backlinks) {
+      const q = b.quality ?? b.qualityScore;
+      if (q === undefined || q === null) continue;
+      const label = String(q).toUpperCase();
+      if (
+        label === 'HIGH' ||
+        (Number.isFinite(num(q, NaN)) && num(q) >= 70)
+      )
+        buckets.High += 1;
+      else if (
+        label === 'MEDIUM' ||
+        (Number.isFinite(num(q, NaN)) && num(q) >= 40)
+      )
+        buckets.Medium += 1;
+      else buckets.Low += 1;
+    }
+    return Object.entries(buckets)
+      .map(([label, value]) => ({ label, value }))
+      .filter((s) => s.value > 0);
+  }, [backlinks]);
 
-            <div className="flex flex-wrap gap-2">
-              <select
-                value={websiteId}
-                onChange={(e) =>
-                  setWebsiteId(e.target.value)
-                }
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 outline-none"
-              >
-                {websites.map((website) => (
-                  <option
-                    key={website.id}
-                    value={website.id}
-                  >
-                    {website.name}
-                  </option>
-                ))}
-              </select>
+  const trendPoints: TrendPoint[] = useMemo(() => {
+    const h = history as any;
+    const list = Array.isArray(h)
+      ? h
+      : Array.isArray(h?.points)
+        ? h.points
+        : Array.isArray(h?.history)
+          ? h.history
+          : [];
+    return list
+      .map((p: any) => ({
+        x: String(p.date || p.label || ''),
+        y: num(p.total ?? p.backlinks ?? 0),
+      }))
+      .filter((p: TrendPoint) => p.x);
+  }, [history]);
 
-              <button
-                type="button"
-                onClick={() => void loadData()}
-                disabled={loading || !websiteId}
-                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                <RefreshCw
-                  size={15}
-                  className={loading ? 'animate-spin' : ''}
-                />
-                Refresh
-              </button>
-            </div>
-          </header>
-
-          {error && (
-            <div className="mt-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-              <AlertTriangle size={18} className="mt-0.5" />
-              <div>
-                <div className="font-bold">
-                  Backlink data unavailable
-                </div>
-                <div className="mt-1 text-xs">
-                  {error}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {!error && (
-            <>
-              {/* AUTHORITY SNAPSHOT */}
-
-              <section className="mt-7 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:p-7">
-                <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-blue-600">
-                      <ShieldCheck size={15} />
-                      Authority snapshot
-                    </div>
-
-                    <h2 className="mt-2 text-2xl font-bold text-slate-950">
-                      Understand the strength of your link profile
-                    </h2>
-
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                      RENKOO uses the backlink data available for this website.
-                      No authority or toxicity score is invented when the underlying
-                      provider has not supplied one.
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 lg:min-w-64">
-                    <div className="text-[10px] font-bold uppercase tracking-wide text-blue-500">
-                      Opportunities detected
-                    </div>
-
-                    <div className="mt-1 text-3xl font-bold text-blue-950">
-                      {number(
-                        overview?.opportunities ??
-                        opportunities.length,
-                      )}
-                    </div>
-
-                    <div className="mt-1 text-xs text-blue-700">
-                      {highPriority.length} high-priority signals
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              {/* CORE METRICS */}
-
-              <section className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <Metric
-                  label="Total backlinks"
-                  value={
-                    overview?.totalBacklinks ??
-                    overview?.total ??
-                    backlinks.length
-                  }
-                  icon={<Link2 size={17} />}
-                />
-
-                <Metric
-                  label="Referring domains"
-                  value={
-                    overview?.referringDomains ??
-                    overview?.domains ??
-                    domains.length
-                  }
-                  icon={<Target size={17} />}
-                />
-
-                <Metric
-                  label="Toxic links"
-                  value={
-                    overview?.toxicBacklinks ??
-                    overview?.toxic ??
-                    '—'
-                  }
-                  icon={<ShieldCheck size={17} />}
-                />
-
-                <Metric
-                  label="Link opportunities"
-                  value={
-                    overview?.opportunities ??
-                    opportunities.length
-                  }
-                  icon={<Zap size={17} />}
-                />
-              </section>
-
-              {/* OPPORTUNITY ENGINE */}
-
-              <section className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="flex flex-col gap-3 border-b border-slate-100 p-6 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Zap size={18} className="text-amber-500" />
-                      <h2 className="text-sm font-bold text-slate-900">
-                        Link opportunities
-                      </h2>
-                    </div>
-
-                    <p className="mt-1 text-xs text-slate-500">
-                      Prioritised opportunities from the available backlink intelligence.
-                    </p>
-                  </div>
-
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-500">
-                    {opportunities.length} detected
-                  </span>
-                </div>
-
-                {loading ? (
-                  <Loading />
-                ) : opportunities.length === 0 ? (
-                  <Empty text="No backlink opportunities are available yet." />
-                ) : (
-                  <div className="divide-y divide-slate-100">
-                    {opportunities.slice(0, 50).map(
-                      (item, index) => {
-                        const priority =
-                          String(
-                            item.priority ||
-                            item.severity ||
-                            'LOW',
-                          ).toUpperCase();
-
-                        const recommendationId =
-                          item.recommendationId ||
-                          item.recommendation?.id;
-
-                        const busy =
-                          recommendationId &&
-                          actionLoading ===
-                            String(recommendationId);
-
-                        return (
-                          <div
-                            key={item.id || index}
-                            className="p-5"
-                          >
-                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span
-                                    className={`rounded-lg border px-2.5 py-1 text-[10px] font-bold ${priorityClass(
-                                      priority,
-                                    )}`}
-                                  >
-                                    {priority}
-                                  </span>
-
-                                  {item.type && (
-                                    <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">
-                                      {item.type}
-                                    </span>
-                                  )}
-                                </div>
-
-                                <h3 className="mt-3 text-sm font-bold text-slate-900">
-                                  {item.title ||
-                                    item.domain ||
-                                    item.sourceDomain ||
-                                    'Link opportunity'}
-                                </h3>
-
-                                <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">
-                                  {item.description ||
-                                    item.recommendation ||
-                                    'Potential backlink opportunity detected from available data.'}
-                                </p>
-
-                                <div className="mt-3 flex flex-wrap gap-3">
-                                  {item.domain && (
-                                    <span className="text-[10px] font-semibold text-slate-500">
-                                      Domain: {item.domain}
-                                    </span>
-                                  )}
-
-                                  {item.score != null && (
-                                    <span className="text-[10px] font-bold text-blue-600">
-                                      Opportunity score: {item.score}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-
-                              <button
-                                type="button"
-                                disabled={
-                                  !recommendationId ||
-                                  Boolean(busy)
-                                }
-                                onClick={() =>
-                                  void createAction(item)
-                                }
-                                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
-                              >
-                                {busy ? (
-                                  <Loader2
-                                    size={14}
-                                    className="animate-spin"
-                                  />
-                                ) : (
-                                  <Zap size={14} />
-                                )}
-
-                                {busy
-                                  ? 'Creating...'
-                                  : 'Create action'}
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      },
-                    )}
-                  </div>
-                )}
-              </section>
-
-              {/* REFERRING DOMAINS */}
-
-              <section className="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="border-b border-slate-100 p-6">
-                  <div className="flex items-center gap-2">
-                    <Target size={18} className="text-blue-600" />
-                    <h2 className="text-sm font-bold text-slate-900">
-                      Referring domain intelligence
-                    </h2>
-                  </div>
-
-                  <p className="mt-1 text-xs text-slate-500">
-                    Domains currently contributing links to the selected website.
-                  </p>
-                </div>
-
-                {loading ? (
-                  <Loading />
-                ) : domains.length === 0 ? (
-                  <Empty text="No referring domains available yet." />
-                ) : (
-                  <div className="grid gap-3 p-5 md:grid-cols-2 lg:grid-cols-3">
-                    {domains.slice(0, 30).map(
-                      (domain, index) => (
-                        <div
-                          key={
-                            domain.id ||
-                            domain.domain ||
-                            index
-                          }
-                          className="rounded-xl border border-slate-100 bg-slate-50 p-4"
-                        >
-                          <div className="truncate text-sm font-bold text-slate-800">
-                            {domain.domain ||
-                              domain.sourceDomain ||
-                              'Unknown domain'}
-                          </div>
-
-                          <div className="mt-3 flex items-end justify-between">
-                            <div>
-                              <div className="text-[10px] text-slate-400">
-                                Backlinks
-                              </div>
-
-                              <div className="mt-1 text-lg font-bold text-slate-900">
-                                {number(
-                                  domain.backlinks ??
-                                  domain.count ??
-                                  0,
-                                )}
-                              </div>
-                            </div>
-
-                            {(domain.domainAuthority != null ||
-                              domain.authority != null) && (
-                              <div className="text-right">
-                                <div className="text-[10px] text-slate-400">
-                                  Authority
-                                </div>
-
-                                <div className="mt-1 text-sm font-bold text-slate-700">
-                                  {domain.domainAuthority ??
-                                    domain.authority}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ),
-                    )}
-                  </div>
-                )}
-              </section>
-
-              {/* BACKLINK PROFILE */}
-
-              <section className="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="flex items-center justify-between border-b border-slate-100 p-6">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Link2 size={18} className="text-blue-600" />
-                      <h2 className="text-sm font-bold text-slate-900">
-                        Backlink profile
-                      </h2>
-                    </div>
-
-                    <p className="mt-1 text-xs text-slate-500">
-                      Latest backlink records available to RENKOO.
-                    </p>
-                  </div>
-
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-500">
-                    {number(backlinks.length)}
-                  </span>
-                </div>
-
-                {loading ? (
-                  <Loading />
-                ) : backlinks.length === 0 ? (
-                  <Empty text="No backlink records available yet." />
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                        <tr>
-                          <th className="px-5 py-3">
-                            Source
-                          </th>
-                          <th className="px-5 py-3">
-                            Target
-                          </th>
-                          <th className="px-5 py-3">
-                            Authority
-                          </th>
-                          <th className="px-5 py-3">
-                            Status
-                          </th>
-                        </tr>
-                      </thead>
-
-                      <tbody className="divide-y divide-slate-100">
-                        {backlinks.slice(0, 100).map(
-                          (item, index) => (
-                            <tr
-                              key={
-                                item.id || index
-                              }
-                              className="hover:bg-slate-50"
-                            >
-                              <td className="max-w-xs px-5 py-4">
-                                {item.sourceUrl ? (
-                                  <a
-                                    href={
-                                      item.sourceUrl
-                                    }
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="flex items-center gap-1 truncate font-semibold text-blue-600"
-                                  >
-                                    {item.sourceDomain ||
-                                      item.sourceUrl}
-
-                                    <ExternalLink
-                                      size={11}
-                                    />
-                                  </a>
-                                ) : (
-                                  <span className="font-semibold text-slate-700">
-                                    {item.sourceDomain ||
-                                      'Unknown'}
-                                  </span>
-                                )}
-
-                                {item.anchorText && (
-                                  <div className="mt-1 truncate text-xs text-slate-400">
-                                    {item.anchorText}
-                                  </div>
-                                )}
-                              </td>
-
-                              <td className="max-w-xs truncate px-5 py-4 text-xs text-slate-500">
-                                {item.targetUrl || '—'}
-                              </td>
-
-                              <td className="px-5 py-4 text-xs font-bold text-slate-700">
-                                {item.domainAuthority ??
-                                  item.pageAuthority ??
-                                  '—'}
-                              </td>
-
-                              <td className="px-5 py-4">
-                                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
-                                  {item.status ||
-                                    'ACTIVE'}
-                                </span>
-                              </td>
-                            </tr>
-                          ),
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </section>
-
-              {/* ACTION CTA */}
-
-              {highPriority.length > 0 && (
-                <section className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-6">
-                  <div className="flex items-start gap-3">
-                    <CheckCircle2
-                      size={19}
-                      className="mt-0.5 text-blue-600"
-                    />
-
-                    <div>
-                      <h2 className="text-sm font-bold text-blue-950">
-                        {highPriority.length} high-priority backlink opportunities detected
-                      </h2>
-
-                      <p className="mt-1 text-xs leading-5 text-blue-800">
-                        Prioritise the strongest opportunities and turn them into execution tasks instead of leaving them as reports.
-                      </p>
-
-                      <a
-                        href="/actions"
-                        className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700"
-                      >
-                        Open Action Engine
-                        <ArrowUpRight size={13} />
-                      </a>
-                    </div>
-                  </div>
-                </section>
-              )}
-            </>
-          )}
-
-          {message && (
-            <div className="fixed bottom-5 right-5 z-50 max-w-sm rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 shadow-xl">
-              {message}
-            </div>
-          )}
-        </div>
-      </main>
-    </div>
+  const providerConnected = Boolean(
+    (provider as any)?.connected ??
+      (provider as any)?.available ??
+      false,
   );
-}
+  const providerLabel = providerConnected
+    ? 'PROVIDER'
+    : backlinks.some(
+          (b: any) => sourceTypeOf(b) === 'MANUAL_IMPORT',
+        )
+      ? 'MANUAL_IMPORT'
+      : 'UNAVAILABLE';
 
-function Metric({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value: number | string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-        <span className="text-blue-600">
-          {icon}
+  const gapItems: any[] = useMemo(() => {
+    if (!gap) return [];
+    if (Array.isArray(gap)) return gap;
+    if (Array.isArray((gap as any)?.gaps))
+      return (gap as any).gaps;
+    return [];
+  }, [gap]);
+
+  const columns: DataTableColumn<any>[] = [
+    {
+      key: 'source',
+      label: 'Source',
+      priority: 'high',
+      render: (r) => (
+        <span
+          className="block max-w-[260px] truncate font-medium text-rk-ink"
+          title={String(
+            r.sourceUrl || r.url || r.source || '—',
+          )}
+        >
+          {String(
+            r.sourceUrl || r.url || r.source || '—',
+          )}
         </span>
-        {label}
-      </div>
+      ),
+    },
+    {
+      key: 'target',
+      label: 'Target',
+      priority: 'medium',
+      render: (r) => (
+        <span
+          className="block max-w-[220px] truncate text-rk-secondary"
+          title={String(
+            r.targetUrl || r.target || '—',
+          )}
+        >
+          {String(r.targetUrl || r.target || '—')}
+        </span>
+      ),
+    },
+    {
+      key: 'anchor',
+      label: 'Anchor',
+      priority: 'low',
+      render: (r) => (
+        <span className="text-rk-secondary">
+          {String(r.anchor || '—').slice(0, 60)}
+        </span>
+      ),
+    },
+    {
+      key: 'follow',
+      label: 'Follow',
+      priority: 'medium',
+      render: (r) => (
+        <span className="text-rk-secondary">
+          {String(
+            r.follow ?? r.linkType ?? r.rel ?? '—',
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'quality',
+      label: 'Quality',
+      align: 'right',
+      priority: 'medium',
+      sortable: true,
+      sortValue: (r) =>
+        num(r.quality ?? r.qualityScore, -1),
+      render: (r) =>
+        r.quality !== undefined &&
+        r.quality !== null ? (
+          <span className="rk-number">
+            {String(r.quality ?? r.qualityScore)}
+          </span>
+        ) : (
+          <span className="text-xs text-rk-muted">—</span>
+        ),
+    },
+    {
+      key: 'source-type',
+      label: 'Source type',
+      priority: 'high',
+      render: (r) => (
+        <DataSourceBadge
+          source={sourceTypeOf(r)}
+        />
+      ),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      priority: 'medium',
+      render: (r) => (
+        <StatusChip
+          status={String(r.status || 'ACTIVE')}
+        />
+      ),
+    },
+  ];
 
-      <div className="mt-3 text-2xl font-bold tracking-tight text-slate-950">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function Loading() {
   return (
-    <div className="flex items-center justify-center p-10">
-      <Loader2
-        size={20}
-        className="animate-spin text-blue-600"
+    <AppShell
+      mobileOpen={navOpen}
+      onClose={() => setNavOpen(false)}
+      onMenu={() => setNavOpen(true)}
+    >
+      <PageHeader
+        eyebrow="Authority"
+        title="Backlinks & Authority"
+        description="Persisted link profile with honest source labels — manual imports stay manual, provider gaps stay visible."
+        actions={
+          <div className="flex gap-2">
+            <SecondaryButton
+              onClick={() => {
+                setRefreshing(true);
+                void load(websiteId).finally(() =>
+                  setRefreshing(false),
+                );
+              }}
+              disabled={refreshing || loading}
+            >
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </SecondaryButton>
+            <Link href="/opportunities">
+              <PrimaryButton type="button">
+                Opportunity Engine
+              </PrimaryButton>
+            </Link>
+          </div>
+        }
+        meta={
+          <div className="flex flex-wrap items-center gap-2">
+            <DataSourceBadge
+              source={providerLabel}
+              connected={providerConnected}
+            />
+            <FreshnessBadge label="Persisted profile" />
+          </div>
+        }
       />
-    </div>
-  );
-}
 
-function Empty({
-  text,
-}: {
-  text: string;
-}) {
-  return (
-    <div className="p-10 text-center">
-      <div className="text-sm font-semibold text-slate-700">
-        Nothing here yet
-      </div>
+      {loading ? (
+        <div className="mt-6">
+          <LoadingBlock title="Loading backlinks" />
+        </div>
+      ) : error && backlinks.length === 0 ? (
+        <div className="mt-6">
+          <ErrorState
+            title="Backlinks failed to load"
+            description={error}
+            onRetry={() => {
+              setLoading(true);
+              void load(websiteId).finally(() =>
+                setLoading(false),
+              );
+            }}
+          />
+        </div>
+      ) : (
+        <div className="mt-6 space-y-6">
+          <Panel
+            eyebrow="Context"
+            title="Website & filters"
+            description="Filters request the selected values directly."
+          >
+            <FilterBar
+              searchValue={search}
+              searchPlaceholder="Search sources, targets, anchors…"
+              onSearchChange={setSearch}
+              selects={[
+                {
+                  key: 'website',
+                  label: 'Website',
+                  value: websiteId,
+                  options: websites.map((w) => ({
+                    value: w.id,
+                    label: w.name,
+                  })),
+                  onChange: handleWebsite,
+                },
+                {
+                  key: 'status',
+                  label: 'Status',
+                  value: statusFilter,
+                  options: [
+                    { value: 'ALL', label: 'All' },
+                    { value: 'ACTIVE', label: 'Active' },
+                    { value: 'LOST', label: 'Lost' },
+                    {
+                      value: 'PENDING',
+                      label: 'Pending',
+                    },
+                  ],
+                  onChange: (v) =>
+                    applyFilters(
+                      v,
+                      linkTypeFilter,
+                      qualityFilter,
+                    ),
+                },
+                {
+                  key: 'linkType',
+                  label: 'Link type',
+                  value: linkTypeFilter,
+                  options: [
+                    { value: 'ALL', label: 'All' },
+                    { value: 'FOLLOW', label: 'Follow' },
+                    {
+                      value: 'NOFOLLOW',
+                      label: 'Nofollow',
+                    },
+                  ],
+                  onChange: (v) =>
+                    applyFilters(
+                      statusFilter,
+                      v,
+                      qualityFilter,
+                    ),
+                },
+                {
+                  key: 'quality',
+                  label: 'Quality',
+                  value: qualityFilter,
+                  options: [
+                    { value: 'ALL', label: 'All' },
+                    { value: 'HIGH', label: 'High' },
+                    { value: 'MEDIUM', label: 'Medium' },
+                    { value: 'LOW', label: 'Low' },
+                  ],
+                  onChange: (v) =>
+                    applyFilters(
+                      statusFilter,
+                      linkTypeFilter,
+                      v,
+                    ),
+                },
+              ]}
+              onClearAll={() => {
+                setSearch('');
+                applyFilters('ALL', 'ALL', 'ALL');
+              }}
+            />
+          </Panel>
 
-      <p className="mt-1 text-xs text-slate-500">
-        {text}
-      </p>
-    </div>
+          {!providerConnected && (
+            <InsightBlock
+              eyebrow="Coverage"
+              title="Provider unavailable — recorded data only"
+            >
+              <p className="rk-body mt-1">
+                The backlink provider is not connected, so
+                this profile reflects recorded and manually
+                imported links. Import below to grow it
+                honestly.
+              </p>
+            </InsightBlock>
+          )}
+
+          <section aria-label="Key signals">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Metric
+                label="Backlinks"
+                value={fmtInt(
+                  (overview as any)?.total ?? stats.total,
+                )}
+                detail="Persisted links"
+              />
+              <Metric
+                label="Referring domains"
+                value={
+                  stats.domains === null
+                    ? '—'
+                    : fmtInt(stats.domains)
+                }
+                detail="Unique domains"
+              />
+              <Metric
+                label="Follow links"
+                value={fmtInt(stats.follow)}
+                detail="In current view"
+              />
+              <Metric
+                label="Avg. quality"
+                value={
+                  stats.avgQ === null
+                    ? '—'
+                    : String(stats.avgQ)
+                }
+                detail={
+                  stats.avgQ === null
+                    ? 'No quality scores recorded'
+                    : 'Recorded scores'
+                }
+              />
+            </div>
+          </section>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Panel
+              eyebrow="Quality"
+              title="Quality distribution"
+              description="Rendered only from recorded quality scores."
+            >
+              <DonutChart
+                state={
+                  qualitySlices.length > 0
+                    ? 'ready'
+                    : 'empty'
+                }
+                slices={qualitySlices}
+                summary="Recorded backlinks grouped by quality."
+                centerLabel={fmtInt(stats.total)}
+                emptyTitle="No quality data"
+                emptyDescription="Quality scores appear once recorded or imported links carry them."
+              />
+            </Panel>
+            <Panel
+              eyebrow="History"
+              title="Profile growth"
+              description="Persisted snapshots over time."
+            >
+              <TrendChart
+                state={
+                  trendPoints.length > 0 ? 'ready' : 'empty'
+                }
+                points={trendPoints}
+                summary="Persisted backlink totals over time."
+                formatValue={(v) => fmtInt(v)}
+                emptyTitle="No history yet"
+                emptyDescription="Snapshots accumulate as the profile is reconciled."
+              />
+            </Panel>
+          </div>
+
+          <Panel
+            eyebrow="Main table"
+            title="Backlink profile"
+            description="Open a row for full link evidence."
+          >
+            <DataTable
+              caption="Recorded backlinks with source labels"
+              columns={columns}
+              rows={filtered}
+              keyOf={(r: any, i: number) =>
+                String(r.id || `${r.sourceUrl}-${i}`)
+              }
+              onRowClick={setDrawerRow}
+              emptyTitle="No backlinks match"
+              emptyDescription="Adjust filters, or import known links below."
+              pageSize={12}
+            />
+          </Panel>
+
+          {(opportunities.length > 0 ||
+            gapItems.length > 0) && (
+            <Panel
+              eyebrow="Opportunities"
+              title="Authority gaps & quality issues"
+              description="Only gaps with actual measured backing are shown."
+              actions={
+                <Link href="/opportunities">
+                  <SecondaryButton type="button">
+                    View opportunity
+                  </SecondaryButton>
+                </Link>
+              }
+            >
+              <ul className="divide-y divide-rk-border">
+                {opportunities
+                  .slice(0, 6)
+                  .map((opp: any, i: number) => {
+                    const key = String(
+                      opp.id || opp.title || i,
+                    );
+                    return (
+                      <li
+                        key={key}
+                        className="flex flex-wrap items-center justify-between gap-2 py-2.5"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-rk-ink">
+                            {String(
+                              opp.title || 'Opportunity',
+                            )}
+                          </p>
+                          {opp.description ? (
+                            <p className="rk-body mt-0.5">
+                              {String(opp.description)}
+                            </p>
+                          ) : null}
+                        </div>
+                        <SecondaryButton
+                          onClick={() =>
+                            void handleOppAction(opp)
+                          }
+                          disabled={
+                            actionBusy[key] ||
+                            actionDone[key]
+                          }
+                        >
+                          {actionDone[key]
+                            ? 'Added'
+                            : actionBusy[key]
+                              ? 'Adding…'
+                              : 'Add to Actions'}
+                        </SecondaryButton>
+                      </li>
+                    );
+                  })}
+                {gapItems.slice(0, 4).map((g: any, i: number) => (
+                  <li
+                    key={`gap-${i}`}
+                    className="py-2.5"
+                  >
+                    <p className="text-sm font-semibold text-rk-ink">
+                      Competitor gap:{' '}
+                      {String(
+                        g.domain || g.title || 'domain',
+                      )}
+                    </p>
+                    {g.description || g.detail ? (
+                      <p className="rk-body mt-0.5">
+                        {String(g.description || g.detail)}
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+          )}
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Panel
+              eyebrow="Manual import"
+              title="Import known links"
+              description="Imported rows are permanently labeled MANUAL_IMPORT."
+            >
+              <textarea
+                value={importText}
+                onChange={(e) =>
+                  setImportText(e.target.value)
+                }
+                placeholder="One URL per line…"
+                rows={4}
+                className="input w-full"
+              />
+              <div className="mt-2 flex gap-2">
+                <PrimaryButton
+                  onClick={() => void handleImport()}
+                  disabled={importing || !importText.trim()}
+                >
+                  {importing
+                    ? 'Importing…'
+                    : 'Import as manual'}
+                </PrimaryButton>
+                <SecondaryButton
+                  onClick={() => void handleReconcile()}
+                  disabled={reconciling}
+                >
+                  {reconciling
+                    ? 'Reconciling…'
+                    : 'Reconcile status'}
+                </SecondaryButton>
+              </div>
+              {notice ? (
+                <p className="rk-body mt-2">{notice}</p>
+              ) : null}
+            </Panel>
+
+            <Panel
+              eyebrow="Domains"
+              title="Referring domains"
+              description="Unique domains behind the profile."
+            >
+              {domains.length === 0 ? (
+                <EmptyState
+                  title="No domain breakdown"
+                  description="Domain data appears once recorded links carry domain attribution."
+                />
+              ) : (
+                <ul className="divide-y divide-rk-border">
+                  {domains
+                    .slice(0, 8)
+                    .map((d: any, i: number) => (
+                      <li
+                        key={String(d.domain || d.id || i)}
+                        className="flex items-center justify-between gap-2 py-2"
+                      >
+                        <span className="truncate text-sm font-medium text-rk-ink">
+                          {String(d.domain || d.name)}
+                        </span>
+                        <span className="rk-number text-xs text-rk-secondary">
+                          {fmtInt(
+                            d.links ?? d.count ?? 0,
+                          )}{' '}
+                          links
+                        </span>
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </Panel>
+          </div>
+
+          <RecommendationCallout
+            title="Authority → execution"
+            text="Quality issues and authority gaps become tracked actions with evidence attached."
+            actionLabel="Open Action Engine"
+            actionHref="/actions"
+          />
+        </div>
+      )}
+
+      <Drawer
+        open={drawerRow !== null}
+        onClose={() => setDrawerRow(null)}
+        eyebrow="Link evidence"
+        title="Backlink detail"
+        description="Recorded evidence for this link."
+      >
+        {drawerRow && (
+          <>
+            <DrawerMeta
+              items={[
+                {
+                  label: 'Source',
+                  value: String(
+                    drawerRow.sourceUrl ||
+                      drawerRow.url ||
+                      '—',
+                  ),
+                },
+                {
+                  label: 'Target',
+                  value: String(
+                    drawerRow.targetUrl ||
+                      drawerRow.target ||
+                      '—',
+                  ),
+                },
+                {
+                  label: 'Anchor',
+                  value: String(
+                    drawerRow.anchor || '—',
+                  ).slice(0, 120),
+                },
+                {
+                  label: 'Follow',
+                  value: String(
+                    drawerRow.follow ??
+                      drawerRow.linkType ??
+                      '—',
+                  ),
+                },
+                {
+                  label: 'Quality',
+                  value: String(
+                    drawerRow.quality ??
+                      drawerRow.qualityScore ??
+                      'Not recorded',
+                  ),
+                },
+                {
+                  label: 'Source type',
+                  value: sourceTypeOf(drawerRow),
+                },
+                {
+                  label: 'Last observed',
+                  value: fmtDate(
+                    drawerRow.lastObservedAt ||
+                      drawerRow.updatedAt,
+                  ),
+                },
+              ]}
+            />
+            <DrawerSection title="Outcome">
+              <EvidenceList
+                items={[
+                  {
+                    text: `Recorded as ${sourceTypeOf(drawerRow)} — coverage honesty preserved.`,
+                    source: 'Backlink profile',
+                  },
+                ]}
+              />
+              <div className="mt-2">
+                <NextAction
+                  label="Track in Opportunity Engine"
+                  detail="Authority gaps carry evidence into execution."
+                  href="/opportunities"
+                />
+              </div>
+            </DrawerSection>
+          </>
+        )}
+      </Drawer>
+    </AppShell>
   );
 }

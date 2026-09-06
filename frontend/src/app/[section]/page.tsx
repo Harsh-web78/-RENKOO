@@ -234,8 +234,11 @@ export default function TechnicalSeoPage() {
 
   const getLatestSummaryForWebsite = useCallback(
     async (websiteId: string): Promise<Summary> => {
+      const base =
+        process.env.NEXT_PUBLIC_API_URL ||
+        'http://localhost:4000/api';
       const response = await fetch(
-        `http://localhost:4000/api/crawl/latest/${encodeURIComponent(
+        `${base}/crawl/latest/${encodeURIComponent(
           websiteId,
         )}/summary`,
         {
@@ -1331,11 +1334,17 @@ export default function TechnicalSeoPage() {
                     <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                       <div className="rounded-xl bg-slate-50 p-4">
                         <div className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                          Crawl ID
+                          Crawl ref
                         </div>
 
-                        <div className="mt-2 break-all text-xs font-semibold text-slate-700">
-                          {summary.crawlId}
+                        <div
+                          className="mt-2 break-all text-xs font-semibold text-slate-700"
+                          title="Internal crawl reference (shortened)"
+                        >
+                          {String(
+                            summary.crawlId || '',
+                          ).slice(0, 8)}
+                          …
                         </div>
                       </div>
 

@@ -1,813 +1,887 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
-import {
-  AlertTriangle,
-  ArrowLeft,
-  BarChart3,
-  Check,
-  CheckCircle2,
-  ChevronRight,
-  Clock3,
-  ExternalLink,
-  FileText,
-  Filter,
-  Globe2,
-  Layers,
-  Loader2,
-  Menu,
-  Minus,
-  Play,
-  Plus,
-  RefreshCw,
-  ShieldCheck,
-  Sparkles,
-  Target,
-  TrendingDown,
-  TrendingUp,
-  XCircle,
-  Zap,
-} from 'lucide-react';
+/*
+ * RENKOO V2 — Competitor detail comparison (Phase 5F).
+ * Real comparison-engine data only: identity, score and
+ * comparison metrics, page gaps, opportunity gaps wired to
+ * Opportunities/Actions, and history charted only when
+ * historical crawls exist. Metric detail opens in a Drawer
+ * with RENKOO value, competitor value, delta, evidence,
+ * implication and recommended action.
+ */
 
-import Sidebar from '@/components/Sidebar';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import {
   getCompetitorComparison,
   crawlCompetitor,
   createAction,
-  type CompetitorComparisonResponse,
+  getCompetitorCrawlHistory,
+  getCompetitorRecommendations,
+  createActionFromRecommendation,
   type ComparisonOpportunity,
   type MetricComparison,
   type PageGap,
 } from '@/lib/api';
+import AppShell from '@/components/AppShell';
+import {
+  PageHeader,
+  Panel,
+  Metric,
+  DataTable,
+  FilterBar,
+  Drawer,
+  DrawerSection,
+  DrawerMeta,
+  PrimaryButton,
+  SecondaryButton,
+  DataSourceBadge,
+  FreshnessBadge,
+  PriorityChip,
+  LoadingBlock,
+  ErrorState,
+  EmptyState,
+  InsightBlock,
+  EvidenceList,
+  RecommendationCallout,
+  NextAction,
+  type DataTableColumn,
+} from '@/components/ui';
+import { TrendChart, type TrendPoint } from '@/components/charts';
 
-type Tab = 'opportunities' | 'metrics' | 'pages';
-type PriorityFilter = 'ALL' | 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+function num(value: unknown, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
 
-function formatDate(isoString?: string | null) {
-  if (!isoString) return '—';
+function fmtInt(value: unknown) {
+  return num(value).toLocaleString('en-US');
+}
+
+function fmtDate(value: unknown) {
+  if (!value) return '—';
   try {
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(new Date(isoString));
+    return new Date(String(value)).toLocaleDateString(
+      'en-US',
+      { month: 'short', day: 'numeric', year: 'numeric' },
+    );
   } catch {
-    return isoString;
+    return String(value);
   }
 }
 
-function formatPercent(value: number) {
-  return `${(Number(value) || 0).toFixed(1)}%`;
-}
+type Tab = 'opportunities' | 'metrics' | 'pages' | 'history';
 
-function getPriorityBadgeClass(priority: string) {
-  switch (priority?.toUpperCase()) {
-    case 'CRITICAL':
-      return 'bg-red-50 text-red-700 border-red-200';
-    case 'HIGH':
-      return 'bg-orange-50 text-orange-700 border-orange-200';
-    case 'MEDIUM':
-      return 'bg-amber-50 text-amber-700 border-amber-200';
-    case 'LOW':
-      return 'bg-blue-50 text-blue-700 border-blue-200';
-    default:
-      return 'bg-slate-50 text-slate-700 border-slate-200';
-  }
-}
-
-function getEffortBadgeClass(effort: string) {
-  switch (effort?.toUpperCase()) {
-    case 'LOW':
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-    case 'MEDIUM':
-      return 'bg-blue-50 text-blue-700 border-blue-200';
-    case 'HIGH':
-      return 'bg-purple-50 text-purple-700 border-purple-200';
-    default:
-      return 'bg-slate-50 text-slate-600 border-slate-200';
-  }
-}
-
-function getStatusBadge(status: 'STRONGER' | 'WEAKER' | 'EQUAL') {
-  if (status === 'STRONGER') {
-    return {
-      label: 'Advantage: You are Leading',
-      className: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-      icon: TrendingUp,
-      iconClass: 'text-emerald-600',
-    };
-  }
-  if (status === 'WEAKER') {
-    return {
-      label: 'Deficit: Competitor Leading',
-      className: 'bg-amber-50 text-amber-800 border-amber-200',
-      icon: TrendingDown,
-      iconClass: 'text-amber-600',
-    };
-  }
-  return {
-    label: 'Equilibrium: Performance Matched',
-    className: 'bg-blue-50 text-blue-800 border-blue-200',
-    icon: Minus,
-    iconClass: 'text-blue-600',
-  };
-}
-
-export default function CompetitorComparisonPage() {
+export default function CompetitorDetailPage() {
   const params = useParams();
-  const router = useRouter();
-  const competitorId = String(params?.id || '');
-
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const competitorId = String(
+    (params as any)?.id || '',
+  );
+  const [navOpen, setNavOpen] = useState(false);
+  const [tab, setTab] = useState<Tab>('opportunities');
+  const [priorityFilter, setPriorityFilter] =
+    useState('ALL');
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [crawling, setCrawling] = useState(false);
   const [error, setError] = useState('');
-  const [data, setData] = useState<CompetitorComparisonResponse | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>('opportunities');
-  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('ALL');
+  const [actionError, setActionError] = useState('');
+  const [comparison, setComparison] = useState<any>(null);
+  const [history, setHistory] = useState<any[]>([]);
+  const [historyError, setHistoryError] = useState('');
+  const [recommendations, setRecommendations] = useState<
+    any[]
+  >([]);
+  const [crawling, setCrawling] = useState(false);
+  const [drawerMetric, setDrawerMetric] =
+    useState<any>(null);
+  const [actionBusy, setActionBusy] = useState<
+    Record<string, boolean>
+  >({});
+  const [actionDone, setActionDone] = useState<
+    Record<string, boolean>
+  >({});
 
-  const [actionLoadingMap, setActionLoadingMap] = useState<Record<string, boolean>>({});
-  const [actionSuccessMap, setActionSuccessMap] = useState<Record<string, boolean>>({});
-
-  const loadComparison = useCallback(async (isRefresh = false) => {
+  const load = useCallback(async () => {
     if (!competitorId) return;
-
     try {
-      if (isRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
       setError('');
-
-      const result = await getCompetitorComparison(competitorId);
-      setData(result);
+      setActionError('');
+      const res =
+        await getCompetitorComparison(competitorId);
+      setComparison(res);
+      try {
+        const h =
+          await getCompetitorCrawlHistory(competitorId);
+        setHistory(
+          Array.isArray(h)
+            ? h
+            : Array.isArray((h as any)?.crawls)
+              ? (h as any).crawls
+              : [],
+        );
+      } catch (err: any) {
+        setHistoryError(
+          err?.message || 'History unavailable.',
+        );
+      }
+      try {
+        const recs = await getCompetitorRecommendations(
+          competitorId,
+        );
+        const list = Array.isArray(recs)
+          ? recs
+          : Array.isArray((recs as any)?.recommendations)
+            ? (recs as any).recommendations
+            : [];
+        setRecommendations(list);
+      } catch {
+        setRecommendations([]);
+      }
     } catch (err: any) {
-      console.error('[RENKOO] Competitor comparison error:', err);
       setError(
-        err?.message ||
-          'Unable to generate competitor comparison. Ensure both your website and competitor have completed crawls.',
+        err?.message || 'Failed to load comparison.',
       );
-      setData(null);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [competitorId]);
 
   useEffect(() => {
-    loadComparison();
-  }, [loadComparison]);
+    setLoading(true);
+    void load();
+  }, [load]);
 
-  const handleCrawlCompetitor = async () => {
+  async function handleCrawl() {
     if (!competitorId || crawling) return;
-
     try {
       setCrawling(true);
-      setError('');
       await crawlCompetitor(competitorId);
-
-      const pollInterval = setInterval(async () => {
+      const deadline = Date.now() + 10 * 60 * 1000;
+      let settled = false;
+      while (!settled && Date.now() < deadline) {
+        await new Promise((res) =>
+          setTimeout(res, 5000),
+        );
         try {
-          const freshData = await getCompetitorComparison(competitorId);
-          setData(freshData);
-          setCrawling(false);
-          clearInterval(pollInterval);
+          const res = await getCompetitorComparison(
+            competitorId,
+          );
+          const status = String(
+            (res as any)?.comparison?.crawlStatus ||
+              (res as any)?.crawlStatus ||
+              '',
+          ).toUpperCase();
+          if (
+            status === 'COMPLETED' ||
+            status === 'FAILED'
+          ) {
+            settled = true;
+            setComparison(res);
+          }
         } catch {
-          // Still crawling
+          /* keep polling until timeout */
         }
-      }, 3000);
-
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        setCrawling(false);
-      }, 60000);
+      }
+      await load();
     } catch (err: any) {
-      setError(err?.message || 'Failed to start competitor crawl.');
+      setError(err?.message || 'Crawl failed to start.');
+    } finally {
       setCrawling(false);
     }
-  };
+  }
 
-  const handleCreateAction = async (opportunity: ComparisonOpportunity) => {
-    const oppId = opportunity.id;
-    if (actionLoadingMap[oppId] || actionSuccessMap[oppId]) return;
-
-    try {
-      setActionLoadingMap((prev) => ({ ...prev, [oppId]: true }));
-      await createAction({
-        websiteId: data?.comparison?.renkoo?.websiteId,
-        type: 'COMPETITOR_GAP',
-        title: opportunity.title,
-        description: `${opportunity.description} — Recommendation: ${opportunity.recommendation}`,
-        priority: opportunity.priority === 'CRITICAL' ? 'HIGH' : opportunity.priority,
-        metadata: {
-          competitorId,
-          competitorName: data?.comparison?.competitor?.name,
-          impactScore: opportunity.impactScore,
-          effort: opportunity.effort,
-          opportunityType: opportunity.type,
-        },
-      });
-
-      setActionSuccessMap((prev) => ({ ...prev, [oppId]: true }));
-    } catch (err: any) {
-      console.error('[RENKOO] Failed to add action:', err);
-      alert(err?.message || 'Unable to add action to workspace.');
-    } finally {
-      setActionLoadingMap((prev) => ({ ...prev, [oppId]: false }));
-    }
-  };
-
-  const filteredOpportunities = useMemo(() => {
-    if (!data?.opportunities) return [];
-    if (priorityFilter === 'ALL') return data.opportunities;
-    return data.opportunities.filter(
-      (opp) => opp.priority.toUpperCase() === priorityFilter,
+  async function handleOppAction(opp: any) {
+    const key = String(
+      opp.id || `${opp.title}-${opp.metric || ''}`,
     );
-  }, [data?.opportunities, priorityFilter]);
+    if (actionBusy[key] || actionDone[key]) return;
+    try {
+      setActionBusy((p) => ({ ...p, [key]: true }));
+      setActionError('');
+      if (opp.recommendationId || opp.id) {
+        try {
+          await createActionFromRecommendation(
+            String(opp.recommendationId || opp.id),
+          );
+        } catch {
+          await createAction({
+            type: 'COMPETITOR',
+            title: `Competitor gap: ${String(opp.title || opp.metric || 'gap')}`.slice(
+              0,
+              140,
+            ),
+            description: String(
+              opp.description ||
+                opp.implication ||
+                'Measured competitor gap',
+            ).slice(0, 500),
+            priority: String(
+              opp.priority || 'MEDIUM',
+            ).toUpperCase(),
+            metadata: {
+              source: 'COMPETITOR_COMPARISON',
+              competitorId,
+              metric: opp.metric,
+            },
+          });
+        }
+      } else {
+        await createAction({
+          type: 'COMPETITOR',
+          title: `Competitor gap: ${String(opp.title || opp.metric || 'gap')}`.slice(
+            0,
+            140,
+          ),
+          description: String(
+            opp.description ||
+              opp.implication ||
+              'Measured competitor gap',
+          ).slice(0, 500),
+          priority: String(
+            opp.priority || 'MEDIUM',
+          ).toUpperCase(),
+          metadata: {
+            source: 'COMPETITOR_COMPARISON',
+            competitorId,
+            metric: opp.metric,
+          },
+        });
+      }
+      setActionDone((p) => ({ ...p, [key]: true }));
+    } catch (err: any) {
+      setActionError(
+        err?.message || 'Could not create action.',
+      );
+    } finally {
+      setActionBusy((p) => ({ ...p, [key]: false }));
+    }
+  }
 
-  const statusInfo = data?.comparison?.status
-    ? getStatusBadge(data.comparison.status)
-    : null;
+  const comp: any = (comparison as any)?.comparison || {};
+  const metrics: MetricComparison[] = useMemo(() => {
+    const list = (comparison as any)?.metrics;
+    return Array.isArray(list) ? list : [];
+  }, [comparison]);
+  const pageGaps: PageGap[] = useMemo(() => {
+    const list = (comparison as any)?.pageGaps;
+    return Array.isArray(list) ? list : [];
+  }, [comparison]);
+  const opportunities: ComparisonOpportunity[] = useMemo(
+    () => {
+      const list = (comparison as any)?.opportunities;
+      return Array.isArray(list) ? list : [];
+    },
+    [comparison],
+  );
+  const summary: any =
+    (comparison as any)?.summary || {};
+
+  const filteredOpps = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (opportunities as any[]).filter((o: any) => {
+      if (
+        priorityFilter !== 'ALL' &&
+        String(o.priority || '').toUpperCase() !==
+          priorityFilter
+      )
+        return false;
+      if (!q) return true;
+      return (
+        `${o.title || ''} ${o.metric || ''} ${o.description || ''}`
+          .toLowerCase()
+          .includes(q)
+      );
+    });
+  }, [opportunities, priorityFilter, search]);
+
+  const trendPoints: TrendPoint[] = useMemo(
+    () =>
+      history
+        .map((h: any) => ({
+          x: fmtDate(h.completedAt || h.createdAt),
+          y: num(h.score ?? 0),
+        }))
+        .filter((p) => p.y > 0),
+    [history],
+  );
+
+  const metricColumns: DataTableColumn<any>[] = [
+    {
+      key: 'metric',
+      label: 'Metric',
+      priority: 'high',
+      render: (r) => (
+        <span className="font-semibold text-rk-ink">
+          {String(
+            r.metric || r.label || r.name || '—',
+          ).replace(/_/g, ' ')}
+        </span>
+      ),
+    },
+    {
+      key: 'you',
+      label: 'RENKOO value',
+      align: 'right',
+      priority: 'high',
+      render: (r) => (
+        <span className="rk-number">
+          {r.you !== undefined && r.you !== null
+            ? String(r.you)
+            : r.ownValue !== undefined
+              ? String(r.ownValue)
+              : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'them',
+      label: 'Competitor',
+      align: 'right',
+      priority: 'high',
+      render: (r) => (
+        <span className="rk-number">
+          {r.them !== undefined && r.them !== null
+            ? String(r.them)
+            : r.competitorValue !== undefined
+              ? String(r.competitorValue)
+              : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'delta',
+      label: 'Delta',
+      align: 'right',
+      priority: 'medium',
+      render: (r) => (
+        <span className="rk-number text-rk-secondary">
+          {r.delta !== undefined && r.delta !== null
+            ? String(r.delta)
+            : '—'}
+        </span>
+      ),
+    },
+  ];
+
+  const pageGapColumns: DataTableColumn<any>[] = [
+    {
+      key: 'page',
+      label: 'Page gap',
+      priority: 'high',
+      render: (r: any) => (
+        <div className="min-w-0">
+          <p className="truncate font-semibold text-rk-ink">
+            {String(
+              r.url || r.page || r.title || '—',
+            )}
+          </p>
+          {r.metric || r.reason ? (
+            <p className="rk-metadata">
+              {String(r.metric || r.reason)}
+            </p>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      key: 'status',
+      label: 'Gap',
+      priority: 'medium',
+      render: (r: any) => (
+        <span className="text-rk-secondary">
+          {String(
+            r.gap || r.status || 'Missing or weaker',
+          ).replace(/_/g, ' ')}
+        </span>
+      ),
+    },
+  ];
+
+  const strengths: string[] = Array.isArray(summary.strengths)
+    ? summary.strengths
+    : [];
+  const weaknesses: string[] = Array.isArray(
+    summary.weaknesses,
+  )
+    ? summary.weaknesses
+    : [];
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
-
-      <main className="lg:pl-[270px]">
-        <header className="flex h-[72px] items-center justify-between border-b border-slate-100 bg-white px-5 lg:px-8">
-          <div className="flex items-center gap-3">
-            <button
-              className="mr-1 lg:hidden text-slate-600"
-              onClick={() => setMobileOpen(true)}
-              aria-label="Open menu"
-              type="button"
-            >
-              <Menu size={22} />
-            </button>
-
-            <Link
-              href="/competitors"
-              className="flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-900 transition"
-            >
-              <ArrowLeft size={15} />
-              <span>Competitors</span>
+    <AppShell
+      mobileOpen={navOpen}
+      onClose={() => setNavOpen(false)}
+      onMenu={() => setNavOpen(true)}
+    >
+      <PageHeader
+        eyebrow="Market"
+        title={String(
+          comp?.competitorName ||
+            comp?.name ||
+            'Competitor comparison',
+        )}
+        description={String(
+          comp?.competitorUrl || comp?.url || '',
+        )}
+        actions={
+          <div className="flex gap-2">
+            <Link href="/competitors">
+              <SecondaryButton type="button">
+                All competitors
+              </SecondaryButton>
             </Link>
-
-            <span className="text-slate-300">/</span>
-
-            <div className="truncate text-xs font-semibold text-slate-700">
-              {data?.comparison?.competitor?.name
-                ? `${data.comparison.competitor.name} vs ${data.comparison.renkoo.websiteName}`
-                : 'Competitor Intelligence'}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => loadComparison(true)}
-              disabled={loading || refreshing || crawling}
-              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+            <PrimaryButton
+              onClick={() => void handleCrawl()}
+              disabled={crawling}
             >
-              <RefreshCw
-                size={14}
-                className={refreshing || loading ? 'animate-spin' : ''}
+              {crawling ? 'Crawling…' : 'Crawl now'}
+            </PrimaryButton>
+          </div>
+        }
+        meta={
+          <div className="flex flex-wrap items-center gap-2">
+            <DataSourceBadge
+              source="Comparison engine"
+              connected={metrics.length > 0}
+            />
+            {metrics.length > 0 ? (
+              <FreshnessBadge
+                label={(() => {
+                  const stamp =
+                    (comparison as any)?.comparedAt ||
+                    comp?.completedAt ||
+                    comp?.createdAt ||
+                    comp?.updatedAt ||
+                    history.reduce<string | null>(
+                      (acc: string | null, h: any) => {
+                        const v =
+                          h?.completedAt ||
+                          h?.createdAt;
+                        return v &&
+                          (!acc ||
+                            String(v) > acc)
+                          ? String(v)
+                          : acc;
+                      },
+                      null,
+                    );
+                  return stamp
+                    ? `Compared ${fmtDate(stamp)}`
+                    : 'Measured comparison';
+                })()}
               />
-              <span>Refresh</span>
-            </button>
+            ) : !loading ? (
+              <FreshnessBadge label="Comparison unavailable" />
+            ) : null}
+          </div>
+        }
+      />
 
-            <button
-              type="button"
-              onClick={handleCrawlCompetitor}
-              disabled={crawling || loading}
-              className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
-            >
-              {crawling ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" />
-                  <span>Crawling...</span>
-                </>
-              ) : (
-                <>
-                  <Play size={14} />
-                  <span>Crawl Competitor</span>
-                </>
+      {loading ? (
+        <div className="mt-6">
+          <LoadingBlock title="Loading comparison" />
+        </div>
+      ) : error && !comparison ? (
+        <div className="mt-6">
+          <ErrorState
+            title="Comparison failed to load"
+            description={error}
+            onRetry={() => {
+              setLoading(true);
+              void load();
+            }}
+          />
+        </div>
+      ) : (
+        <div className="mt-6 space-y-6">
+          {error ? (
+            <ErrorState
+              title="Partial load failure"
+              description={error}
+              onRetry={() => void load()}
+            />
+          ) : null}
+          {actionError ? (
+            <ErrorState
+              title="Action failed"
+              description={actionError}
+              onRetry={() => setActionError('')}
+            />
+          ) : null}
+
+          <section aria-label="Signals">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Metric
+                label="Your score"
+                value={
+                  comp?.ownScore ?? comp?.score !==
+                    undefined
+                    ? String(
+                        comp?.ownScore ?? comp?.score,
+                      )
+                    : '—'
+                }
+                detail="Measured crawl"
+              />
+              <Metric
+                label="Competitor score"
+                value={
+                  comp?.competitorScore !== undefined
+                    ? String(comp.competitorScore)
+                    : '—'
+                }
+                detail="Measured crawl"
+              />
+              <Metric
+                label="Metrics compared"
+                value={fmtInt(metrics.length)}
+                detail="Coverage"
+              />
+              <Metric
+                label="Opportunity gaps"
+                value={fmtInt(opportunities.length)}
+                detail="Actionable"
+                tone={
+                  opportunities.length > 0
+                    ? 'warning'
+                    : 'neutral'
+                }
+              />
+            </div>
+          </section>
+
+          {(strengths.length > 0 ||
+            weaknesses.length > 0) && (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {strengths.length > 0 && (
+                <InsightBlock
+                  eyebrow="Where you lead"
+                  title="Strengths"
+                >
+                  <EvidenceList
+                    items={strengths.map((s) => ({
+                      text: String(s),
+                      source: 'Comparison',
+                    }))}
+                  />
+                </InsightBlock>
               )}
-            </button>
-          </div>
-        </header>
-
-        <div className="mx-auto max-w-[1500px] p-5 lg:p-8">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-                Competitor Comparison
-              </h1>
-              <p className="mt-1 text-sm text-slate-500">
-                Detailed side-by-side gap analysis of technical health, content depth, structured data, and high-impact SEO opportunities.
-              </p>
-            </div>
-          </div>
-
-          {error && (
-            <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5">
-              <div className="flex items-start gap-3">
-                <AlertTriangle size={20} className="mt-0.5 shrink-0 text-red-600" />
-                <div className="flex-1">
-                  <div className="text-sm font-bold text-red-800">
-                    Comparison Analysis Error
-                  </div>
-                  <div className="mt-1 text-sm text-red-700">{error}</div>
-                  <div className="mt-4 flex gap-3">
-                    <button
-                      onClick={() => loadComparison(true)}
-                      className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
-                    >
-                      Retry Analysis
-                    </button>
-                    <button
-                      onClick={handleCrawlCompetitor}
-                      className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
-                    >
-                      Run Competitor Crawl
-                    </button>
-                  </div>
-                </div>
-              </div>
+              {weaknesses.length > 0 && (
+                <InsightBlock
+                  eyebrow="Where they lead"
+                  title="Weaknesses"
+                >
+                  <EvidenceList
+                    items={weaknesses.map((w) => ({
+                      text: String(w),
+                      source: 'Comparison',
+                    }))}
+                  />
+                </InsightBlock>
+              )}
             </div>
           )}
 
-          {loading && !data && (
-            <div className="mt-8 rounded-2xl border border-slate-100 bg-white p-16 text-center shadow-sm">
-              <Loader2 size={36} className="mx-auto animate-spin text-blue-600" />
-              <h3 className="mt-4 text-base font-bold text-slate-900">
-                Analyzing Competitor Signals...
-              </h3>
-              <p className="mt-1 text-sm text-slate-500">
-                Synthesizing crawl pages, computing technical SEO gaps, and generating prioritized opportunities.
-              </p>
-            </div>
-          )}
+          <Panel
+            eyebrow="Detail"
+            title="Comparison workspace"
+            description="Opportunities, metric deltas, page gaps and measured history."
+          >
+            <FilterBar
+              searchValue={search}
+              searchPlaceholder="Search opportunities…"
+              onSearchChange={setSearch}
+              selects={[
+                {
+                  key: 'tab',
+                  label: 'View',
+                  value: tab,
+                  options: [
+                    {
+                      value: 'opportunities',
+                      label: `Opportunities (${opportunities.length})`,
+                    },
+                    {
+                      value: 'metrics',
+                      label: `Metrics (${metrics.length})`,
+                    },
+                    {
+                      value: 'pages',
+                      label: `Page gaps (${pageGaps.length})`,
+                    },
+                    {
+                      value: 'history',
+                      label: `History (${history.length})`,
+                    },
+                  ],
+                  onChange: (v) => setTab(v as Tab),
+                },
+                {
+                  key: 'priority',
+                  label: 'Priority',
+                  value: priorityFilter,
+                  options: [
+                    { value: 'ALL', label: 'All' },
+                    {
+                      value: 'CRITICAL',
+                      label: 'Critical',
+                    },
+                    { value: 'HIGH', label: 'High' },
+                    { value: 'MEDIUM', label: 'Medium' },
+                    { value: 'LOW', label: 'Low' },
+                  ],
+                  onChange: setPriorityFilter,
+                },
+              ]}
+            />
 
-          {data && (
-            <>
-              <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-blue-700">
-                        Your Website
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        Crawled {formatDate(data.comparison.renkoo.crawlDate)}
-                      </span>
-                    </div>
-                    <div className="mt-2 text-xl font-bold text-slate-900 truncate">
-                      {data.comparison.renkoo.websiteName}
-                    </div>
-                    <a
-                      href={data.comparison.renkoo.websiteUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-1 flex items-center gap-1 text-xs text-slate-500 hover:text-blue-600 transition truncate max-w-sm"
-                    >
-                      <span className="truncate">{data.comparison.renkoo.websiteUrl}</span>
-                      <ExternalLink size={12} className="shrink-0" />
-                    </a>
-                    <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-600">
-                      <Layers size={14} className="text-slate-400" />
-                      <span>{data.comparison.renkoo.pages} pages analyzed</span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col items-center justify-center border-y border-slate-100 py-4 lg:border-x lg:border-y-0 lg:px-8">
-                    {statusInfo && (
-                      <div
-                        className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${statusInfo.className}`}
-                      >
-                        <statusInfo.icon size={15} className={statusInfo.iconClass} />
-                        <span>{statusInfo.label}</span>
-                      </div>
+            {tab === 'opportunities' && (
+              <div className="mt-4">
+                {filteredOpps.length === 0 ? (
+                  <EmptyState
+                    title="No opportunity gaps"
+                    description="No measured gaps match the current filters."
+                  />
+                ) : (
+                  <ul className="divide-y divide-rk-border">
+                    {filteredOpps.map(
+                      (opp: any, i: number) => {
+                        const key = String(
+                          opp.id ||
+                            `${opp.title}-${opp.metric || ''}-${i}`,
+                        );
+                        return (
+                          <li
+                            key={key}
+                            className="py-4"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-rk-ink">
+                                {String(
+                                  opp.title ||
+                                    opp.metric ||
+                                    'Gap',
+                                )}
+                              </span>
+                              {opp.priority ? (
+                                <PriorityChip
+                                  priority={String(
+                                    opp.priority,
+                                  )}
+                                />
+                              ) : null}
+                            </div>
+                            {opp.description ? (
+                              <p className="rk-body mt-1">
+                                {String(opp.description)}
+                              </p>
+                            ) : null}
+                            <div className="mt-2">
+                              <SecondaryButton
+                                onClick={() =>
+                                  void handleOppAction(
+                                    opp,
+                                  )
+                                }
+                                disabled={
+                                  actionBusy[key] ||
+                                  actionDone[key]
+                                }
+                              >
+                                {actionDone[key]
+                                  ? 'Added'
+                                  : actionBusy[key]
+                                    ? 'Adding…'
+                                    : 'Add to Action Plan'}
+                              </SecondaryButton>
+                            </div>
+                          </li>
+                        );
+                      },
                     )}
-
-                    <div className="mt-4 flex items-center gap-6 text-center">
-                      <div>
-                        <div className="text-3xl font-black text-blue-600">
-                          {data.summary.renkooWins}
-                        </div>
-                        <div className="text-[11px] font-medium text-slate-400">Wins</div>
-                      </div>
-                      <div className="text-sm font-bold text-slate-300">vs</div>
-                      <div>
-                        <div className="text-3xl font-black text-slate-700">
-                          {data.summary.competitorWins}
-                        </div>
-                        <div className="text-[11px] font-medium text-slate-400">Deficits</div>
-                      </div>
-                    </div>
-
-                    <div className="mt-2 text-[11px] text-slate-400">
-                      {data.summary.equal} metrics tied
-                    </div>
-                  </div>
-
-                  <div className="flex-1 lg:text-right">
-                    <div className="flex items-center gap-2 lg:justify-end">
-                      <span className="rounded-md bg-purple-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-purple-700">
-                        Competitor
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        Crawled {formatDate(data.comparison.competitor.crawlDate)}
-                      </span>
-                    </div>
-                    <div className="mt-2 text-xl font-bold text-slate-900 truncate">
-                      {data.comparison.competitor.name}
-                    </div>
-                    <a
-                      href={data.comparison.competitor.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-1 flex items-center gap-1 text-xs text-slate-500 hover:text-purple-600 transition truncate max-w-sm lg:ml-auto"
-                    >
-                      <span className="truncate">{data.comparison.competitor.domain || data.comparison.competitor.url}</span>
-                      <ExternalLink size={12} className="shrink-0" />
-                    </a>
-                    <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-600 lg:justify-end">
-                      <Layers size={14} className="text-slate-400" />
-                      <span>{data.comparison.competitor.pages} pages analyzed</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200">
-                <nav className="-mb-px flex space-x-6">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('opportunities')}
-                    className={`flex items-center gap-2 border-b-2 py-3.5 text-sm font-semibold transition ${
-                      activeTab === 'opportunities'
-                        ? 'border-blue-600 text-blue-600'
-                        : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
-                    }`}
-                  >
-                    <Target size={16} />
-                    <span>Strategic Opportunities</span>
-                    <span className="ml-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">
-                      {data.opportunities.length}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('metrics')}
-                    className={`flex items-center gap-2 border-b-2 py-3.5 text-sm font-semibold transition ${
-                      activeTab === 'metrics'
-                        ? 'border-blue-600 text-blue-600'
-                        : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
-                    }`}
-                  >
-                    <BarChart3 size={16} />
-                    <span>Technical & Content Metrics</span>
-                    <span className="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                      {data.metrics.length}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('pages')}
-                    className={`flex items-center gap-2 border-b-2 py-3.5 text-sm font-semibold transition ${
-                      activeTab === 'pages'
-                        ? 'border-blue-600 text-blue-600'
-                        : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
-                    }`}
-                  >
-                    <FileText size={16} />
-                    <span>Page-Level Gaps</span>
-                    <span className="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                      {data.pageGaps.length}
-                    </span>
-                  </button>
-                </nav>
-
-                {activeTab === 'opportunities' && (
-                  <div className="flex items-center gap-2 pb-2">
-                    <Filter size={14} className="text-slate-400" />
-                    <span className="text-xs font-semibold text-slate-500">Priority:</span>
-                    {(['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as PriorityFilter[]).map(
-                      (p) => (
-                        <button
-                          key={p}
-                          type="button"
-                          onClick={() => setPriorityFilter(p)}
-                          className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                            priorityFilter === p
-                              ? 'bg-slate-900 text-white'
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                          }`}
-                        >
-                          {p === 'ALL' ? 'All' : p}
-                        </button>
-                      ),
-                    )}
-                  </div>
+                  </ul>
                 )}
               </div>
+            )}
 
-              {activeTab === 'opportunities' && (
-                <div className="mt-6 space-y-4">
-                  {filteredOpportunities.length === 0 ? (
-                    <div className="rounded-2xl border border-slate-100 bg-white p-12 text-center shadow-sm">
-                      <CheckCircle2 size={36} className="mx-auto text-emerald-500" />
-                      <h3 className="mt-3 text-base font-bold text-slate-900">
-                        No gaps detected matching this priority
-                      </h3>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Your website matches or exceeds this competitor in the selected criteria.
+            {tab === 'metrics' && (
+              <div className="mt-4">
+                {metrics.length === 0 ? (
+                  <EmptyState
+                    title="No metric comparison"
+                    description="Crawl the competitor to measure metric deltas."
+                  />
+                ) : (
+                  <DataTable
+                    caption="Metric-by-metric comparison"
+                    columns={metricColumns}
+                    rows={metrics as any[]}
+                    keyOf={(r: any, i: number) =>
+                      String(r.metric || r.label || i)
+                    }
+                    onRowClick={setDrawerMetric}
+                  />
+                )}
+              </div>
+            )}
+
+            {tab === 'pages' && (
+              <div className="mt-4">
+                {pageGaps.length === 0 ? (
+                  <EmptyState
+                    title="No page gaps"
+                    description="No measured page-level gaps for this competitor."
+                  />
+                ) : (
+                  <DataTable
+                    caption="Page-level gaps"
+                    columns={pageGapColumns}
+                    rows={pageGaps as any[]}
+                    keyOf={(r: any, i: number) =>
+                      String(r.url || r.page || i)
+                    }
+                    pageSize={12}
+                  />
+                )}
+              </div>
+            )}
+
+            {tab === 'history' && (
+              <div className="mt-4">
+                {historyError && history.length === 0 ? (
+                  <ErrorState
+                    title="History unavailable"
+                    description={historyError}
+                  />
+                ) : (
+                  <TrendChart
+                    state={
+                      trendPoints.length > 0
+                        ? 'ready'
+                        : 'empty'
+                    }
+                    points={trendPoints}
+                    summary="Measured competitor scores across crawls."
+                    emptyTitle="No crawl history"
+                    emptyDescription="History charts appear once repeated crawls are measured."
+                  />
+                )}
+              </div>
+            )}
+          </Panel>
+
+          {recommendations.length > 0 && (
+            <Panel
+              eyebrow="Pipeline"
+              title="Recommendations"
+              description="Persisted recommendation pipeline for this competitor."
+            >
+              <ul className="divide-y divide-rk-border">
+                {recommendations
+                  .slice(0, 8)
+                  .map((rec: any, i: number) => (
+                    <li
+                      key={String(rec.id || i)}
+                      className="py-2.5"
+                    >
+                      <p className="text-sm font-semibold text-rk-ink">
+                        {String(
+                          rec.title || 'Recommendation',
+                        )}
                       </p>
-                    </div>
-                  ) : (
-                    filteredOpportunities.map((opp) => {
-                      const isAdded = actionSuccessMap[opp.id];
-                      const isAdding = actionLoadingMap[opp.id];
-
-                      return (
-                        <div
-                          key={opp.id}
-                          className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:border-slate-300"
-                        >
-                          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                            <div className="flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span
-                                  className={`rounded-md border px-2.5 py-0.5 text-xs font-bold ${getPriorityBadgeClass(
-                                    opp.priority,
-                                  )}`}
-                                >
-                                  {opp.priority}
-                                </span>
-
-                                <span
-                                  className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${getEffortBadgeClass(
-                                    opp.effort,
-                                  )}`}
-                                >
-                                  {opp.effort} Effort
-                                </span>
-
-                                <span className="text-xs font-medium text-slate-400">
-                                  Impact Score: <b className="text-slate-800">{opp.impactScore}</b>/100
-                                </span>
-
-                                {opp.affectedPages > 0 && (
-                                  <span className="text-xs text-slate-500">
-                                    • {opp.affectedPages} page{opp.affectedPages === 1 ? '' : 's'} affected
-                                  </span>
-                                )}
-                              </div>
-
-                              <h3 className="mt-2 text-base font-bold text-slate-900">
-                                {opp.title}
-                              </h3>
-
-                              <p className="mt-1 text-sm text-slate-600 leading-relaxed">
-                                {opp.description}
-                              </p>
-
-                              {opp.recommendation && (
-                                <div className="mt-3 rounded-xl bg-slate-50 p-3.5 text-xs text-slate-700 leading-relaxed border border-slate-100 flex items-start gap-2">
-                                  <Zap size={14} className="shrink-0 text-blue-600 mt-0.5" />
-                                  <div>
-                                    <span className="font-bold text-slate-900">Recommendation: </span>
-                                    {opp.recommendation}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="shrink-0 sm:self-center">
-                              <button
-                                type="button"
-                                onClick={() => handleCreateAction(opp)}
-                                disabled={isAdded || isAdding}
-                                className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${
-                                  isAdded
-                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
-                                    : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
-                                }`}
-                              >
-                                {isAdding ? (
-                                  <>
-                                    <Loader2 size={14} className="animate-spin" />
-                                    <span>Adding...</span>
-                                  </>
-                                ) : isAdded ? (
-                                  <>
-                                    <Check size={14} />
-                                    <span>Added to Actions</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Plus size={14} />
-                                    <span>Add to Action Plan</span>
-                                  </>
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-
-              {activeTab === 'metrics' && (
-                <div className="mt-6 rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                        <tr>
-                          <th className="py-3.5 pl-6 pr-4">SEO Signal / Metric</th>
-                          <th className="px-4 py-3.5 text-right">
-                            {data.comparison.renkoo.websiteName} (You)
-                          </th>
-                          <th className="px-4 py-3.5 text-right">
-                            {data.comparison.competitor.name}
-                          </th>
-                          <th className="px-4 py-3.5 text-right">Performance Gap</th>
-                          <th className="py-3.5 pl-4 pr-6 text-center">Winner</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                        {data.metrics.map((metric, idx) => {
-                          const isRenkooWinner = metric.winner === 'RENKOO';
-                          const isCompetitorWinner = metric.winner === 'COMPETITOR';
-
-                          return (
-                            <tr key={idx} className="hover:bg-slate-50/75 transition">
-                              <td className="py-4 pl-6 pr-4 font-semibold text-slate-900">
-                                {metric.metric}
-                              </td>
-
-                              <td className="px-4 py-4 text-right">
-                                <span
-                                  className={
-                                    isRenkooWinner
-                                      ? 'font-bold text-blue-600'
-                                      : 'text-slate-600'
-                                  }
-                                >
-                                  {formatPercent(metric.renkoo)}
-                                </span>
-                              </td>
-
-                              <td className="px-4 py-4 text-right">
-                                <span
-                                  className={
-                                    isCompetitorWinner
-                                      ? 'font-bold text-purple-600'
-                                      : 'text-slate-600'
-                                  }
-                                >
-                                  {formatPercent(metric.competitor)}
-                                </span>
-                              </td>
-
-                              <td className="px-4 py-4 text-right">
-                                <span
-                                  className={`inline-flex items-center gap-0.5 text-xs font-bold ${
-                                    isRenkooWinner
-                                      ? 'text-emerald-600'
-                                      : isCompetitorWinner
-                                        ? 'text-red-600'
-                                        : 'text-slate-500'
-                                  }`}
-                                >
-                                  {metric.gap > 0 ? `+${metric.gap.toFixed(1)}%` : `${metric.gap.toFixed(1)}%`}
-                                </span>
-                              </td>
-
-                              <td className="py-4 pl-4 pr-6 text-center">
-                                {isRenkooWinner ? (
-                                  <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
-                                    <CheckCircle2 size={12} />
-                                    <span>You</span>
-                                  </span>
-                                ) : isCompetitorWinner ? (
-                                  <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-0.5 text-[11px] font-bold text-purple-700">
-                                    <span>Competitor</span>
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                                    <span>Tied</span>
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'pages' && (
-                <div className="mt-6 space-y-4">
-                  {data.pageGaps.length === 0 ? (
-                    <div className="rounded-2xl border border-slate-100 bg-white p-12 text-center shadow-sm">
-                      <CheckCircle2 size={36} className="mx-auto text-emerald-500" />
-                      <h3 className="mt-3 text-base font-bold text-slate-900">
-                        No direct page-level deficits detected
-                      </h3>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Every compared page has equivalent or superior technical and content coverage.
-                      </p>
-                    </div>
-                  ) : (
-                    data.pageGaps.map((page, idx) => (
-                      <div
-                        key={idx}
-                        className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-                      >
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-3">
-                          <div className="min-w-0">
-                            <span
-                              className={`inline-block rounded-md border px-2 py-0.5 text-[10px] font-bold ${getPriorityBadgeClass(
-                                page.priority,
-                              )}`}
-                            >
-                              {page.priority} PRIORITY
-                            </span>
-                            <div className="mt-1 text-sm font-semibold text-slate-900 truncate">
-                              {page.url}
-                            </div>
-                          </div>
-
-                          <div className="text-xs text-slate-500">
-                            {page.gaps.length} issue{page.gaps.length === 1 ? '' : 's'} identified
-                          </div>
-                        </div>
-
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {page.gaps.map((gapText, gIdx) => (
-                            <span
-                              key={gIdx}
-                              className="rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 border border-amber-200/60"
-                            >
-                              {gapText}
-                            </span>
-                          ))}
-                        </div>
-
-                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                          <div className="rounded-xl bg-blue-50/50 border border-blue-100 p-3">
-                            <div className="text-[11px] font-bold uppercase tracking-wider text-blue-700">
-                              Your Page
-                            </div>
-                            <div className="mt-1 text-xs text-slate-600 truncate">
-                              {page.renkoo.title || 'No Title Tag'}
-                            </div>
-                            <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-slate-500">
-                              <div>Word count: <b className="text-slate-800">{page.renkoo.wordCount}</b></div>
-                              <div>Schema: <b className="text-slate-800">{page.renkoo.structuredDataCount}</b></div>
-                              <div>Internal links: <b className="text-slate-800">{page.renkoo.internalLinks}</b></div>
-                              <div>Images without alt: <b className="text-slate-800">{page.renkoo.imagesWithoutAlt}</b></div>
-                            </div>
-                          </div>
-
-                          <div className="rounded-xl bg-purple-50/50 border border-purple-100 p-3">
-                            <div className="text-[11px] font-bold uppercase tracking-wider text-purple-700">
-                              Competitor Page
-                            </div>
-                            <div className="mt-1 text-xs text-slate-600 truncate">
-                              {page.competitor.title || 'No Title Tag'}
-                            </div>
-                            <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-slate-500">
-                              <div>Word count: <b className="text-slate-800">{page.competitor.wordCount}</b></div>
-                              <div>Schema: <b className="text-slate-800">{page.competitor.structuredDataCount}</b></div>
-                              <div>Internal links: <b className="text-slate-800">{page.competitor.internalLinks}</b></div>
-                              <div>Images without alt: <b className="text-slate-800">{page.competitor.imagesWithoutAlt}</b></div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </>
+                      {rec.description ? (
+                        <p className="rk-body mt-0.5">
+                          {String(rec.description)}
+                        </p>
+                      ) : null}
+                    </li>
+                  ))}
+              </ul>
+            </Panel>
           )}
+
+          <RecommendationCallout
+            title="Gaps → execution"
+            text="Competitor gaps persist into the Opportunity Engine with comparison evidence attached."
+            actionLabel="Open Opportunity Engine"
+            actionHref="/opportunities"
+          />
         </div>
-      </main>
-    </div>
+      )}
+
+      <Drawer
+        open={drawerMetric !== null}
+        onClose={() => setDrawerMetric(null)}
+        eyebrow="Metric detail"
+        title={String(
+          drawerMetric?.metric ||
+            drawerMetric?.label ||
+            'Metric',
+        ).replace(/_/g, ' ')}
+        description="Measured values, delta, evidence and the recommended action."
+      >
+        {drawerMetric && (
+          <>
+            <DrawerMeta
+              items={[
+                {
+                  label: 'RENKOO value',
+                  value: String(
+                    drawerMetric.you ??
+                      drawerMetric.ownValue ??
+                      '—',
+                  ),
+                },
+                {
+                  label: 'Competitor value',
+                  value: String(
+                    drawerMetric.them ??
+                      drawerMetric.competitorValue ??
+                      '—',
+                  ),
+                },
+                {
+                  label: 'Delta',
+                  value: String(
+                    drawerMetric.delta ?? '—',
+                  ),
+                },
+              ]}
+            />
+            <DrawerSection title="Evidence">
+              <EvidenceList
+                items={[
+                  {
+                    text: `Measured in the latest comparison crawl for ${String(comp?.competitorName || 'this competitor')}.`,
+                    source: 'Comparison engine',
+                  },
+                ]}
+              />
+            </DrawerSection>
+            <DrawerSection title="Implication">
+              <p className="rk-body">
+                {String(
+                  drawerMetric.implication ||
+                    drawerMetric.description ||
+                    'Where the competitor measures stronger, closing the gap is the opportunity.',
+                )}
+              </p>
+            </DrawerSection>
+            <DrawerSection title="Recommended action">
+              <NextAction
+                label="Add to Action Plan"
+                detail="Close this drawer and use Add to Action Plan on the matching opportunity."
+                href="/actions"
+              />
+            </DrawerSection>
+          </>
+        )}
+      </Drawer>
+    </AppShell>
   );
 }

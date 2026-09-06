@@ -1,949 +1,1228 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import Sidebar from '../../components/Sidebar';
+/*
+ * RENKOO V2 — AI Search Command Center (Phase 5B).
+ * Real persisted AI visibility observations only. Manual
+ * observations stay visibly labeled as observations and are
+ * never presented as live provider responses. Provider
+ * availability is shown honestly from provider states.
+ */
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
-  AiVisibilityDashboard,
-  AiVisibilityHistory,
-  Website,
-  createAiVisibilitySnapshot,
+  getWebsites,
   getAiVisibilityDashboard,
   getAiVisibilityHistory,
-  getWebsites,
-} from '../../lib/api';
-
+  getAiVisibilityIntelligence,
+  getAiProviderStates,
+  createAiVisibilityQuery,
+  updateAiVisibilityQuery,
+  deleteAiVisibilityQuery,
+  suggestAiVisibilityQueries,
+  recordAiVisibilityCheck,
+  runAiVisibilityCheck,
+  createActionFromRecommendation,
+  type Website,
+} from '@/lib/api';
+import AppShell from '@/components/AppShell';
 import {
-  Activity,
-  AlertCircle,
-  ArrowDownRight,
-  ArrowUpRight,
-  Bot,
-  CheckCircle2,
-  ChevronDown,
-  ExternalLink,
-  Globe2,
-  MessageSquareText,
-  RefreshCw,
-  Search,
-  Sparkles,
-  Target,
-  TrendingUp,
-} from 'lucide-react';
+  PageHeader,
+  Panel,
+  Metric,
+  DataTable,
+  FilterBar,
+  Drawer,
+  DrawerSection,
+  DrawerMeta,
+  PrimaryButton,
+  SecondaryButton,
+  DangerButton,
+  DataSourceBadge,
+  FreshnessBadge,
+  StatusChip,
+  LoadingBlock,
+  ErrorState,
+  EmptyState,
+  InsightBlock,
+  EvidenceList,
+  ConfidenceIndicator,
+  RecommendationCallout,
+  NextAction,
+  type DataTableColumn,
+} from '@/components/ui';
+import {
+  TrendChart,
+  BarList,
+  type TrendPoint,
+} from '@/components/charts';
 
-function scoreLabel(score: number | null) {
-  if (score === null) return '—';
-  if (score >= 80) return 'Excellent';
-  if (score >= 65) return 'Good';
-  if (score >= 45) return 'Needs Work';
-  return 'Low';
+function num(value: unknown, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
 }
 
-function scoreClass(score: number | null) {
-  if (score === null) {
-    return 'bg-slate-50 text-slate-400 border-slate-200';
-  }
-
-  if (score >= 80) {
-    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-  }
-
-  if (score >= 65) {
-    return 'bg-blue-50 text-blue-700 border-blue-200';
-  }
-
-  if (score >= 45) {
-    return 'bg-amber-50 text-amber-700 border-amber-200';
-  }
-
-  return 'bg-red-50 text-red-700 border-red-200';
+function fmtPct(value: unknown) {
+  const n = num(value);
+  if (n === 0) return '—';
+  return `${(n <= 1 ? n * 100 : n).toFixed(0)}%`;
 }
 
-function trendClass(value: number) {
-  return value >= 0
-    ? 'text-emerald-600'
-    : 'text-red-600';
+function fmtInt(value: unknown) {
+  return num(value).toLocaleString('en-US');
 }
 
-type QueryStat = {
-  item: { id: string; query: string; category?: string | null };
-  checks: Array<{ query: string; status: string; mentioned: boolean; citationFound: boolean; position?: number | null; checkedAt?: string | null; updatedAt: string; createdAt: string }>;
-  mentioned: number;
-  cited: number;
-  visibility: number | null;
-  averagePosition: number | null;
-};
+function fmtDate(value: unknown) {
+  if (!value) return '—';
+  try {
+    return new Date(String(value)).toLocaleDateString(
+      'en-US',
+      { month: 'short', day: 'numeric' },
+    );
+  } catch {
+    return String(value);
+  }
+}
+
+const PLATFORMS = [
+  'CHATGPT',
+  'GOOGLE_AI',
+  'GEMINI',
+  'CLAUDE',
+  'PERPLEXITY',
+  'OTHER',
+];
 
 export default function AiVisibilityPage() {
+  const [navOpen, setNavOpen] = useState(false);
   const [websites, setWebsites] = useState<Website[]>([]);
-  const [selectedWebsiteId, setSelectedWebsiteId] = useState('');
-  const [dashboard, setDashboard] =
-    useState<AiVisibilityDashboard | null>(null);
-  const [history, setHistory] =
-    useState<AiVisibilityHistory | null>(null);
-
+  const [websiteId, setWebsiteId] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
-  const [showWebsiteMenu, setShowWebsiteMenu] =
-    useState(false);
-  const [open, setOpen] = useState(false);
-  const overallScore = dashboard?.score ?? null;
+  const [dashboard, setDashboard] = useState<any>(null);
+  const [history, setHistory] = useState<any>(null);
+  const [intel, setIntel] = useState<any>(null);
+  const [providers, setProviders] = useState<any[]>([]);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [drawerCheck, setDrawerCheck] = useState<any>(null);
+  const [newPrompt, setNewPrompt] = useState('');
+  const [savingPrompt, setSavingPrompt] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestNote, setSuggestNote] = useState('');
+  const [recordOpen, setRecordOpen] = useState(false);
+  const [recForm, setRecForm] = useState({
+    query: '',
+    platform: 'CHATGPT',
+    mentioned: true,
+    citationFound: false,
+    response: '',
+  });
+  const [recording, setRecording] = useState(false);
+  const [recordMsg, setRecordMsg] = useState('');
+  const [runForm, setRunForm] = useState({
+    query: '',
+    provider: 'GEMINI',
+  });
+  const [running, setRunning] = useState(false);
+  const [runMsg, setRunMsg] = useState('');
+  const [actionBusy, setActionBusy] = useState<
+    Record<string, boolean>
+  >({});
+  const [actionDone, setActionDone] = useState<
+    Record<string, boolean>
+  >({});
 
-  const queries = dashboard?.queries ?? [];
-  const checks = dashboard?.checks ?? [];
-
-  const completedChecks = checks.filter((check: any) => check.status === 'COMPLETED');
-
-  const averagePosition =
-    dashboard?.metrics.averagePosition ?? null;
-
-  const platformStats = useMemo(() => {
-    const stats = new Map<string, { completed: number; mentioned: number; cited: number }>();
-
-    completedChecks.forEach((check: any) => {
-      const current = stats.get(check.platform) ?? {
-        completed: 0,
-        mentioned: 0,
-        cited: 0,
-      };
-
-      current.completed += 1;
-      if (check.mentioned) current.mentioned += 1;
-      if (check.citationFound) current.cited += 1;
-
-      stats.set(check.platform, current);
-    });
-
-    return Array.from(stats.entries()).map(([platform, stats]) => ({
-      platform,
-      ...stats,
-    }));
-  }, [completedChecks]);
-
-  const lastCheckedAt = useMemo(() => {
-    const timestamps = completedChecks
-      .map((check: any) => check.checkedAt ?? check.updatedAt ?? check.createdAt)
-      .filter(Boolean)
-      .map((value: string) => new Date(value).getTime())
-      .filter((value: number) => Number.isFinite(value));
-
-    if (!timestamps.length) return null;
-    return new Date(Math.max(...timestamps));
-  }, [completedChecks]);
-
-  const queryStats = useMemo(() => {
-    return queries.map((item: { id: string; query: string; category?: string | null }): QueryStat => {
-      const itemChecks = completedChecks.filter(
-        (check: any) => check.query === item.query,
-      );
-      const mentioned = itemChecks.filter((check: any) => check.mentioned).length;
-      const cited = itemChecks.filter((check: any) => check.citationFound).length;
-      const positions = itemChecks
-        .map((check: any) => check.position)
-        .filter((position: number | null | undefined): position is number => position != null);
-
-      return {
-        item,
-        checks: itemChecks,
-        mentioned,
-        cited,
-        visibility: itemChecks.length
-          ? Math.round((mentioned / itemChecks.length) * 100)
-          : null,
-        averagePosition: positions.length
-          ? positions.reduce((sum: number, position: number) => sum + position, 0) /
-            positions.length
-          : null,
-      };
-    });
-  }, [queries, completedChecks]);
-
-  const historyTrend = useMemo(() => {
-    const summaries = history?.summaries ?? [];
-
-    if (summaries.length < 2) return null;
-
-    const previous = summaries[summaries.length - 2];
-    const current = summaries[summaries.length - 1];
-
-    return Math.round(
-      current.visibilityScore - previous.visibilityScore,
-    );
-  }, [history]);
-
-
-  async function loadData(websiteId: string) {
-    if (!websiteId) return;
-
+  const loadAll = useCallback(async (id: string) => {
+    if (!id) return;
     try {
-      setLoading(true);
       setError('');
-
-      const [dashboardData, historyData] =
-        await Promise.all([
-          getAiVisibilityDashboard(websiteId),
-          getAiVisibilityHistory(websiteId, 30),
-        ]);
-
-      setDashboard(dashboardData);
-      setHistory(historyData);
-    } catch (err) {
-      console.error('AI Visibility load error:', err);
-
+      const [d, h, intelRes, prov] = await Promise.all([
+        getAiVisibilityDashboard(id).catch(() => null),
+        getAiVisibilityHistory(id).catch(() => null),
+        getAiVisibilityIntelligence(id).catch(() => null),
+        getAiProviderStates().catch(() => null),
+      ]);
+      setDashboard(d);
+      setHistory(h);
+      setIntel(intelRes);
+      const plist = Array.isArray(
+        (prov as any)?.providers,
+      )
+        ? (prov as any).providers
+        : [];
+      setProviders(plist);
+    } catch (err: any) {
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to load AI Visibility data.',
+        err?.message ||
+          'Failed to load AI visibility data.',
       );
-    } finally {
-      setLoading(false);
     }
-  }
-
-  async function loadWebsites() {
-    try {
-      setLoading(true);
-      setError('');
-
-      const result = await getWebsites();
-
-      const active = result.filter(
-        (website) => website.isActive,
-      );
-
-      setWebsites(active);
-
-      if (active.length > 0 && !selectedWebsiteId) {
-        setSelectedWebsiteId(active[0].id);
-      }
-
-      if (!active.length) {
-        setLoading(false);
-      }
-    } catch (err) {
-      console.error('Website load error:', err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to load websites.',
-      );
-
-      setLoading(false);
-    }
-  }
-
-  async function handleRefresh() {
-    if (!selectedWebsiteId) return;
-
-    try {
-      setRefreshing(true);
-      setError('');
-
-      await createAiVisibilitySnapshot(
-        selectedWebsiteId,
-      );
-
-      await loadData(selectedWebsiteId);
-    } catch (err) {
-      console.error(
-        'AI Visibility refresh error:',
-        err,
-      );
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to refresh AI Visibility.',
-      );
-    } finally {
-      setRefreshing(false);
-    }
-  }
-
-  useEffect(() => {
-    loadWebsites();
   }, []);
 
   useEffect(() => {
-    if (selectedWebsiteId) {
-      loadData(selectedWebsiteId);
+    let cancelled = false;
+    async function init() {
+      try {
+        const sites = await getWebsites();
+        if (cancelled) return;
+        const list = Array.isArray(sites) ? sites : [];
+        setWebsites(list);
+        const stored =
+          typeof window !== 'undefined'
+            ? localStorage.getItem('renkoo_website_id')
+            : null;
+        const valid =
+          stored && list.some((s) => s.id === stored)
+            ? stored
+            : list[0]?.id || '';
+        setWebsiteId(valid);
+        if (valid) await loadAll(valid);
+        else if (list.length === 0)
+          setError('No website found. Add a website first.');
+      } catch (err: any) {
+        if (!cancelled)
+          setError(
+            err?.message || 'Failed to load websites.',
+          );
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
     }
-  }, [selectedWebsiteId]);
+    void init();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadAll]);
+
+  function handleWebsite(id: string) {
+    setWebsiteId(id);
+    setDrawerCheck(null);
+    if (typeof window !== 'undefined')
+      localStorage.setItem('renkoo_website_id', id);
+    setLoading(true);
+    void loadAll(id).finally(() => setLoading(false));
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await loadAll(websiteId);
+    setRefreshing(false);
+  }
+
+  const queries: any[] = useMemo(() => {
+    const d = dashboard as any;
+    const list =
+      d?.queries || d?.prompts || d?.trackedQueries || [];
+    return Array.isArray(list) ? list : [];
+  }, [dashboard]);
+
+  const checks: any[] = useMemo(() => {
+    const d = dashboard as any;
+    const list =
+      d?.checks || d?.observations || d?.recentChecks || [];
+    return Array.isArray(list) ? list : [];
+  }, [dashboard]);
+
+  const latestCheckDate: string | null = useMemo(() => {
+    let latest: string | null = null;
+    for (const c of checks) {
+      const v = c?.observedAt || c?.createdAt;
+      if (v && (!latest || String(v) > latest))
+        latest = String(v);
+    }
+    return latest;
+  }, [checks]);
+
+  const citations: any[] = useMemo(() => {
+    const src = (intel as any)?.citations || [];
+    return Array.isArray(src) ? src : [];
+  }, [intel]);
+
+  const gaps: any[] = useMemo(() => {
+    const src = (intel as any)?.gaps || [];
+    return Array.isArray(src) ? src : [];
+  }, [intel]);
+
+  const recommendations: any[] = useMemo(() => {
+    const src =
+      (intel as any)?.recommendations ||
+      (dashboard as any)?.recommendations ||
+      [];
+    return Array.isArray(src) ? src : [];
+  }, [intel, dashboard]);
+
+  const trendPoints: TrendPoint[] = useMemo(() => {
+    const h = history as any;
+    const list = Array.isArray(h)
+      ? h
+      : Array.isArray(h?.points)
+        ? h.points
+        : Array.isArray(h?.history)
+          ? h.history
+          : [];
+    return list
+      .map((p: any) => ({
+        x: String(
+          p.date || p.day || p.label || p.createdAt || '',
+        ),
+        y: num(
+          p.visibility ?? p.score ?? p.mentions ?? 0,
+        ),
+      }))
+      .filter((p: TrendPoint) => p.x);
+  }, [history]);
+
+  const providerBars = useMemo(() => {
+    const counts = (intel as any)?.counts;
+    if (counts && typeof counts === 'object') {
+      return Object.entries(counts)
+        .map(([label, value]) => ({
+          label: label
+            .replace(/_/g, ' ')
+            .toLowerCase()
+            .replace(/\b\w/g, (c) => c.toUpperCase()),
+          value: num(value),
+        }))
+        .filter((b) => b.value > 0)
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 6);
+    }
+    const byProvider: Record<string, number> = {};
+    for (const c of checks) {
+      const p = String(
+        c.provider || c.platform || 'Observation',
+      );
+      byProvider[p] = (byProvider[p] || 0) + 1;
+    }
+    return Object.entries(byProvider)
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6);
+  }, [intel, checks]);
+
+  const filteredChecks = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return checks.filter((c: any) => {
+      if (
+        statusFilter !== 'ALL' &&
+        String(
+          c.status || (c.mentioned ? 'MENTIONED' : 'MISSED'),
+        ).toUpperCase() !== statusFilter
+      )
+        return false;
+      if (!q) return true;
+      return (
+        `${c.query || ''} ${c.provider || c.platform || ''} ${c.response || ''}`
+          .toLowerCase()
+          .includes(q)
+      );
+    });
+  }, [checks, search, statusFilter]);
+
+  async function handleCreatePrompt() {
+    const q = newPrompt.trim();
+    if (!q || !websiteId || savingPrompt) return;
+    try {
+      setSavingPrompt(true);
+      await createAiVisibilityQuery({ websiteId, query: q });
+      setNewPrompt('');
+      await loadAll(websiteId);
+    } catch (err: any) {
+      setSuggestNote(
+        err?.message || 'Could not save prompt.',
+      );
+    } finally {
+      setSavingPrompt(false);
+    }
+  }
+
+  async function handleTogglePrompt(row: any) {
+    try {
+      await updateAiVisibilityQuery(String(row.id), {
+        isActive: !row.isActive,
+      });
+      await loadAll(websiteId);
+    } catch (err: any) {
+      setSuggestNote(
+        err?.message || 'Could not update prompt.',
+      );
+    }
+  }
+
+  async function handleDeletePrompt(row: any) {
+    try {
+      await deleteAiVisibilityQuery(String(row.id));
+      await loadAll(websiteId);
+    } catch (err: any) {
+      setSuggestNote(
+        err?.message || 'Could not delete prompt.',
+      );
+    }
+  }
+
+  async function handleSuggest() {
+    if (!websiteId || suggesting) return;
+    try {
+      setSuggesting(true);
+      setSuggestNote('');
+      const res = await suggestAiVisibilityQueries(
+        websiteId,
+      );
+      const count = Array.isArray(
+        (res as any)?.suggestions,
+      )
+        ? (res as any).suggestions.length
+        : 0;
+      setSuggestNote(
+        count > 0
+          ? `${count} suggested prompt${count === 1 ? '' : 's'} added from your measured data.`
+          : 'No new prompt suggestions from current data.',
+      );
+      await loadAll(websiteId);
+    } catch (err: any) {
+      setSuggestNote(
+        err?.message || 'Suggestion failed.',
+      );
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
+  async function handleRecord() {
+    if (!websiteId || recording || !recForm.query.trim())
+      return;
+    try {
+      setRecording(true);
+      setRecordMsg('');
+      await recordAiVisibilityCheck({
+        websiteId,
+        platform: recForm.platform as any,
+        query: recForm.query.trim(),
+        mentioned: recForm.mentioned,
+        citationFound: recForm.citationFound,
+        response: recForm.response.trim() || undefined,
+      } as any);
+      setRecordMsg(
+        'Observation recorded and labeled as a manual observation.',
+      );
+      setRecForm({
+        query: '',
+        platform: 'CHATGPT',
+        mentioned: true,
+        citationFound: false,
+        response: '',
+      });
+      await loadAll(websiteId);
+    } catch (err: any) {
+      setRecordMsg(err?.message || 'Recording failed.');
+    } finally {
+      setRecording(false);
+    }
+  }
+
+  async function handleRunCheck() {
+    if (!websiteId || running || !runForm.query.trim())
+      return;
+    try {
+      setRunning(true);
+      setRunMsg('');
+      const res = await runAiVisibilityCheck({
+        websiteId,
+        query: runForm.query.trim(),
+        provider: runForm.provider as any,
+      });
+      const ok = Boolean((res as any)?.check || res);
+      setRunMsg(
+        ok
+          ? `Live ${runForm.provider} check completed and stored with provider attribution.`
+          : 'Check finished with no stored observation.',
+      );
+      await loadAll(websiteId);
+    } catch (err: any) {
+      setRunMsg(err?.message || 'Live check failed.');
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function handleCreateAction(rec: any) {
+    const key = String(rec.id || rec.title);
+    if (actionBusy[key] || actionDone[key]) return;
+    try {
+      setActionBusy((p) => ({ ...p, [key]: true }));
+      if (!rec.id) return;
+      await createActionFromRecommendation(String(rec.id));
+      setActionDone((p) => ({ ...p, [key]: true }));
+    } catch {
+      /* surface stays; button remains usable */
+    } finally {
+      setActionBusy((p) => ({ ...p, [key]: false }));
+    }
+  }
+
+  const checkColumns: DataTableColumn<any>[] = [
+    {
+      key: 'query',
+      label: 'Prompt',
+      priority: 'high',
+      render: (r) => (
+        <span className="font-semibold text-rk-ink">
+          {String(r.query || '—')}
+        </span>
+      ),
+    },
+    {
+      key: 'provider',
+      label: 'Platform',
+      priority: 'medium',
+      render: (r) => (
+        <span className="text-rk-secondary">
+          {String(r.provider || r.platform || '—')
+            .replace(/_/g, ' ')}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      label: 'Result',
+      priority: 'high',
+      render: (r) => (
+        <StatusChip
+          status={String(
+            r.status ||
+              (r.mentioned ? 'MENTIONED' : 'MISSED'),
+          )}
+        />
+      ),
+    },
+    {
+      key: 'source',
+      label: 'Source',
+      priority: 'medium',
+      render: (r) => (
+        <DataSourceBadge
+          source={
+            r.sourceType === 'PROVIDER' ||
+            r.isLive ||
+            r.providerRun
+              ? 'Provider'
+              : 'Observation'
+          }
+        />
+      ),
+    },
+    {
+      key: 'date',
+      label: 'Observed',
+      priority: 'low',
+      render: (r) => (
+        <span className="rk-number text-rk-secondary">
+          {fmtDate(r.observedAt || r.createdAt)}
+        </span>
+      ),
+    },
+  ];
+
+  const visibility = (dashboard as any)?.visibility;
+  const visibilityScore =
+    visibility?.score ??
+    (dashboard as any)?.score ??
+    (intel as any)?.visibilityScore ??
+    null;
+  const mentions =
+    (dashboard as any)?.mentions ??
+    (intel as any)?.totalMentions ??
+    checks.filter((c: any) => c.mentioned).length;
+  const citationCount =
+    (dashboard as any)?.citations ??
+    (intel as any)?.totalCitations ??
+    citations.length;
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Sidebar
-        mobileOpen={open}
-        onClose={() => setOpen(false)}
+    <AppShell
+      mobileOpen={navOpen}
+      onClose={() => setNavOpen(false)}
+      onMenu={() => setNavOpen(true)}
+    >
+      <PageHeader
+        eyebrow="AI search"
+        title="AI Search Visibility"
+        description="Measured AI-search observations with evidence — never a chatbot, never invented coverage."
+        actions={
+          <div className="flex gap-2">
+            <SecondaryButton
+              onClick={() => void handleRefresh()}
+              disabled={refreshing || loading}
+            >
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </SecondaryButton>
+            <Link href="/opportunities">
+              <PrimaryButton type="button">
+                Opportunity Engine
+              </PrimaryButton>
+            </Link>
+          </div>
+        }
+        meta={
+          <div className="flex flex-wrap items-center gap-2">
+            <DataSourceBadge
+              source="AI observations"
+              connected={checks.length > 0}
+            />
+            <FreshnessBadge
+              label={
+                latestCheckDate
+                  ? `Observed ${fmtDate(latestCheckDate)}`
+                  : 'Freshness unavailable'
+              }
+            />
+          </div>
+        }
       />
 
-      <div className="lg:pl-[270px]">
-        <main className="min-h-screen bg-slate-50">
-      {/* TOP BAR */}
-
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-[1500px] items-center justify-between px-5 py-4 lg:px-8">
-          <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-violet-600 to-blue-600 text-white">
-              <Bot size={21} />
-            </div>
-
-            <div>
-              <div className="text-sm font-semibold text-slate-500">
-                RENKO / AI Visibility
-              </div>
-
-              <div className="text-xs text-slate-400">
-                AEO & GEO intelligence across AI search engines
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50" onClick={handleRefresh} disabled={refreshing || !selectedWebsiteId}
+      {loading ? (
+        <div className="mt-6">
+          <LoadingBlock title="Loading AI visibility" />
+        </div>
+      ) : error && websites.length === 0 ? (
+        <div className="mt-6">
+          <ErrorState
+            title="AI visibility failed to load"
+            description={error}
+            onRetry={() => window.location.reload()}
+          />
+        </div>
+      ) : (
+        <div className="mt-6 space-y-6">
+          <Panel
+            eyebrow="Context"
+            title="Website scope"
+            description="All observations below are measured for the selected website."
           >
-            <RefreshCw size={16} />
-            Refresh
-          </button>
-        </div>
-      </header>
+            <FilterBar
+              selects={[
+                {
+                  key: 'website',
+                  label: 'Website',
+                  value: websiteId,
+                  options: websites.map((w) => ({
+                    value: w.id,
+                    label: w.name,
+                  })),
+                  onChange: handleWebsite,
+                },
+                {
+                  key: 'status',
+                  label: 'Result',
+                  value: statusFilter,
+                  options: [
+                    { value: 'ALL', label: 'All results' },
+                    {
+                      value: 'MENTIONED',
+                      label: 'Mentioned',
+                    },
+                    { value: 'MISSED', label: 'Missed' },
+                  ],
+                  onChange: setStatusFilter,
+                },
+              ]}
+              searchValue={search}
+              searchPlaceholder="Search prompts, platforms…"
+              onSearchChange={setSearch}
+            />
+          </Panel>
 
-      <section className="mx-auto max-w-[1500px] p-5 lg:p-8">
-  {error && (
-    <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-      AI Visibility Error: {error}
-    </div>
-  )}
-        {/* HERO */}
+          {error ? (
+            <ErrorState
+              title="Partial load failure"
+              description={error}
+              onRetry={() => void handleRefresh()}
+            />
+          ) : null}
 
-        <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm lg:p-7">
-          <div className="relative flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex items-start gap-4">
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-violet-50 text-violet-600">
-                <Sparkles size={24} />
-              </div>
-
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-2xl font-bold text-slate-900">
-                    AI Visibility
-                  </h1>
-
-                  <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-violet-700">
-                    AEO / GEO
-                  </span>
-                </div>
-
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                  Measure how often AI search engines discover,
-                  mention and recommend your business for the
-                  queries that matter.
-                </p>
-              </div>
+          <section aria-label="Key signals">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Metric
+                label="AI visibility"
+                value={
+                  visibilityScore === null ||
+                  visibilityScore === undefined
+                    ? '—'
+                    : fmtPct(visibilityScore)
+                }
+                detail="Measured across observations"
+              />
+              <Metric
+                label="Brand mentions"
+                value={fmtInt(mentions)}
+                detail="Persisted observations"
+              />
+              <Metric
+                label="Citations"
+                value={fmtInt(citationCount)}
+                detail="Measured citations"
+              />
+              <Metric
+                label="Tracked prompts"
+                value={fmtInt(queries.length)}
+                detail="Active prompt set"
+              />
             </div>
+          </section>
 
-            {/* WEBSITE SELECTOR */}
-
-            <button
-              type="button"
-              onClick={() => setShowWebsiteMenu((value) => !value)}
-              disabled={websites.length === 0}
-              className="flex min-w-[280px] items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Panel
+              eyebrow="Primary visual"
+              title="Visibility trend"
+              description="Measured movement across persisted snapshots."
             >
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-600">
-                  <Globe2 size={18} />
-                </div>
+              <TrendChart
+                state={
+                  trendPoints.length > 0
+                    ? 'ready'
+                    : 'empty'
+                }
+                points={trendPoints}
+                summary="Measured AI visibility over time."
+                formatValue={(v) => fmtPct(v)}
+                emptyTitle="No trend history yet"
+                emptyDescription="Snapshots accumulate as observations are recorded and live checks run."
+              />
+            </Panel>
+            <Panel
+              eyebrow="Primary visual"
+              title="Mentions by platform"
+              description="Where measured mentions actually occurred."
+            >
+              <BarList
+                state={
+                  providerBars.length > 0
+                    ? 'ready'
+                    : 'empty'
+                }
+                bars={providerBars}
+                summary="Measured mentions grouped by AI platform."
+                emptyTitle="No platform breakdown yet"
+                emptyDescription="Record observations or run live checks to build this comparison."
+              />
+            </Panel>
+          </div>
 
-                <div className="min-w-0">
-                  <div className="text-xs font-medium text-slate-400">
-                    Active Website
-                  </div>
-
-                  <div className="truncate text-sm font-bold text-slate-900">
-                    {dashboard?.website?.name ?? websites.find((w) => w.id === selectedWebsiteId)?.name ?? "Select Website"}
-                  </div>
-                </div>
-              </div>
-
-              <ChevronDown size={17} />
-            </button>
-
-            {showWebsiteMenu && websites.length > 0 && (
-              <div className="absolute right-0 z-20 mt-2 w-[280px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
-                {websites.map((website) => (
-                  <button
-                    key={website.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedWebsiteId(website.id);
-                      setShowWebsiteMenu(false);
-                    }}
-                    className={`block w-full px-4 py-3 text-left transition hover:bg-slate-50 ${
-                      website.id === selectedWebsiteId ? 'bg-slate-50' : ''
-                    }`}
+          <Panel
+            eyebrow="Provider context"
+            title="Provider availability"
+            description="Live checks are only possible on connected providers. Everything else is a manual observation."
+          >
+            {providers.length === 0 ? (
+              <EmptyState
+                title="No AI provider connected"
+                description="Manual observations keep working and stay labeled as observations. Connect a provider in Integrations for live checks."
+                actionLabel="Open integrations"
+                actionHref="/integrations"
+              />
+            ) : (
+              <ul className="divide-y divide-rk-border">
+                {providers.map((p: any, i: number) => (
+                  <li
+                    key={String(p.provider || p.name || i)}
+                    className="flex items-center justify-between gap-3 py-2.5"
                   >
-                    <div className="truncate text-sm font-semibold text-slate-900">
-                      {website.name}
-                    </div>
-                    <div className="mt-0.5 truncate text-xs text-slate-400">
-                      {website.url}
-                    </div>
-                  </button>
+                    <span className="font-semibold text-rk-ink">
+                      {String(
+                        p.provider || p.name || 'Provider',
+                      ).replace(/_/g, ' ')}
+                    </span>
+                    <DataSourceBadge
+                      source="Provider"
+                      connected={Boolean(
+                        p.connected || p.available,
+                      )}
+                    />
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
-          </div>
+          </Panel>
 
-          <div className="mt-5 rounded-xl bg-slate-50 p-4">
-            <div className="text-xs font-bold uppercase tracking-wide text-slate-400">
-              Website
-            </div>
+          <Panel
+            eyebrow="Prompt intelligence"
+            title="Observations"
+            description="Open a row for full evidence. Manual rows are labeled observations."
+          >
+            <DataTable
+              caption="AI visibility observations with evidence"
+              columns={checkColumns}
+              rows={filteredChecks}
+              keyOf={(r: any, i: number) =>
+                String(r.id || `${r.query}-${i}`)
+              }
+              onRowClick={setDrawerCheck}
+              emptyTitle="No observations yet"
+              emptyDescription="Record a manual observation or run a live check on a connected provider."
+              pageSize={12}
+            />
+          </Panel>
 
-            <div className="mt-1 text-sm font-semibold text-slate-800">
-              {dashboard?.website?.url ?? websites.find((w) => w.id === selectedWebsiteId)?.url ?? "No website selected"}
-            </div>
-          </div>
-        </div>
-
-        {/* SCORE CARDS */}
-
-        <div className="mt-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-          {/* AI VISIBILITY SCORE */}
-
-          <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-medium text-slate-500">
-                AI Visibility Score
-              </div>
-
-              <div className="grid h-9 w-9 place-items-center rounded-lg bg-violet-50 text-violet-600">
-                <Bot size={18} />
-              </div>
-            </div>
-
-            <div className="mt-4 flex items-end gap-3">
-              <div className="text-4xl font-bold text-slate-900">
-                {overallScore ?? '—'}
-              </div>
-
-              <span
-                className={`mb-1 rounded-full border px-2.5 py-1 text-xs font-bold ${scoreClass(
-                  overallScore,
-                )}`}
-              >
-                {scoreLabel(overallScore)}
-              </span>
-            </div>
-
-            <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
-              <div
-                className="h-full rounded-full bg-violet-600"
-                style={{
-                  width: `${overallScore ?? 0}%`,
-                }}
-              />
-            </div>
-
-            <div className="mt-3 flex items-center gap-1 text-xs font-semibold text-slate-400">
-  {historyTrend != null
-    ? `${historyTrend >= 0 ? "+" : ""}${historyTrend}% vs previous snapshot`
-    : "No previous snapshot"}
-</div>
-          </div>
-
-          {/* AI MENTIONS */}
-
-          <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-medium text-slate-500">
-                AI Mentions
-              </div>
-
-              <div className="grid h-9 w-9 place-items-center rounded-lg bg-blue-50 text-blue-600">
-                <MessageSquareText size={18} />
-              </div>
-            </div>
-
-            <div className="mt-4 text-4xl font-bold text-slate-900">
-              {dashboard?.metrics?.mentionedQueries ?? 0}
-            </div>
-
-            <div className="mt-2 text-xs text-slate-400">
-              Mentions detected across tracked queries
-            </div>
-
-            <div className="mt-3 text-xs font-semibold text-slate-400">
-  {dashboard?.metrics?.mentionedQueries ?? 0} currently mentioned
-</div>
-          </div>
-
-          {/* QUERIES */}
-
-          <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-medium text-slate-500">
-                Queries Tracked
-              </div>
-
-              <div className="grid h-9 w-9 place-items-center rounded-lg bg-emerald-50 text-emerald-600">
-                <Search size={18} />
-              </div>
-            </div>
-
-            <div className="mt-4 text-4xl font-bold text-slate-900">
-              {dashboard?.metrics?.totalQueries ?? 0}
-            </div>
-
-            <div className="mt-2 text-xs text-slate-400">
-              Commercial, local and informational queries
-            </div>
-
-            <div className="mt-3 text-xs font-semibold text-slate-500">
-              {completedChecks.length > 0 ? `${new Set(completedChecks.map((c: any) => c.platform)).size} platforms checked` : "No completed checks yet"}
-            </div>
-          </div>
-
-          {/* AI POSITION */}
-
-          <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-medium text-slate-500">
-                Avg. AI Position
-              </div>
-
-              <div className="grid h-9 w-9 place-items-center rounded-lg bg-orange-50 text-orange-600">
-                <Target size={18} />
-              </div>
-            </div>
-
-            <div className="mt-4 text-4xl font-bold text-slate-900">
-              {averagePosition != null ? `#${averagePosition.toFixed(1)}` : "—"}
-            </div>
-
-            <div className="mt-2 text-xs text-slate-400">
-              Average position when your business is mentioned
-            </div>
-
-            <div className="mt-3 text-xs font-semibold text-slate-400">
-  Based on completed AI checks
-</div>
-          </div>
-        </div>
-
-        {/* PLATFORM VISIBILITY */}
-
-        <div className="mt-6 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">
-                AI Platform Visibility
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Platforms returned by real AI visibility checks.
-              </p>
-            </div>
-
-            <span className="flex items-center gap-2 text-xs font-semibold text-slate-400">
-              <Activity size={14} />
-              {lastCheckedAt
-                ? `Last checked ${lastCheckedAt.toLocaleString()}`
-                : 'No completed checks yet'}
-            </span>
-          </div>
-
-          {platformStats.length === 0 ? (
-            <div className="mt-5 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-              No completed AI platform checks are available for this website yet.
-              Refresh after real AI visibility tracking has been configured.
-            </div>
-          ) : (
-            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-              {platformStats.map((platform) => {
-                const mentionRate = platform.completed
-                  ? Math.round((platform.mentioned / platform.completed) * 100)
-                  : 0;
-                const citationRate = platform.completed
-                  ? Math.round((platform.cited / platform.completed) * 100)
-                  : 0;
-
-                return (
-                  <div
-                    key={platform.platform}
-                    className="rounded-xl border border-slate-200 p-4"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="grid h-10 w-10 place-items-center rounded-lg bg-slate-100 text-sm font-black text-slate-700">
-                        {platform.platform.slice(0, 4).toUpperCase()}
-                      </div>
-                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">
-                        CHECKED
-                      </span>
-                    </div>
-
-                    <div className="mt-4 text-sm font-bold text-slate-900">
-                      {platform.platform}
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                      <div className="rounded-lg bg-slate-50 p-2">
-                        <div className="text-slate-400">Mention</div>
-                        <div className="mt-1 font-bold text-slate-800">
-                          {mentionRate}%
-                        </div>
-                      </div>
-                      <div className="rounded-lg bg-slate-50 p-2">
-                        <div className="text-slate-400">Citation</div>
-                        <div className="mt-1 font-bold text-slate-800">
-                          {citationRate}%
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* QUERY PERFORMANCE */}
-
-        <div className="mt-6 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">
-                AI Query Performance
-              </h2>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Queries where RENKO is measuring AI visibility,
-                mentions and position.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              disabled
-              title="Query management UI is not connected to a CRUD route yet"
-              className="flex cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-400"
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Panel
+              eyebrow="Prompt set"
+              title="Tracked prompts"
+              description="Prompts are measured repeatedly; suggestions come from your data."
+              actions={
+                <SecondaryButton
+                  onClick={() => void handleSuggest()}
+                  disabled={suggesting || !websiteId}
+                >
+                  {suggesting
+                    ? 'Suggesting…'
+                    : 'Suggest from data'}
+                </SecondaryButton>
+              }
             >
-              Query Management Pending
-              <ExternalLink size={15} />
-            </button>
-          </div>
-
-          <div className="mt-5 overflow-x-auto">
-            <table className="w-full min-w-[850px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
-                  <th className="px-4 py-3">Query</th>
-                  <th className="px-4 py-3">Intent</th>
-                  <th className="px-4 py-3">Visibility</th>
-                  <th className="px-4 py-3">Mentions</th>
-                  <th className="px-4 py-3">AI Position</th>
-                  <th className="px-4 py-3">Trend</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {queryStats.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="px-4 py-8 text-center text-sm text-slate-400"
+              <div className="mb-3 flex gap-2">
+                <input
+                  value={newPrompt}
+                  onChange={(e) =>
+                    setNewPrompt(e.target.value)
+                  }
+                  placeholder="Add a prompt to track…"
+                  maxLength={500}
+                  className="input flex-1"
+                />
+                <PrimaryButton
+                  onClick={() => void handleCreatePrompt()}
+                  disabled={savingPrompt || !newPrompt.trim()}
+                >
+                  {savingPrompt ? 'Adding…' : 'Add'}
+                </PrimaryButton>
+              </div>
+              {suggestNote ? (
+                <p className="rk-body mb-2">{suggestNote}</p>
+              ) : null}
+              {queries.length === 0 ? (
+                <EmptyState
+                  title="No tracked prompts"
+                  description="Add the questions buyers ask AI tools about your category."
+                />
+              ) : (
+                <ul className="divide-y divide-rk-border">
+                  {queries.slice(0, 10).map((q: any) => (
+                    <li
+                      key={String(q.id || q.query)}
+                      className="flex items-center justify-between gap-2 py-2"
                     >
-                      No AI visibility queries are configured for this website.
-                    </td>
-                  </tr>
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-rk-ink">
+                        {String(q.query || q.prompt)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleTogglePrompt(q)
+                        }
+                        className="rk-focusable text-xs font-semibold text-rk-secondary underline underline-offset-2"
+                      >
+                        {q.isActive === false
+                          ? 'Activate'
+                          : 'Pause'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleDeletePrompt(q)
+                        }
+                        className="rk-focusable text-xs font-semibold text-rk-danger underline underline-offset-2"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Panel>
+
+            <div className="space-y-3">
+              <Panel
+                eyebrow="Manual evidence"
+                title="Record observation"
+                description="Stored as an observation — never shown as a provider response."
+              >
+                {!recordOpen ? (
+                  <SecondaryButton
+                    onClick={() => setRecordOpen(true)}
+                  >
+                    Record observation
+                  </SecondaryButton>
                 ) : (
-                  queryStats.map(({ item, checks: itemChecks, mentioned, visibility, averagePosition }: QueryStat) => (
-                    <tr
-                      key={item.id}
-                      className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
-                    >
-                      <td className="px-4 py-4">
-                        <div className="font-semibold text-slate-900">
-                          {item.query}
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-4">
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                          {item.category ?? 'General'}
-                        </span>
-                      </td>
-
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="h-2 w-20 overflow-hidden rounded-full bg-slate-100">
-                            <div
-                              className="h-full rounded-full bg-violet-600"
-                              style={{
-                                width: `${visibility ?? 0}%`,
-                              }}
-                            />
-                          </div>
-                          <span className="font-bold">
-                            {visibility != null ? `${visibility}%` : '—'}
-                          </span>
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-4 font-bold">
-                        {mentioned}
-                      </td>
-
-                      <td className="px-4 py-4 font-bold">
-                        {averagePosition != null
-                          ? `#${averagePosition.toFixed(1)}`
-                          : '—'}
-                      </td>
-
-                      <td className="px-4 py-4">
-                        <span className="font-semibold text-slate-400">
-                          —
-                        </span>
-                      </td>
-                    </tr>
-                  ))
+                  <div className="space-y-2">
+                    <input
+                      value={recForm.query}
+                      onChange={(e) =>
+                        setRecForm((f) => ({
+                          ...f,
+                          query: e.target.value,
+                        }))
+                      }
+                      placeholder="Prompt that was asked…"
+                      maxLength={500}
+                      className="input w-full"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <select
+                        value={recForm.platform}
+                        onChange={(e) =>
+                          setRecForm((f) => ({
+                            ...f,
+                            platform: e.target.value,
+                          }))
+                        }
+                        className="input"
+                        aria-label="Platform"
+                      >
+                        {PLATFORMS.map((p) => (
+                          <option key={p} value={p}>
+                            {p.replace(/_/g, ' ')}
+                          </option>
+                        ))}
+                      </select>
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-rk-secondary">
+                        <input
+                          type="checkbox"
+                          checked={recForm.mentioned}
+                          onChange={(e) =>
+                            setRecForm((f) => ({
+                              ...f,
+                              mentioned: e.target.checked,
+                            }))
+                          }
+                        />
+                        Mentioned
+                      </label>
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-rk-secondary">
+                        <input
+                          type="checkbox"
+                          checked={recForm.citationFound}
+                          onChange={(e) =>
+                            setRecForm((f) => ({
+                              ...f,
+                              citationFound:
+                                e.target.checked,
+                            }))
+                          }
+                        />
+                        Cited
+                      </label>
+                    </div>
+                    <textarea
+                      value={recForm.response}
+                      onChange={(e) =>
+                        setRecForm((f) => ({
+                          ...f,
+                          response: e.target.value,
+                        }))
+                      }
+                      placeholder="What the response said (optional)…"
+                      rows={2}
+                      maxLength={2000}
+                      className="input w-full"
+                    />
+                    <div className="flex gap-2">
+                      <PrimaryButton
+                        onClick={() => void handleRecord()}
+                        disabled={
+                          recording || !recForm.query.trim()
+                        }
+                      >
+                        {recording
+                          ? 'Saving…'
+                          : 'Save observation'}
+                      </PrimaryButton>
+                      <SecondaryButton
+                        onClick={() => setRecordOpen(false)}
+                      >
+                        Cancel
+                      </SecondaryButton>
+                    </div>
+                    {recordMsg ? (
+                      <p className="rk-body">{recordMsg}</p>
+                    ) : null}
+                  </div>
                 )}
-              </tbody>
-            </table>
+              </Panel>
+
+              <Panel
+                eyebrow="Live check"
+                title="Run provider check"
+                description="Only on connected providers; stored with provider attribution."
+              >
+                <div className="space-y-2">
+                  <input
+                    value={runForm.query}
+                    onChange={(e) =>
+                      setRunForm((f) => ({
+                        ...f,
+                        query: e.target.value,
+                      }))
+                    }
+                    placeholder="Prompt to check live…"
+                    maxLength={500}
+                    className="input w-full"
+                  />
+                  <div className="flex gap-2">
+                    <select
+                      value={runForm.provider}
+                      onChange={(e) =>
+                        setRunForm((f) => ({
+                          ...f,
+                          provider: e.target.value,
+                        }))
+                      }
+                      className="input"
+                      aria-label="Provider"
+                    >
+                      <option value="GEMINI">Gemini</option>
+                      <option value="OPENAI">OpenAI</option>
+                    </select>
+                    <PrimaryButton
+                      onClick={() => void handleRunCheck()}
+                      disabled={
+                        running || !runForm.query.trim()
+                      }
+                    >
+                      {running ? 'Checking…' : 'Run check'}
+                    </PrimaryButton>
+                  </div>
+                  {runMsg ? (
+                    <p className="rk-body">{runMsg}</p>
+                  ) : null}
+                </div>
+              </Panel>
+            </div>
           </div>
+
+          {gaps.length > 0 && (
+            <Panel
+              eyebrow="What matters"
+              title="AI visibility gaps"
+              description="Evidence-backed gaps worth closing."
+              actions={
+                <Link href="/opportunities">
+                  <SecondaryButton type="button">
+                    View opportunity
+                  </SecondaryButton>
+                </Link>
+              }
+            >
+              <ul className="divide-y divide-rk-border">
+                {gaps.slice(0, 8).map((g: any, i: number) => (
+                  <li key={i} className="py-2.5">
+                    <p className="text-sm font-semibold text-rk-ink">
+                      {String(
+                        g.title || g.gap || g.prompt || 'Gap',
+                      )}
+                    </p>
+                    {g.description || g.detail ? (
+                      <p className="rk-body mt-0.5">
+                        {String(g.description || g.detail)}
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+          )}
+
+          {recommendations.length > 0 && (
+            <Panel
+              eyebrow="Recommendations"
+              title="What should I do?"
+              description="Each recommendation can become a tracked action."
+            >
+              <ul className="divide-y divide-rk-border">
+                {recommendations
+                  .slice(0, 8)
+                  .map((rec: any, i: number) => {
+                    const key = String(rec.id || rec.title || i);
+                    return (
+                      <li
+                        key={key}
+                        className="flex flex-wrap items-center justify-between gap-2 py-2.5"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-rk-ink">
+                            {String(
+                              rec.title || 'Recommendation',
+                            )}
+                          </p>
+                          {rec.description ? (
+                            <p className="rk-body mt-0.5">
+                              {String(rec.description)}
+                            </p>
+                          ) : null}
+                        </div>
+                        {rec.id ? (
+                          <SecondaryButton
+                            onClick={() =>
+                              void handleCreateAction(rec)
+                            }
+                            disabled={
+                              actionBusy[key] ||
+                              actionDone[key]
+                            }
+                          >
+                            {actionDone[key]
+                              ? 'Added'
+                              : actionBusy[key]
+                                ? 'Adding…'
+                                : 'Add to Actions'}
+                          </SecondaryButton>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+              </ul>
+            </Panel>
+          )}
+
+          <RecommendationCallout
+            title="Outcome"
+            text="Close the loop: gaps become opportunities, opportunities become actions, monitoring measures the change."
+            actionLabel="Open Opportunity Engine"
+            actionHref="/opportunities"
+          />
+          <NextAction
+            label="See what changed"
+            detail="Monitoring measures crawl-over-crawl and visibility movement."
+            href="/monitoring"
+          />
         </div>
+      )}
 
-        {/* AEO / GEO SIGNALS */}
-
-        <div className="mt-6 grid gap-6 lg:grid-cols-2">
-          {/* AEO */}
-
-          <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-violet-50 text-violet-600">
-                <MessageSquareText size={19} />
-              </div>
-
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">
-                  AEO Ã¢â‚¬” Answer Engine Optimization
-                </h2>
-
-                <p className="mt-1 text-sm leading-6 text-slate-500">
-                  Optimize your content so AI systems can extract
-                  clear, useful answers about your business.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 space-y-3">
-              <SignalRow
-                title="Answer-focused content"
-                score={typeof (dashboard?.aeo as any)?.score === 'number' ? (dashboard?.aeo as any).score : null}
-              />
-
-              <SignalRow
-                title="Question coverage"
-                score={typeof (dashboard?.aeo as any)?.questionCoverage === 'number' ? (dashboard?.aeo as any).questionCoverage : null}
-              />
-
-              <SignalRow
-                title="Entity clarity"
-                score={typeof (dashboard?.aeo as any)?.entityClarity === 'number' ? (dashboard?.aeo as any).entityClarity : null}
-              />
-
-              <SignalRow
-                title="Structured information"
-                score={typeof (dashboard?.aeo as any)?.structuredInformation === 'number' ? (dashboard?.aeo as any).structuredInformation : null}
-              />
-            </div>
-          </div>
-
-          {/* GEO */}
-
-          <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600">
-                <Globe2 size={19} />
-              </div>
-
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">
-                  GEO Ã¢â‚¬” Generative Engine Optimization
-                </h2>
-
-                <p className="mt-1 text-sm leading-6 text-slate-500">
-                  Improve the signals that help generative search
-                  systems discover, understand and cite your brand.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 space-y-3">
-              <SignalRow
-                title="Brand discoverability"
-                score={typeof (dashboard?.geo as any)?.discoverability === 'number' ? (dashboard?.geo as any).discoverability : null}
-              />
-
-              <SignalRow
-                title="Topical authority"
-                score={typeof (dashboard?.geo as any)?.authority === 'number' ? (dashboard?.geo as any).authority : null}
-              />
-
-              <SignalRow
-                title="Local relevance"
-                score={typeof (dashboard?.geo as any)?.localRelevance === 'number' ? (dashboard?.geo as any).localRelevance : null}
-              />
-
-              <SignalRow
-                title="Citation potential"
-                score={
-                  dashboard?.metrics.citedQueries != null &&
-                  dashboard.metrics.totalQueries > 0
-                    ? Math.round(
-                        (dashboard.metrics.citedQueries /
-                          dashboard.metrics.totalQueries) *
-                          100,
+      <Drawer
+        open={drawerCheck !== null}
+        onClose={() => setDrawerCheck(null)}
+        eyebrow="Observation evidence"
+        title={String(drawerCheck?.query || 'Observation')}
+        description={
+          drawerCheck?.sourceType === 'PROVIDER' ||
+          drawerCheck?.isLive ||
+          drawerCheck?.providerRun
+            ? 'Stored live provider response.'
+            : 'Manual observation — not a live provider response.'
+        }
+      >
+        {drawerCheck && (
+          <>
+            <DrawerMeta
+              items={[
+                {
+                  label: 'Platform',
+                  value: String(
+                    drawerCheck.provider ||
+                      drawerCheck.platform ||
+                      '—',
+                  ).replace(/_/g, ' '),
+                },
+                {
+                  label: 'Timestamp',
+                  value: fmtDate(
+                    drawerCheck.observedAt ||
+                      drawerCheck.createdAt,
+                  ),
+                },
+                {
+                  label: 'Result',
+                  value: String(
+                    drawerCheck.status ||
+                      (drawerCheck.mentioned
+                        ? 'MENTIONED'
+                        : 'MISSED'),
+                  ).replace(/_/g, ' '),
+                },
+                {
+                  label: 'Citation',
+                  value: drawerCheck.citationFound
+                    ? String(
+                        drawerCheck.citationUrl ||
+                          'Found',
                       )
-                    : null
+                    : 'None recorded',
+                },
+              ]}
+            />
+            {drawerCheck.response ? (
+              <DrawerSection title="Response">
+                <p className="rk-body">
+                  {String(drawerCheck.response)}
+                </p>
+              </DrawerSection>
+            ) : null}
+            {Array.isArray(drawerCheck.competitors) &&
+            drawerCheck.competitors.length > 0 ? (
+              <DrawerSection title="Competitors seen">
+                <EvidenceList
+                  items={drawerCheck.competitors.map(
+                    (c: any) => ({
+                      text: String(c?.name || c),
+                      source: 'Observation',
+                    }),
+                  )}
+                />
+              </DrawerSection>
+            ) : null}
+            {drawerCheck.evidence ||
+            drawerCheck.note ? (
+              <DrawerSection title="Source evidence">
+                <p className="rk-body">
+                  {String(
+                    drawerCheck.evidence ||
+                      drawerCheck.note,
+                  )}
+                </p>
+              </DrawerSection>
+            ) : null}
+            <DrawerSection title="Confidence">
+              <ConfidenceIndicator
+                level={
+                  drawerCheck.sourceType === 'PROVIDER' ||
+                  drawerCheck.isLive
+                    ? 'high'
+                    : 'medium'
+                }
+                reason={
+                  drawerCheck.sourceType === 'PROVIDER' ||
+                  drawerCheck.isLive
+                    ? 'Stored provider response.'
+                    : 'Human-recorded observation; coverage depends on prompt set.'
                 }
               />
-            </div>
-          </div>
-        </div>
-
-        {/* RECOMMENDATIONS */}
-
-        <div className="mt-6 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-          <div className="flex items-start gap-3">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-amber-50 text-amber-600">
-              <Sparkles size={19} />
-            </div>
-
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">
-                RENKO AI Visibility Recommendations
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Recommendations will be shown here when the backend analysis
-                returns actionable AI visibility opportunities.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-5 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5">
-            <div className="text-sm font-semibold text-slate-800">
-              {completedChecks.length
-                ? 'No AI visibility recommendations returned yet'
-                : 'Not enough AI visibility data yet'}
-            </div>
-            <p className="mt-1 text-sm leading-6 text-slate-500">
-              RENKO will not invent recommendations from preview data. Run real
-              AI visibility checks first, then surface recommendations from the
-              connected analysis layer.
-            </p>
-          </div>
-        </div>
-
-        {/* NEXT CHECK */}
-
-        <div className="mt-6 rounded-2xl border border-violet-100 bg-violet-50 p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <CheckCircle2
-                size={21}
-                className="mt-0.5 shrink-0 text-violet-600"
-              />
-
-              <div>
-                <div className="text-sm font-bold text-violet-900">
-                  AI Visibility tracking is ready
-                </div>
-
-                <p className="mt-1 text-sm leading-6 text-violet-700">
-                  Connect real AI query checks to replace the
-                  dashboard preview data with live AEO/GEO
-                  intelligence.
+            </DrawerSection>
+            {(drawerCheck.limitations ||
+              (!drawerCheck.isLive &&
+                drawerCheck.sourceType !== 'PROVIDER')) && (
+              <DrawerSection title="Limitations">
+                <p className="rk-body">
+                  {String(
+                    drawerCheck.limitations ||
+                      'Manual observation: a point-in-time record, not continuous provider coverage.',
+                  )}
                 </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              disabled
-              title="AI visibility provider configuration is not connected yet"
-              className="flex shrink-0 cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-slate-300 px-5 py-3 text-sm font-bold text-white"
-            >
-              Provider Setup Pending
-              <ArrowUpRight size={16} />
-            </button>
-          </div>
-        </div>
-
-        {/* FOOTNOTE */}
-
-        <div className="mt-6 flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4">
-          <AlertCircle
-            size={17}
-            className="mt-0.5 shrink-0 text-slate-400"
-          />
-
-          <p className="text-xs leading-5 text-slate-500">
-            AI visibility metrics are based on tracked queries
-            and platform responses. AEO focuses on answer
-            extraction and clarity, while GEO focuses on
-            discoverability, authority and generative search
-            visibility.
-          </p>
-        </div>
-        </section>
-        </main>
-      </div>
-    </div>
+              </DrawerSection>
+            )}
+            <DrawerSection title="Outcome">
+              <NextAction
+                label="Track in Opportunity Engine"
+                detail="Persisted opportunities carry evidence into execution."
+                href="/opportunities"
+              />
+            </DrawerSection>
+          </>
+        )}
+      </Drawer>
+    </AppShell>
   );
 }
-
-function SignalRow({
-  title,
-  score,
-}: {
-  title: string;
-  score: number | null;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-100 p-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="text-sm font-semibold text-slate-700">
-          {title}
-        </div>
-
-        <div className="text-sm font-bold text-slate-900">
-          {score ?? '—'}
-        </div>
-      </div>
-
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-        <div
-          className="h-full rounded-full bg-violet-500"
-          style={{
-            width: `${score ?? 0}%`,
-          }}
-        />
-      </div>
-
-      <div className="mt-2 text-xs text-slate-400">
-        {scoreLabel(score)}
-      </div>
-    </div>
-  );
-}
-
-
-
-
-
-
-
-
-
-

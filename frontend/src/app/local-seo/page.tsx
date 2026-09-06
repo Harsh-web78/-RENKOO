@@ -1,665 +1,1114 @@
 ﻿'use client';
 
-import { useEffect, useState } from 'react';
-import {
-  MapPin,
-  RefreshCw,
-  CheckCircle2,
-  AlertTriangle,
-  Target,
-  ExternalLink,
-} from 'lucide-react';
+/*
+ * RENKOO V2 — Local Growth workspace (Phase 5H).
+ * Real Local SEO APIs only: business locations, local
+ * health, tracked local queries, citations, competitors
+ * and opportunities. Configured vs not-connected vs manual
+ * vs provider-unavailable states stay explicit. GBP data is
+ * never claimed when GBP is unavailable. Location detail
+ * opens in a Drawer.
+ */
 
-import Sidebar from '../../components/Sidebar';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   getWebsites,
   getLocalSeoSummary,
   getLocalSeoAudits,
-  getLocalSeoQueries,
   getLocalSeoOpportunities,
-  Website,
-  LocalSeoSummary,
-} from '../../lib/api';
+  listBusinessLocations,
+  createBusinessLocation,
+  deleteBusinessLocation,
+  getLocalHealth,
+  listTrackedLocalQueries,
+  createTrackedLocalQuery,
+  deleteTrackedLocalQuery,
+  listLocalCitations,
+  createLocalCitation,
+  listLocalCompetitors,
+  createActionFromRecommendation,
+  getGbpStatus,
+  type Website,
+  type BusinessLocation,
+} from '@/lib/api';
+import AppShell from '@/components/AppShell';
+import {
+  PageHeader,
+  Panel,
+  Metric,
+  DataTable,
+  FilterBar,
+  Drawer,
+  DrawerSection,
+  DrawerMeta,
+  PrimaryButton,
+  SecondaryButton,
+  DangerButton,
+  ConfirmDialog,
+  DataSourceBadge,
+  FreshnessBadge,
+  StatusChip,
+  LoadingBlock,
+  ErrorState,
+  EmptyState,
+  NotConnectedState,
+  InsightBlock,
+  EvidenceList,
+  RecommendationCallout,
+  NextAction,
+  type DataTableColumn,
+} from '@/components/ui';
+
+function num(value: unknown, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function fmtInt(value: unknown) {
+  return num(value).toLocaleString('en-US');
+}
+
+function fmtDate(value: unknown) {
+  if (!value) return '—';
+  try {
+    return new Date(String(value)).toLocaleDateString(
+      'en-US',
+      { month: 'short', day: 'numeric', year: 'numeric' },
+    );
+  } catch {
+    return String(value);
+  }
+}
 
 export default function LocalSeoPage() {
+  const [navOpen, setNavOpen] = useState(false);
   const [websites, setWebsites] = useState<Website[]>([]);
   const [websiteId, setWebsiteId] = useState('');
-  const [summary, setSummary] =
-    useState<LocalSeoSummary | null>(null);
-  const [audits, setAudits] = useState<any[]>([]);
-  const [queries, setQueries] = useState<any[]>([]);
-  const [opportunities, setOpportunities] =
-    useState<any[]>([]);
+  const [locations, setLocations] = useState<
+    BusinessLocation[]
+  >([]);
+  const [locationId, setLocationId] = useState('ALL');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [formMsg, setFormMsg] = useState('');
+  const [summary, setSummary] = useState<any>(null);
+  const [health, setHealth] = useState<any>(null);
+  const [tracked, setTracked] = useState<any[]>([]);
+  const [citations, setCitations] = useState<any[]>([]);
+  const [localCompetitors, setLocalCompetitors] =
+    useState<any[]>([]);
+  const [opportunities, setOpportunities] = useState<any[]>(
+    [],
+  );
+  const [audits, setAudits] = useState<any[]>([]);
+  const [gbp, setGbp] = useState<any>(null);
+  const [drawerLoc, setDrawerLoc] =
+    useState<BusinessLocation | null>(null);
+  const [showLocForm, setShowLocForm] = useState(false);
+  const [locForm, setLocForm] = useState({
+    name: '',
+    city: '',
+    phone: '',
+  });
+  const [savingLoc, setSavingLoc] = useState(false);
+  const [deleteLoc, setDeleteLoc] =
+    useState<BusinessLocation | null>(null);
+  const [deletingLoc, setDeletingLoc] = useState(false);
+  const [newQuery, setNewQuery] = useState('');
+  const [savingQuery, setSavingQuery] = useState(false);
+  const [newCitation, setNewCitation] = useState({
+    source: '',
+    sourceUrl: '',
+  });
+  const [savingCitation, setSavingCitation] =
+    useState(false);
+  const [actionBusy, setActionBusy] = useState<
+    Record<string, boolean>
+  >({});
+  const [actionDone, setActionDone] = useState<
+    Record<string, boolean>
+  >({});
 
-  useEffect(() => {
-    loadWebsites();
+  const load = useCallback(async (id: string) => {
+    if (!id) return;
+    try {
+      setError('');
+      const [
+        locRes,
+        sum,
+        hlth,
+        tq,
+        cit,
+        comp,
+        opps,
+        aud,
+        gbpRes,
+      ] = await Promise.all([
+        listBusinessLocations(id).catch(() => null),
+        getLocalSeoSummary(id).catch(() => null),
+        getLocalHealth(id).catch(() => null),
+        listTrackedLocalQueries(id).catch(() => null),
+        listLocalCitations(id).catch(() => null),
+        listLocalCompetitors(id).catch(() => null),
+        getLocalSeoOpportunities(id).catch(() => null),
+        getLocalSeoAudits(id).catch(() => null),
+        getGbpStatus().catch(() => null),
+      ]);
+      const locs = Array.isArray(locRes)
+        ? locRes
+        : Array.isArray((locRes as any)?.locations)
+          ? (locRes as any).locations
+          : [];
+      setLocations(locs);
+      setSummary(sum);
+      setHealth(hlth);
+      setTracked(
+        Array.isArray(tq)
+          ? tq
+          : Array.isArray((tq as any)?.queries)
+            ? (tq as any).queries
+            : [],
+      );
+      setCitations(
+        Array.isArray(cit)
+          ? cit
+          : Array.isArray((cit as any)?.citations)
+            ? (cit as any).citations
+            : [],
+      );
+      setLocalCompetitors(
+        Array.isArray(comp)
+          ? comp
+          : Array.isArray((comp as any)?.competitors)
+            ? (comp as any).competitors
+            : [],
+      );
+      setOpportunities(
+        Array.isArray(opps)
+          ? opps
+          : Array.isArray((opps as any)?.opportunities)
+            ? (opps as any).opportunities
+            : [],
+      );
+      setAudits(
+        Array.isArray(aud)
+          ? aud
+          : Array.isArray((aud as any)?.audits)
+            ? (aud as any).audits
+            : [],
+      );
+      setGbp(gbpRes);
+    } catch (err: any) {
+      setError(
+        err?.message || 'Failed to load local SEO data.',
+      );
+    }
   }, []);
 
   useEffect(() => {
-    if (websiteId) loadData();
-  }, [websiteId]);
-
-  async function loadWebsites() {
-    try {
-      const data = await getWebsites();
-      setWebsites(data);
-
-      if (data.length > 0) {
-        setWebsiteId(data[0].id);
+    let cancelled = false;
+    async function init() {
+      try {
+        const sites = await getWebsites();
+        if (cancelled) return;
+        const list = Array.isArray(sites) ? sites : [];
+        setWebsites(list);
+        const stored =
+          typeof window !== 'undefined'
+            ? localStorage.getItem('renkoo_website_id')
+            : null;
+        const valid =
+          stored && list.some((s) => s.id === stored)
+            ? stored
+            : list[0]?.id || '';
+        setWebsiteId(valid);
+        if (valid) await load(valid);
+        else if (list.length === 0) {
+          // Fix: clear loading on the no-website path.
+          setError(
+            'No website found. Add a website first.',
+          );
+        }
+      } catch (err: any) {
+        if (!cancelled)
+          setError(
+            err?.message || 'Failed to load websites.',
+          );
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to load websites');
     }
+    void init();
+    return () => {
+      cancelled = true;
+    };
+  }, [load]);
+
+  function handleWebsite(id: string) {
+    setWebsiteId(id);
+    setLocationId('ALL');
+    setDrawerLoc(null);
+    if (typeof window !== 'undefined')
+      localStorage.setItem('renkoo_website_id', id);
+    setLoading(true);
+    void load(id).finally(() => setLoading(false));
   }
 
-  async function loadData() {
+  async function handleCreateLocation() {
+    if (
+      !websiteId ||
+      savingLoc ||
+      !locForm.name.trim()
+    )
+      return;
     try {
-      setLoading(true);
-      setError('');
-
-      const [
-        summaryData,
-        auditsData,
-        queriesData,
-        opportunitiesData,
-      ] = await Promise.all([
-        getLocalSeoSummary(websiteId),
-        getLocalSeoAudits(websiteId),
-        getLocalSeoQueries(websiteId),
-        getLocalSeoOpportunities(websiteId),
-      ]);
-
-      setSummary(summaryData);
-
-      setAudits(
-        Array.isArray(auditsData)
-          ? auditsData
-          : auditsData?.audits || [],
-      );
-
-      setQueries(
-        Array.isArray(queriesData)
-          ? queriesData
-          : queriesData?.queries || [],
-      );
-
-      setOpportunities(
-        Array.isArray(opportunitiesData)
-          ? opportunitiesData
-          : opportunitiesData?.opportunities || [],
-      );
+      setSavingLoc(true);
+      setFormMsg('');
+      await createBusinessLocation({
+        websiteId,
+        name: locForm.name.trim(),
+        city: locForm.city.trim() || undefined,
+        phone: locForm.phone.trim() || undefined,
+      });
+      setLocForm({ name: '', city: '', phone: '' });
+      setShowLocForm(false);
+      await load(websiteId);
     } catch (err: any) {
-      setError(
-        err.message || 'Failed to load Local SEO data',
+      setFormMsg(
+        err?.message || 'Could not save location.',
       );
     } finally {
-      setLoading(false);
+      setSavingLoc(false);
     }
   }
 
-  const audit = summary?.audit;
+  async function handleDeleteLocation() {
+    if (!deleteLoc || deletingLoc) return;
+    try {
+      setDeletingLoc(true);
+      await deleteBusinessLocation(deleteLoc.id);
+      setDeleteLoc(null);
+      setDrawerLoc(null);
+      if (websiteId) await load(websiteId);
+    } catch (err: any) {
+      setFormMsg(
+        err?.message || 'Could not delete location.',
+      );
+      setDeleteLoc(null);
+    } finally {
+      setDeletingLoc(false);
+    }
+  }
+
+  async function handleCreateQuery() {
+    const q = newQuery.trim();
+    if (!websiteId || savingQuery || !q) return;
+    try {
+      setSavingQuery(true);
+      setFormMsg('');
+      await createTrackedLocalQuery(websiteId, {
+        locationId:
+          locationId !== 'ALL' ? locationId : undefined,
+        query: q,
+      } as any);
+      setNewQuery('');
+      await load(websiteId);
+    } catch (err: any) {
+      setFormMsg(
+        err?.message || 'Could not track query.',
+      );
+    } finally {
+      setSavingQuery(false);
+    }
+  }
+
+  async function handleDeleteQuery(id: string) {
+    try {
+      await deleteTrackedLocalQuery(id);
+      if (websiteId) await load(websiteId);
+    } catch (err: any) {
+      setFormMsg(
+        err?.message || 'Could not remove query.',
+      );
+    }
+  }
+
+  async function handleCreateCitation() {
+    if (
+      !websiteId ||
+      savingCitation ||
+      !newCitation.source.trim()
+    )
+      return;
+    try {
+      setSavingCitation(true);
+      setFormMsg('');
+      await createLocalCitation({
+        websiteId,
+        locationId:
+          locationId !== 'ALL' ? locationId : undefined,
+        source: newCitation.source.trim(),
+        sourceUrl:
+          newCitation.sourceUrl.trim() || undefined,
+      });
+      setNewCitation({ source: '', sourceUrl: '' });
+      await load(websiteId);
+    } catch (err: any) {
+      setFormMsg(
+        err?.message || 'Could not save citation.',
+      );
+    } finally {
+      setSavingCitation(false);
+    }
+  }
+
+  async function handleOppAction(opp: any) {
+    const key = String(opp.id || opp.title);
+    if (actionBusy[key] || actionDone[key] || !opp.id)
+      return;
+    try {
+      setActionBusy((p) => ({ ...p, [key]: true }));
+      await createActionFromRecommendation(String(opp.id));
+      setActionDone((p) => ({ ...p, [key]: true }));
+    } catch {
+      /* stays usable */
+    } finally {
+      setActionBusy((p) => ({ ...p, [key]: false }));
+    }
+  }
+
+  const healthAreas: any[] = useMemo(() => {
+    const list =
+      (health as any)?.areas ||
+      (health as any)?.checks ||
+      [];
+    return Array.isArray(list) ? list : [];
+  }, [health]);
+
+  const overall =
+    (health as any)?.overall ??
+    (health as any)?.score ??
+    (summary as any)?.score ??
+    null;
+
+  const gbpConnected = Boolean(
+    (gbp as any)?.connected ?? (gbp as any)?.available,
+  );
+
+  const latestAuditDate: string | null = useMemo(() => {
+    let latest: string | null = null;
+    for (const a of audits) {
+      const v = (a as any)?.createdAt || (a as any)?.date;
+      if (v && (!latest || String(v) > latest))
+        latest = String(v);
+    }
+    return latest;
+  }, [audits]);
+
+  const locationColumns: DataTableColumn<BusinessLocation>[] =
+    [
+      {
+        key: 'name',
+        label: 'Location',
+        priority: 'high',
+        render: (r) => (
+          <div className="min-w-0">
+            <p className="font-semibold text-rk-ink">
+              {r.name}
+            </p>
+            {(r as any).city || (r as any).address ? (
+              <p className="rk-metadata">
+                {String(
+                  (r as any).city || (r as any).address,
+                )}
+              </p>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        key: 'status',
+        label: 'Status',
+        priority: 'medium',
+        render: (r) => (
+          <StatusChip
+            status={String(
+              (r as any).status ||
+                ((r as any).isPrimary
+                  ? 'PRIMARY'
+                  : 'CONFIGURED'),
+            )}
+          />
+        ),
+      },
+      {
+        key: 'nap',
+        label: 'NAP',
+        priority: 'low',
+        render: (r) => (
+          <span className="text-xs text-rk-secondary">
+            {(r as any).phone
+              ? String((r as any).phone)
+              : 'No phone recorded'}
+          </span>
+        ),
+      },
+    ];
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Sidebar
-        mobileOpen={false}
-        onClose={() => {}}
+    <AppShell
+      mobileOpen={navOpen}
+      onClose={() => setNavOpen(false)}
+      onMenu={() => setNavOpen(true)}
+    >
+      <PageHeader
+        eyebrow="Market"
+        title="Local SEO"
+        description="Local growth workspace — locations, health, queries, citations and opportunities with honest availability."
+        actions={
+          <div className="flex gap-2">
+            <SecondaryButton
+              onClick={() => {
+                setLoading(true);
+                void load(websiteId).finally(() =>
+                  setLoading(false),
+                );
+              }}
+              disabled={loading}
+            >
+              Refresh
+            </SecondaryButton>
+            <Link href="/actions">
+              <PrimaryButton type="button">
+                Action Engine
+              </PrimaryButton>
+            </Link>
+          </div>
+        }
+        meta={
+          <div className="flex flex-wrap items-center gap-2">
+            <DataSourceBadge
+              source="Business Profile"
+              connected={gbpConnected}
+            />
+            <FreshnessBadge
+              label={
+                latestAuditDate
+                  ? `Audited ${fmtDate(latestAuditDate)}`
+                  : gbpConnected
+                    ? 'Provider data'
+                    : 'Configured + manual data'
+              }
+            />
+          </div>
+        }
       />
 
-      <main className="lg:ml-64">
-        <div className="mx-auto max-w-7xl p-5 lg:p-8">
+      {loading ? (
+        <div className="mt-6">
+          <LoadingBlock title="Loading local SEO" />
+        </div>
+      ) : error && locations.length === 0 && !summary ? (
+        <div className="mt-6">
+          <ErrorState
+            title="Local SEO failed to load"
+            description={error}
+            onRetry={() => {
+              setLoading(true);
+              void load(websiteId).finally(() =>
+                setLoading(false),
+              );
+            }}
+          />
+        </div>
+      ) : (
+        <div className="mt-6 space-y-6">
+          <Panel
+            eyebrow="Context"
+            title="Website & location"
+            description="Queries, citations and health scope to the selected location."
+          >
+            <FilterBar
+              selects={[
+                {
+                  key: 'website',
+                  label: 'Website',
+                  value: websiteId,
+                  options: websites.map((w) => ({
+                    value: w.id,
+                    label: w.name,
+                  })),
+                  onChange: handleWebsite,
+                },
+                {
+                  key: 'location',
+                  label: 'Location',
+                  value: locationId,
+                  options: [
+                    {
+                      value: 'ALL',
+                      label: 'All locations',
+                    },
+                    ...locations.map((l) => ({
+                      value: l.id,
+                      label: l.name,
+                    })),
+                  ],
+                  onChange: setLocationId,
+                },
+              ]}
+            />
+            {formMsg ? (
+              <p className="rk-body mt-2">{formMsg}</p>
+            ) : null}
+          </Panel>
 
-          <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <MapPin
-                  size={23}
-                  className="text-blue-600"
-                />
+          {error ? (
+            <ErrorState
+              title="Partial load failure"
+              description={error}
+              onRetry={() => void load(websiteId)}
+            />
+          ) : null}
 
-                <h1 className="text-2xl font-bold text-slate-900">
-                  Local SEO
-                </h1>
-              </div>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Track local visibility, citations and
-                location-based search performance.
-              </p>
-            </div>
-
-            <div className="flex gap-2">
-              <select
-                value={websiteId}
-                onChange={(e) =>
-                  setWebsiteId(e.target.value)
-                }
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium outline-none"
-              >
-                {websites.map((website) => (
-                  <option
-                    key={website.id}
-                    value={website.id}
-                  >
-                    {website.name}
-                  </option>
-                ))}
-              </select>
-
-              <button
-                onClick={loadData}
-                disabled={loading}
-                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
-              >
-                <RefreshCw
-                  size={15}
-                  className={
-                    loading
-                      ? 'animate-spin'
-                      : ''
-                  }
-                />
-                Refresh
-              </button>
-            </div>
-          </header>
-
-          {error && (
-            <div className="mt-6 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-              <AlertTriangle size={17} />
-              {error}
-            </div>
+          {!gbpConnected && (
+            <NotConnectedState
+              title="Google Business Profile is not connected"
+              description="Location data below is configured and manual. Rankings, reviews and live GBP fields are unavailable — RENKOO does not claim them."
+              connectLabel="Open integrations"
+              connectHref="/integrations"
+            />
           )}
 
-          {loading ? (
-            <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-10">
-              <RefreshCw
-                size={22}
-                className="animate-spin text-blue-600"
+          <section aria-label="Local health">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Metric
+                label="Local health"
+                value={
+                  overall === null || overall === undefined
+                    ? '—'
+                    : String(overall)
+                }
+                detail="Measured areas"
+              />
+              <Metric
+                label="Locations"
+                value={fmtInt(locations.length)}
+                detail="Configured"
+              />
+              <Metric
+                label="Tracked queries"
+                value={fmtInt(tracked.length)}
+                detail="Local coverage"
+              />
+              <Metric
+                label="Citations"
+                value={fmtInt(citations.length)}
+                detail="Recorded"
               />
             </div>
-          ) : (
-            <>
-              <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          </section>
 
-                <Metric
-                  label="Overall Score"
-                  value={
-                    audit?.overallScore ?? 0
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Panel
+              eyebrow="Locations"
+              title="Business locations"
+              description="Open a row for NAP, coverage and opportunities."
+              actions={
+                <SecondaryButton
+                  onClick={() =>
+                    setShowLocForm((s) => !s)
                   }
-                />
-
-                <Metric
-                  label="Entity Score"
-                  value={
-                    audit?.entityScore ?? 0
-                  }
-                />
-
-                <Metric
-                  label="Citation Score"
-                  value={
-                    audit?.citationScore ?? 0
-                  }
-                />
-
-                <Metric
-                  label="Authority Score"
-                  value={
-                    audit?.authorityScore ?? 0
-                  }
-                />
-
-                <Metric
-                  label="Content Score"
-                  value={
-                    audit?.contentScore ?? 0
-                  }
-                />
-
-              </section>
-
-              <section className="mt-5 grid gap-5 lg:grid-cols-2">
-
-                <Panel title="Local Search Visibility">
-                  <div className="grid grid-cols-3 gap-3">
-
-                    <MiniMetric
-                      label="Queries"
-                      value={
-                        summary?.queries.total ?? 0
+                >
+                  Add location
+                </SecondaryButton>
+              }
+            >
+              {showLocForm && (
+                <div className="mb-3 flex flex-col gap-2">
+                  <input
+                    value={locForm.name}
+                    onChange={(e) =>
+                      setLocForm((f) => ({
+                        ...f,
+                        name: e.target.value,
+                      }))
+                    }
+                    placeholder="Location name"
+                    maxLength={120}
+                    className="input w-full"
+                  />
+                  <div className="flex gap-2">
+                    <input
+                      value={locForm.city}
+                      onChange={(e) =>
+                        setLocForm((f) => ({
+                          ...f,
+                          city: e.target.value,
+                        }))
                       }
+                      placeholder="City (optional)"
+                      maxLength={120}
+                      className="input flex-1"
                     />
-
-                    <MiniMetric
-                      label="Mentioned"
-                      value={
-                        summary?.queries.mentioned ?? 0
+                    <input
+                      value={locForm.phone}
+                      onChange={(e) =>
+                        setLocForm((f) => ({
+                          ...f,
+                          phone: e.target.value,
+                        }))
                       }
+                      placeholder="Phone (optional)"
+                      maxLength={40}
+                      className="input flex-1"
                     />
-
-                    <MiniMetric
-                      label="Cited"
-                      value={
-                        summary?.queries.cited ?? 0
+                    <PrimaryButton
+                      onClick={() =>
+                        void handleCreateLocation()
                       }
-                    />
-
+                      disabled={
+                        savingLoc ||
+                        !locForm.name.trim()
+                      }
+                    >
+                      {savingLoc ? 'Saving…' : 'Save'}
+                    </PrimaryButton>
                   </div>
+                </div>
+              )}
+              {locations.length === 0 ? (
+                <EmptyState
+                  title="No locations configured"
+                  description="Add the business locations you want RENKOO to track."
+                />
+              ) : (
+                <DataTable
+                  caption="Configured business locations"
+                  columns={locationColumns}
+                  rows={locations}
+                  keyOf={(r) => r.id}
+                  onRowClick={setDrawerLoc}
+                />
+              )}
+            </Panel>
 
-                  <div className="mt-5 space-y-3">
-
-                    <Progress
-                      label="Mention Rate"
-                      value={
-                        summary?.queries.mentionRate ?? 0
-                      }
-                    />
-
-                    <Progress
-                      label="Citation Rate"
-                      value={
-                        summary?.queries.citationRate ?? 0
-                      }
-                    />
-
-                  </div>
-                </Panel>
-
-                <Panel title="Local SEO Health">
-                  {audit ? (
-                    <div className="space-y-3">
-
-                      <HealthRow
-                        label="Entity"
-                        value={
-                          audit.entityScore
-                        }
+            <Panel
+              eyebrow="Health detail"
+              title="Local health areas"
+              description="Measured areas behind the score."
+            >
+              {healthAreas.length === 0 ? (
+                <EmptyState
+                  title="No health breakdown"
+                  description="Health areas appear once locations and queries are configured."
+                />
+              ) : (
+                <ul className="divide-y divide-rk-border">
+                  {healthAreas.map((a: any, i: number) => (
+                    <li
+                      key={String(a.area || a.name || i)}
+                      className="flex items-center justify-between gap-2 py-2"
+                    >
+                      <span className="text-sm font-medium text-rk-ink">
+                        {String(
+                          a.area || a.name || 'Area',
+                        ).replace(/_/g, ' ')}
+                      </span>
+                      <StatusChip
+                        status={String(
+                          a.status ||
+                            a.state ||
+                            'UNKNOWN',
+                        )}
                       />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Panel>
+          </div>
 
-                      <HealthRow
-                        label="Citations"
-                        value={
-                          audit.citationScore
-                        }
-                      />
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Panel
+              eyebrow="Queries"
+              title="Tracked local searches"
+              description="Queries measured per location."
+            >
+              <div className="mb-3 flex gap-2">
+                <input
+                  value={newQuery}
+                  onChange={(e) =>
+                    setNewQuery(e.target.value)
+                  }
+                  placeholder="Track a local query…"
+                  maxLength={200}
+                  className="input flex-1"
+                />
+                <PrimaryButton
+                  onClick={() => void handleCreateQuery()}
+                  disabled={savingQuery || !newQuery.trim()}
+                >
+                  {savingQuery ? 'Adding…' : 'Track'}
+                </PrimaryButton>
+              </div>
+              {tracked.length === 0 ? (
+                <EmptyState
+                  title="No tracked queries"
+                  description="Track the '[service] near me' queries buyers use."
+                />
+              ) : (
+                <ul className="divide-y divide-rk-border">
+                  {tracked
+                    .slice(0, 10)
+                    .map((q: any) => (
+                      <li
+                        key={String(q.id || q.query)}
+                        className="flex items-center justify-between gap-2 py-2"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-rk-ink">
+                          {String(q.query)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handleDeleteQuery(
+                              String(q.id),
+                            )
+                          }
+                          className="rk-focusable text-xs font-semibold text-rk-danger underline underline-offset-2"
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </Panel>
 
-                      <HealthRow
-                        label="Authority"
-                        value={
-                          audit.authorityScore
-                        }
-                      />
+            <Panel
+              eyebrow="Citations"
+              title="Citation status"
+              description="Recorded citations — manual entries stay manual."
+            >
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row">
+                <input
+                  value={newCitation.source}
+                  onChange={(e) =>
+                    setNewCitation((f) => ({
+                      ...f,
+                      source: e.target.value,
+                    }))
+                  }
+                  placeholder="Directory (e.g. Yelp)"
+                  maxLength={120}
+                  className="input flex-1"
+                />
+                <input
+                  value={newCitation.sourceUrl}
+                  onChange={(e) =>
+                    setNewCitation((f) => ({
+                      ...f,
+                      sourceUrl: e.target.value,
+                    }))
+                  }
+                  placeholder="Listing URL (optional)"
+                  maxLength={300}
+                  className="input flex-1"
+                />
+                <PrimaryButton
+                  onClick={() =>
+                    void handleCreateCitation()
+                  }
+                  disabled={
+                    savingCitation ||
+                    !newCitation.source.trim()
+                  }
+                >
+                  {savingCitation ? 'Saving…' : 'Add'}
+                </PrimaryButton>
+              </div>
+              {citations.length === 0 ? (
+                <EmptyState
+                  title="No citations recorded"
+                  description="Record the directories where this business is listed."
+                />
+              ) : (
+                <ul className="divide-y divide-rk-border">
+                  {citations
+                    .slice(0, 8)
+                    .map((c: any, i: number) => (
+                      <li
+                        key={String(c.id || i)}
+                        className="flex items-center justify-between gap-2 py-2"
+                      >
+                        <span className="text-sm font-medium text-rk-ink">
+                          {String(
+                            c.source || c.directory,
+                          )}
+                        </span>
+                        <StatusChip
+                          status={String(
+                            c.status || 'RECORDED',
+                          )}
+                        />
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </Panel>
+          </div>
 
-                      <HealthRow
-                        label="Content"
-                        value={
-                          audit.contentScore
-                        }
-                      />
+          <Panel
+            eyebrow="Unavailable, honestly"
+            title="Reviews & rankings"
+            description="These need provider connections RENKOO does not currently have."
+          >
+            <InsightBlock
+              eyebrow="Provider unavailable"
+              title="Reviews and live rankings are not available"
+            >
+              <p className="rk-body mt-1">
+                No review provider or rank tracker is
+                connected. Tracked queries above measure
+                what you configure; nothing here is
+                presented as live ranking or review data.
+              </p>
+            </InsightBlock>
+          </Panel>
 
-                    </div>
-                  ) : (
-                    <EmptyState
-                      title="No local audit yet"
-                      description="Local SEO audit data will appear here once available."
-                    />
-                  )}
-                </Panel>
-
-              </section>
-
-              <section className="mt-5 grid gap-5 lg:grid-cols-2">
-
-                <Panel title="Local Queries">
-                  {queries.length === 0 ? (
-                    <EmptyState
-                      title="No queries found"
-                      description="No local search queries have been recorded yet."
-                    />
-                  ) : (
-                    <div className="space-y-2">
-                      {queries
-                        .slice(0, 10)
-                        .map((query, index) => (
-                          <div
-                            key={
-                              query.id ||
-                              index
-                            }
-                            className="flex items-center justify-between rounded-xl bg-slate-50 p-3"
-                          >
-                            <div className="min-w-0">
-                              <div className="truncate text-sm font-semibold">
-                                {query.query ||
-                                  'Unnamed query'}
-                              </div>
-
-                              <div className="mt-1 text-xs text-slate-500">
-                                {query.engine ||
-                                  'Local search'}
-                              </div>
-                            </div>
-
-                            <div className="flex gap-2">
-                              {query.mentioned && (
-                                <span className="rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">
-                                  Mentioned
-                                </span>
-                              )}
-
-                              {query.cited && (
-                                <span className="rounded-lg bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700">
-                                  Cited
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </Panel>
-
-                <Panel title="Local Opportunities">
-                  {opportunities.length === 0 ? (
-                    <EmptyState
-                      title="No opportunities yet"
-                      description="Actionable local SEO opportunities will appear here."
-                    />
-                  ) : (
-                    <div className="space-y-2">
-                      {opportunities
-                        .slice(0, 10)
-                        .map((item, index) => (
-                          <div
-                            key={
-                              item.id ||
-                              index
-                            }
-                            className="rounded-xl border border-slate-100 p-4"
-                          >
-                            <div className="flex items-start gap-3">
-                              <Target
-                                size={17}
-                                className="mt-0.5 text-blue-600"
-                              />
-
-                              <div>
-                                <div className="text-sm font-semibold">
-                                  {item.title ||
-                                    item.query ||
-                                    item.type ||
-                                    'Local opportunity'}
-                                </div>
-
-                                <p className="mt-1 text-xs leading-5 text-slate-500">
-                                  {item.recommendation ||
-                                    item.description ||
-                                    'Review this opportunity to improve local visibility.'}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </Panel>
-
-              </section>
-
-              <section className="mt-5">
-                <Panel title="Recent Local Audits">
-                  {audits.length === 0 ? (
-                    <EmptyState
-                      title="No audit history"
-                      description="Completed local SEO audits will appear here."
-                    />
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-sm">
-                        <thead>
-                          <tr className="border-b border-slate-100 text-xs text-slate-500">
-                            <th className="pb-3">
-                              Date
-                            </th>
-                            <th className="pb-3">
-                              Overall
-                            </th>
-                            <th className="pb-3">
-                              Entity
-                            </th>
-                            <th className="pb-3">
-                              Citation
-                            </th>
-                            <th className="pb-3">
-                              Authority
-                            </th>
-                            <th className="pb-3">
-                              Content
-                            </th>
-                          </tr>
-                        </thead>
-
-                        <tbody>
-                          {audits
-                            .slice(0, 20)
-                            .map(
-                              (
-                                item,
-                                index,
-                              ) => (
-                                <tr
-                                  key={
-                                    item.id ||
-                                    index
-                                  }
-                                  className="border-b border-slate-50"
-                                >
-                                  <td className="py-3">
-                                    {item.createdAt
-                                      ? new Date(
-                                          item.createdAt,
-                                        ).toLocaleDateString()
-                                      : '—'}
-                                  </td>
-
-                                  <td className="py-3 font-bold">
-                                    {item.overallScore ??
-                                      0}
-                                  </td>
-
-                                  <td className="py-3">
-                                    {item.entityScore ??
-                                      0}
-                                  </td>
-
-                                  <td className="py-3">
-                                    {item.citationScore ??
-                                      0}
-                                  </td>
-
-                                  <td className="py-3">
-                                    {item.authorityScore ??
-                                      0}
-                                  </td>
-
-                                  <td className="py-3">
-                                    {item.contentScore ??
-                                      0}
-                                  </td>
-                                </tr>
-                              ),
-                            )}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </Panel>
-              </section>
-            </>
+          {localCompetitors.length > 0 && (
+            <Panel
+              eyebrow="Local market"
+              title="Attached local competitors"
+            >
+              <ul className="divide-y divide-rk-border">
+                {localCompetitors
+                  .slice(0, 6)
+                  .map((c: any, i: number) => (
+                    <li
+                      key={String(c.id || i)}
+                      className="py-2 text-sm font-medium text-rk-ink"
+                    >
+                      {String(c.name || 'Competitor')}
+                    </li>
+                  ))}
+              </ul>
+            </Panel>
           )}
+
+          {opportunities.length > 0 && (
+            <Panel
+              eyebrow="Local opportunities"
+              title="What should I do?"
+              description="Each opportunity becomes a tracked action."
+              actions={
+                <Link href="/actions">
+                  <SecondaryButton type="button">
+                    Open Actions
+                  </SecondaryButton>
+                </Link>
+              }
+            >
+              <ul className="divide-y divide-rk-border">
+                {opportunities
+                  .slice(0, 8)
+                  .map((opp: any, i: number) => {
+                    const key = String(
+                      opp.id || opp.title || i,
+                    );
+                    return (
+                      <li
+                        key={key}
+                        className="flex flex-wrap items-center justify-between gap-2 py-2.5"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-rk-ink">
+                            {String(
+                              opp.title || 'Opportunity',
+                            )}
+                          </p>
+                          {opp.description ? (
+                            <p className="rk-body mt-0.5">
+                              {String(opp.description)}
+                            </p>
+                          ) : null}
+                        </div>
+                        {opp.id ? (
+                          <SecondaryButton
+                            onClick={() =>
+                              void handleOppAction(opp)
+                            }
+                            disabled={
+                              actionBusy[key] ||
+                              actionDone[key]
+                            }
+                          >
+                            {actionDone[key]
+                              ? 'Added'
+                              : actionBusy[key]
+                                ? 'Adding…'
+                                : 'Add to Actions'}
+                          </SecondaryButton>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+              </ul>
+            </Panel>
+          )}
+
+          {audits.length > 0 && (
+            <Panel
+              eyebrow="History"
+              title="Recent local audits"
+            >
+              <DataTable
+                caption="Recent local SEO audits"
+                columns={[
+                  {
+                    key: 'date',
+                    label: 'Date',
+                    priority: 'high',
+                    render: (r: any) => (
+                      <span className="rk-number">
+                        {fmtDate(r.createdAt || r.date)}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'score',
+                    label: 'Score',
+                    align: 'right',
+                    priority: 'high',
+                    render: (r: any) => (
+                      <span className="rk-number">
+                        {r.score ?? '—'}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'status',
+                    label: 'Status',
+                    priority: 'medium',
+                    render: (r: any) => (
+                      <StatusChip
+                        status={String(
+                          r.status || 'COMPLETED',
+                        )}
+                      />
+                    ),
+                  },
+                ]}
+                rows={audits.slice(0, 8)}
+                keyOf={(r: any, i: number) =>
+                  String(r.id || i)
+                }
+              />
+            </Panel>
+          )}
+
+          <RecommendationCallout
+            title="Local → execution"
+            text="Local opportunities become tracked actions. Monitoring measures the outcome."
+            actionLabel="Open Opportunity Engine"
+            actionHref="/opportunities"
+          />
         </div>
-      </main>
-    </div>
-  );
-}
+      )}
 
-function Metric({
-  label,
-  value,
-}: {
-  label: string;
-  value: number;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="text-xs font-medium text-slate-500">
-        {label}
-      </div>
+      <Drawer
+        open={drawerLoc !== null}
+        onClose={() => setDrawerLoc(null)}
+        eyebrow="Location detail"
+        title={String(drawerLoc?.name || 'Location')}
+        description="NAP, coverage, citation status and opportunities for this location."
+      >
+        {drawerLoc && (
+          <>
+            <DrawerMeta
+              items={[
+                {
+                  label: 'Status',
+                  value: String(
+                    (drawerLoc as any).status ||
+                      ((drawerLoc as any).isPrimary
+                        ? 'Primary location'
+                        : 'Configured'),
+                  ).replace(/_/g, ' '),
+                },
+                {
+                  label: 'Phone',
+                  value: String(
+                    (drawerLoc as any).phone ||
+                      'Not recorded',
+                  ),
+                },
+                {
+                  label: 'City',
+                  value: String(
+                    (drawerLoc as any).city ||
+                      (drawerLoc as any).address ||
+                      'Not recorded',
+                  ),
+                },
+                {
+                  label: 'Query coverage',
+                  value: `${tracked.length} tracked quer${tracked.length === 1 ? 'y' : 'ies'}`,
+                },
+                {
+                  label: 'Citations',
+                  value: `${citations.length} recorded`,
+                },
+                {
+                  label: 'Reviews',
+                  value:
+                    'Unavailable — no review provider connected',
+                },
+              ]}
+            />
+            <DrawerSection title="Opportunities here">
+              {opportunities.length === 0 ? (
+                <p className="rk-body">
+                  No location opportunities measured right
+                  now.
+                </p>
+              ) : (
+                <EvidenceList
+                  items={opportunities
+                    .slice(0, 5)
+                    .map((o: any) => ({
+                      text: String(o.title),
+                      source: 'Local SEO',
+                    }))}
+                />
+              )}
+            </DrawerSection>
+            <DrawerSection title="Danger zone">
+              <DangerButton
+                onClick={() =>
+                  setDeleteLoc(drawerLoc)
+                }
+              >
+                Remove location
+              </DangerButton>
+            </DrawerSection>
+          </>
+        )}
+      </Drawer>
 
-      <div className="mt-3 text-3xl font-bold text-slate-900">
-        {value}
-      </div>
-
-      <div className="mt-4 h-1.5 rounded-full bg-slate-100">
-        <div
-          className="h-1.5 rounded-full bg-blue-600"
-          style={{
-            width: `${Math.min(
-              Math.max(value, 0),
-              100,
-            )}%`,
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function MiniMetric({
-  label,
-  value,
-}: {
-  label: string;
-  value: number;
-}) {
-  return (
-    <div className="rounded-xl bg-slate-50 p-4">
-      <div className="text-[10px] font-semibold text-slate-500">
-        {label}
-      </div>
-
-      <div className="mt-2 text-xl font-bold">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function Progress({
-  label,
-  value,
-}: {
-  label: string;
-  value: number;
-}) {
-  const safe = Math.min(
-    Math.max(value, 0),
-    100,
-  );
-
-  return (
-    <div>
-      <div className="flex justify-between text-xs">
-        <span className="font-medium text-slate-600">
-          {label}
-        </span>
-
-        <span className="font-bold">
-          {safe.toFixed(1)}%
-        </span>
-      </div>
-
-      <div className="mt-2 h-2 rounded-full bg-slate-100">
-        <div
-          className="h-2 rounded-full bg-blue-600"
-          style={{
-            width: `${safe}%`,
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function HealthRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: number;
-}) {
-  return (
-    <div className="flex items-center justify-between rounded-xl bg-slate-50 p-3">
-      <div className="flex items-center gap-2">
-        <CheckCircle2
-          size={15}
-          className="text-emerald-600"
-        />
-
-        <span className="text-sm font-medium">
-          {label}
-        </span>
-      </div>
-
-      <span className="text-sm font-bold">
-        {value}/100
-      </span>
-    </div>
-  );
-}
-
-function EmptyState({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-xl bg-slate-50 p-5 text-center">
-      <ExternalLink
-        size={18}
-        className="mx-auto text-slate-300"
+      <ConfirmDialog
+        open={deleteLoc !== null}
+        title="Remove location?"
+        description={`"${deleteLoc?.name || ''}" will stop being tracked. This cannot be undone.`}
+        confirmLabel="Remove"
+        cancelLabel="Keep"
+        tone="danger"
+        confirming={deletingLoc}
+        onConfirm={() => void handleDeleteLocation()}
+        onCancel={() => setDeleteLoc(null)}
       />
-
-      <div className="mt-2 text-sm font-semibold text-slate-700">
-        {title}
-      </div>
-
-      <div className="mt-1 text-xs text-slate-500">
-        {description}
-      </div>
-    </div>
-  );
-}
-
-function Panel({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 className="mb-5 text-sm font-bold">
-        {title}
-      </h2>
-
-      {children}
-    </section>
+    </AppShell>
   );
 }
