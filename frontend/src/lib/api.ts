@@ -2658,6 +2658,9 @@ export interface BillingSubscription {
   trialStart?: string | null;
   trialEnd?: string | null;
   cancelAtPeriodEnd?: boolean;
+  provider?: string | null;
+  interval?: string | null;
+  currency?: string | null;
 }
 
 export interface BillingEntitlements {
@@ -2667,6 +2670,9 @@ export interface BillingEntitlements {
   status: string;
   isFree: boolean;
   customPricing: boolean;
+  provider?: string | null;
+  interval?: string | null;
+  currency?: string | null;
   trialEnd?: string | null;
   currentPeriodEnd?: string | null;
   cancelAtPeriodEnd?: boolean;
@@ -2772,6 +2778,142 @@ export async function getBillingSubscription(
   return request<BillingSubscription | null>(
     `/billing/subscription/${encodeURIComponent(organizationId)}`,
   );
+}
+
+/*
+ * =========================================================
+ * RAZORPAY (primary provider) — mirrors the existing
+ * backend contract in billing.controller.ts. Amounts,
+ * plan IDs and gating resolve server-side; the browser
+ * only receives the public Key ID inside a checkout
+ * payload. Secrets never leave the backend.
+ * =========================================================
+ */
+
+export type RazorpayCurrency = 'INR' | 'USD';
+
+export type RazorpayInterval = 'MONTHLY' | 'YEARLY';
+
+export type RazorpayInternationalCards =
+  | 'AVAILABLE'
+  | 'PENDING_APPROVAL'
+  | 'NOT_CONFIGURED';
+
+export interface RazorpayProviderStatus {
+  razorpayConfigured: boolean;
+  razorpayMode: 'test' | 'live' | 'unconfigured';
+  webhookConfigured: boolean;
+  internationalCards: RazorpayInternationalCards;
+  stripeConfigured: boolean;
+  primaryProvider: string;
+}
+
+export interface RazorpayCheckoutPayload {
+  provider: 'RAZORPAY';
+  mode: 'test' | 'live' | 'unconfigured';
+  subscriptionId: string;
+  keyId: string;
+  amount: number;
+  currency: string;
+  planCode: string;
+  interval: string;
+  reused: boolean;
+}
+
+export interface RazorpayVerifyResult {
+  verified: boolean;
+  status: string;
+  planCode: string;
+  liveProviderStatus: string;
+  paymentStatus: string;
+}
+
+export async function getRazorpayProviderStatus(): Promise<RazorpayProviderStatus> {
+  return request<RazorpayProviderStatus>(
+    '/billing/provider-status',
+  );
+}
+
+export async function createRazorpaySubscription(
+  planCode: string,
+  interval: RazorpayInterval,
+  currency: RazorpayCurrency,
+): Promise<RazorpayCheckoutPayload> {
+  return request<RazorpayCheckoutPayload>(
+    '/billing/razorpay/subscription',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        planCode,
+        interval,
+        currency,
+      }),
+    },
+  );
+}
+
+export async function verifyRazorpayCheckout(
+  subscriptionId: string,
+  paymentId: string,
+  signature: string,
+): Promise<RazorpayVerifyResult> {
+  return request<RazorpayVerifyResult>(
+    '/billing/razorpay/verify',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        subscription_id: subscriptionId,
+        payment_id: paymentId,
+        signature,
+      }),
+    },
+  );
+}
+
+export async function syncRazorpaySubscription(): Promise<BillingSubscription> {
+  return request<BillingSubscription>(
+    '/billing/razorpay/sync',
+    { method: 'POST' },
+  );
+}
+
+export async function cancelRazorpaySubscription(): Promise<{
+  cancelled: boolean;
+  effective: string;
+  message?: string;
+  currentPeriodEnd?: string | null;
+}> {
+  return request('/billing/razorpay/cancel', {
+    method: 'POST',
+  });
+}
+
+export async function reactivateRazorpaySubscription(): Promise<{
+  reactivated: boolean;
+  status: string;
+  message?: string;
+}> {
+  return request('/billing/razorpay/reactivate', {
+    method: 'POST',
+  });
+}
+
+export async function changeRazorpayPlan(
+  planCode: string,
+  atCycleEnd = true,
+): Promise<{
+  direction: string;
+  planCode: string;
+  effective: string;
+  message?: string;
+}> {
+  return request('/billing/razorpay/change-plan', {
+    method: 'POST',
+    body: JSON.stringify({
+      planCode,
+      atCycleEnd,
+    }),
+  });
 }
 
 export async function askAgency(
