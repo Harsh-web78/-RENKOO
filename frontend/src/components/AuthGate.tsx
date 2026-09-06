@@ -14,8 +14,8 @@
  * - Public routes render immediately, no checks:
  *   /login, /signup, /verify-email,
  *   /reset-password, /invite/*, /share/*.
- *   (Note: `/` is the Growth Command Center and
- *   is PROTECTED, not public.)
+ * - Unauthenticated visitors at `/` are sent to
+ *   /signup because `/` is the product entry point.
  * - Protected routes with no token redirect to
  *   /login?next=<path>, preserving return URL.
  * - Protected routes with a token validate it
@@ -74,14 +74,20 @@ export default function AuthGate({
       setReady(false);
 
       if (isPublicPath(pathname)) {
-        if (!cancelled) setReady(true);
+        if (!cancelled) {
+          setReady(true);
+        }
         return;
       }
 
       if (!isAuthenticated()) {
-        router.replace(
-          `/login?next=${encodeURIComponent(pathname)}`,
-        );
+        if (pathname === '/') {
+          router.replace('/signup');
+        } else {
+          router.replace(
+            `/login?next=${encodeURIComponent(pathname)}`,
+          );
+        }
         return;
       }
 
@@ -95,7 +101,9 @@ export default function AuthGate({
         return;
       }
 
-      if (!cancelled) setReady(true);
+      if (!cancelled) {
+        setReady(true);
+      }
     }
 
     void check();

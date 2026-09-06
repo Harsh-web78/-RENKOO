@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -7,6 +7,7 @@ import {
   getMe,
   isAuthenticated,
   register,
+  clearToken,
 } from '../../lib/api';
 
 export default function SignupPage() {
@@ -70,7 +71,11 @@ export default function SignupPage() {
         password,
       });
 
-      router.push('/onboarding');
+      // Registration creates the account, but the user must
+      // explicitly log in before entering onboarding.
+      clearToken();
+
+      router.push('/login?next=/onboarding');
       router.refresh();
     } catch (err) {
       setError(
