@@ -22,6 +22,20 @@ export class CrawlService {
   private readonly MAX_PAGES = 50;
   private readonly PAGE_TIMEOUT = 30000;
 
+  /*
+   * Bounded concurrency for independent page
+   * fetches. Each unit of work owns its own
+   * Playwright Page; shared crawl state is only
+   * touched in synchronous sections (JS is
+   * single-threaded, so check-then-act on the
+   * Sets/counters below is atomic). Slots are
+   * reserved at dispatch so the crawl can never
+   * exceed MAX_PAGES + CONCURRENCY - 1 saves,
+   * and timeouts/limits/tenant checks are
+   * unchanged.
+   */
+  private readonly PAGE_CONCURRENCY = 5;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly seoAuditService: SeoAuditService,
@@ -160,18 +174,25 @@ export class CrawlService {
 
       /*
        * =======================================================
-       * LOAD SITEMAP URLS
+       * LOAD SITEMAP URLS (bounded parallel fetch, then
+       * sequential processing so discovery order and the
+       * MAX_PAGES cap stay deterministic)
        * =======================================================
        */
 
-      for (
-        const sitemapUrl of sitemapUrls
-      ) {
-        const sitemapResult =
-          await this.fetchSitemap(
-            sitemapUrl,
-          );
+      const sitemapResults =
+        await Promise.all(
+          sitemapUrls.map((sitemapUrl) =>
+            this.fetchSitemap(
+              sitemapUrl,
+            ),
+          ),
+        );
 
+      for (
+        const sitemapResult of
+        sitemapResults
+      ) {
         if (!sitemapResult.exists) {
           continue;
         }
@@ -180,6 +201,13 @@ export class CrawlService {
           const sitemapPageUrl of
           sitemapResult.urls
         ) {
+          if (
+            discovered.size >=
+            this.MAX_PAGES
+          ) {
+            break;
+          }
+
           const normalized =
             this.normalizeUrl(
               sitemapPageUrl,
@@ -225,35 +253,87 @@ export class CrawlService {
 
       /*
        * =======================================================
-       * CRAWL PAGES
+       * CRAWL PAGES (bounded worker pool over the shared
+       * FIFO queue; BFS discovery order is preserved on
+       * average, dedupe sets and the page cap keep the
+       * exact same semantics as the sequential loop)
        * =======================================================
        */
 
       let pagesCrawled = 0;
 
-      while (
-        queue.length > 0 &&
-        pagesCrawled < this.MAX_PAGES
-      ) {
-        const currentUrl =
-          queue.shift();
+      let activeWorkers = 0;
 
-        if (!currentUrl) {
-          continue;
-        }
+      let crawlFailed = false;
 
-        if (
-          processed.has(
-            currentUrl,
-          )
+      const enqueueInternalLinks = (
+        internalUrls: string[],
+      ) => {
+        for (
+          const link of
+          internalUrls
         ) {
-          continue;
+          if (
+            discovered.size >=
+            this.MAX_PAGES
+          ) {
+            break;
+          }
+
+          const normalized =
+            this.normalizeUrl(
+              link,
+            );
+
+          if (!normalized) {
+            continue;
+          }
+
+          try {
+            const linkHost =
+              this.normalizeHostname(
+                new URL(normalized).hostname,
+              );
+
+            if (
+              linkHost !==
+              websiteHost
+            ) {
+              continue;
+            }
+          } catch {
+            continue;
+          }
+
+          if (
+            discovered.has(
+              normalized,
+            )
+          ) {
+            continue;
+          }
+
+          if (
+            processed.has(
+              normalized,
+            )
+          ) {
+            continue;
+          }
+
+          discovered.add(
+            normalized,
+          );
+
+          queue.push(
+            normalized,
+          );
         }
+      };
 
-        processed.add(
-          currentUrl,
-        );
-
+      const crawlOneUrl = async (
+        currentUrl: string,
+      ) => {
         let page:
           | Page
           | undefined;
@@ -286,104 +366,41 @@ export class CrawlService {
             pagesCrawled++;
           }
 
-          /*
-           * ===================================================
-           * DISCOVER INTERNAL LINKS
-           * ===================================================
-           */
+          enqueueInternalLinks(
+            result.internalUrls,
+          );
+        } catch (error) {
+          console.error(
+            `\n========== CRAWL PAGE FAILED ==========\n`,
+          );
 
-          for (
-            const link of
-            result.internalUrls
-          ) {
-            if (
-              discovered.size >=
-              this.MAX_PAGES
-            ) {
-              break;
-            }
+          console.error(
+            `URL: ${currentUrl}`,
+          );
 
-            const normalized =
-              this.normalizeUrl(
-                link,
-              );
+          console.error(
+            `ERROR:`,
+            error,
+          );
 
-            if (!normalized) {
-              continue;
-            }
-
-            try {
-              const linkHost =
-                this.normalizeHostname(
-                  new URL(normalized).hostname,
-                );
-
-              if (
-                linkHost !==
-                websiteHost
-              ) {
-                continue;
-              }
-            } catch {
-              continue;
-            }
-
-            if (
-              discovered.has(
-                normalized,
-              )
-            ) {
-              continue;
-            }
-
-            if (
-              processed.has(
-                normalized,
-              )
-            ) {
-              continue;
-            }
-
-            discovered.add(
-              normalized,
+          if (error instanceof Error) {
+            console.error(
+              `MESSAGE:`,
+              error.message,
             );
 
-            queue.push(
-              normalized,
+            console.error(
+              `STACK:`,
+              error.stack,
             );
           }
-        } catch (error) {
-  console.error(
-    `\n========== CRAWL PAGE FAILED ==========\n`,
-  );
 
-  console.error(
-    `URL: ${currentUrl}`,
-  );
+          console.error(
+            `=======================================\n`,
+          );
 
-  console.error(
-    `ERROR:`,
-    error,
-  );
-
-  if (error instanceof Error) {
-    console.error(
-      `MESSAGE:`,
-      error.message,
-    );
-
-    console.error(
-      `STACK:`,
-      error.stack,
-    );
-  }
-
-  console.error(
-    `=======================================\n`,
-  );
-
-  throw error;
-} finally {
+          throw error;
+        } finally {
           if (page) {
             try {
               await page.close();
@@ -392,7 +409,82 @@ export class CrawlService {
             }
           }
         }
-      }
+      };
+
+      const worker = async () => {
+        for (;;) {
+          if (
+            crawlFailed ||
+            pagesCrawled >=
+              this.MAX_PAGES
+          ) {
+            return;
+          }
+
+          const currentUrl =
+            queue.shift();
+
+          if (!currentUrl) {
+            if (activeWorkers === 0) {
+              return;
+            }
+
+            /*
+             * Queue is momentarily drained while
+             * sibling workers are still producing
+             * links — wait, don't exit.
+             */
+
+            await new Promise<void>(
+              (resolve) =>
+                setTimeout(
+                  resolve,
+                  25,
+                ),
+            );
+
+            continue;
+          }
+
+          if (
+            processed.has(
+              currentUrl,
+            )
+          ) {
+            continue;
+          }
+
+          processed.add(
+            currentUrl,
+          );
+
+          activeWorkers++;
+
+          try {
+            await crawlOneUrl(
+              currentUrl,
+            );
+          } catch (error) {
+            crawlFailed = true;
+
+            queue.length = 0;
+
+            throw error;
+          } finally {
+            activeWorkers--;
+          }
+        }
+      };
+
+      await Promise.all(
+        Array.from(
+          {
+            length:
+              this.PAGE_CONCURRENCY,
+          },
+          () => worker(),
+        ),
+      );
 
       /*
        * =======================================================
@@ -1155,7 +1247,7 @@ export class CrawlService {
      */
 
     await this.seoAuditService.auditPage(
-      crawlPage.id,
+      crawlPage,
     );
 
     return {

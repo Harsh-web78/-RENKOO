@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import AppShell from '@/components/AppShell';
 import {
   getUnifiedOpportunities,
   getWebsites,
@@ -76,6 +77,7 @@ export default function OpportunitiesPage() {
   const { effectivePersona } = usePersona();
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [navOpen, setNavOpen] = useState(false);
   const [websitesLoading, setWebsitesLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedMap, setExpandedMap] = useState<Record<string, boolean>>({});
@@ -303,7 +305,11 @@ export default function OpportunitiesPage() {
 
   if (error && !data) {
     return (
-      <main className="min-h-screen bg-[#f7f8fb] px-6 py-8 text-[#111827] md:px-10">
+      <AppShell
+        mobileOpen={navOpen}
+        onClose={() => setNavOpen(false)}
+        onMenu={() => setNavOpen(true)}
+      >
         <div className="mx-auto max-w-[1400px]">
           <PageHeader
             eyebrow="Growth intelligence"
@@ -327,14 +333,18 @@ export default function OpportunitiesPage() {
             )}
           </div>
         </div>
-      </main>
+      </AppShell>
     );
   }
 
   const summary = data?.summary;
 
   return (
-    <main className="min-h-screen bg-[#f7f8fb] px-5 py-6 text-[#111827] md:px-8 lg:px-10">
+    <AppShell
+      mobileOpen={navOpen}
+      onClose={() => setNavOpen(false)}
+      onMenu={() => setNavOpen(true)}
+    >
       <div className="mx-auto max-w-[1440px]">
         <PageHeader
           eyebrow="Growth intelligence"
@@ -553,7 +563,7 @@ export default function OpportunitiesPage() {
           </div>
         </section>
       </div>
-    </main>
+    </AppShell>
   );
 }
 
@@ -950,7 +960,10 @@ function EmptyState({ filter }: { filter: SourceFilter }) {
 
 function LoadingState() {
   return (
-    <main className="min-h-screen bg-[#f7f8fb] px-5 py-8 md:px-10">
+    <AppShell
+      mobileOpen={false}
+      onClose={() => undefined}
+    >
       <div className="mx-auto max-w-[1440px] animate-pulse">
         <div className="h-3 w-28 bg-[#e5e7eb]" />
         <div className="mt-4 h-10 w-72 bg-[#e5e7eb]" />
@@ -969,7 +982,7 @@ function LoadingState() {
           ))}
         </div>
       </div>
-    </main>
+    </AppShell>
   );
 }
 

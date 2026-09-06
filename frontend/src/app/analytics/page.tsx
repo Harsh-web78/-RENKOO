@@ -106,6 +106,8 @@ export default function AnalyticsPage() {
   const [connected, setConnected] = useState<boolean | null>(
     null,
   );
+  const [hasSelection, setHasSelection] = useState(false);
+  const [draftPropertyId, setDraftPropertyId] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -174,28 +176,35 @@ export default function AnalyticsPage() {
       if (valid) void loadGrowth(valid);
       const plist = Array.isArray(props) ? props : [];
       setProperties(plist);
-      const selected =
+      const persisted =
         (status as any)?.selectedAnalyticsProperty ||
         (status as any)?.analyticsProperty ||
         '';
-      const active =
-        selected &&
-        plist.some(
-          (p: any) =>
-            String(p.propertyId || p.id) === selected,
-        )
-          ? selected
-          : plist[0]
+      const validSelection = Boolean(
+        persisted &&
+          plist.some(
+            (p: any) =>
+              String(p.propertyId || p.id) ===
+              persisted,
+          ),
+      );
+      setHasSelection(validSelection);
+      const active = validSelection
+        ? persisted
+        : '';
+      setPropertyId(active);
+      if (!validSelection) {
+        setDraftPropertyId(
+          plist[0]
             ? String(
                 (plist[0] as any).propertyId ||
                   (plist[0] as any).id,
               )
-            : '';
-      setPropertyId(active);
+            : '',
+        );
+      }
       const gaConnected = Boolean(
-        (status as any)?.ga4Connected ??
-          (status as any)?.analyticsConnected ??
-          plist.length > 0,
+        (status as any)?.connected,
       );
       setConnected(gaConnected);
       if (active) await loadReport(startDate, endDate);
@@ -236,6 +245,7 @@ export default function AnalyticsPage() {
       setPropertyError('');
       await selectGoogleAnalyticsProperty(id);
       setPropertyId(id);
+      setHasSelection(true);
       // Reload the report for the newly selected property.
       await loadReport(startDate, endDate);
     } catch (err: any) {
@@ -479,7 +489,7 @@ export default function AnalyticsPage() {
             }}
           />
         </div>
-      ) : connected === false || properties.length === 0 ? (
+      ) : connected === false ? (
         <div className="mt-6">
           <NotConnectedState
             title="Google Analytics is not connected"
@@ -487,6 +497,79 @@ export default function AnalyticsPage() {
             connectLabel="Open integrations"
             connectHref="/integrations"
           />
+        </div>
+      ) : properties.length === 0 ? (
+        <div className="mt-6">
+          <EmptyState
+            title="No GA4 properties found"
+            description="The connected Google account has no Google Analytics 4 properties RENKOO can read. Create or get access to a GA4 property, then refresh."
+            actionLabel="Refresh"
+            onAction={() => {
+              setLoading(true);
+              void init();
+            }}
+          />
+        </div>
+      ) : !hasSelection ? (
+        <div className="mt-6">
+          <Panel
+            eyebrow="Action required"
+            title="Google Analytics is connected, but no GA4 property is selected"
+            description="Select your GA4 property to start importing traffic data. This is not a billing issue — RENKOO only reads real data for the property you choose."
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <select
+                aria-label="GA4 property"
+                value={draftPropertyId}
+                onChange={(event) =>
+                  setDraftPropertyId(
+                    event.target.value,
+                  )
+                }
+                className="rk-focusable min-w-0 flex-1 rounded-rk-md border border-rk-border bg-rk-surface px-3 py-2 text-sm"
+              >
+                {properties.map((p: any) => {
+                  const value = String(
+                    p.propertyId || p.id,
+                  );
+                  return (
+                    <option
+                      key={value}
+                      value={value}
+                    >
+                      {String(
+                        p.displayName ||
+                          value,
+                      )}
+                    </option>
+                  );
+                })}
+              </select>
+
+              <button
+                type="button"
+                disabled={
+                  selecting || !draftPropertyId
+                }
+                onClick={() =>
+                  void handleSelectProperty(
+                    draftPropertyId,
+                  )
+                }
+                className="rk-focusable shrink-0 rounded-rk-md bg-rk-ink px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
+              >
+                {selecting
+                  ? 'Selecting…'
+                  : 'Select property'}
+              </button>
+            </div>
+
+            {propertyError ? (
+              <p className="rk-body mt-2">
+                {propertyError}
+              </p>
+            ) : null}
+          </Panel>
         </div>
       ) : (
         <div className="mt-6 space-y-6">

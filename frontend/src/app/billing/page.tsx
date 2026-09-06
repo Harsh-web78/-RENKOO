@@ -23,7 +23,7 @@ import {
   LockKeyhole,
   AlertTriangle,
 } from "lucide-react";
-import Sidebar from "@/components/Sidebar";
+import AppShell from "@/components/AppShell";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import DataTable from "@/components/ui/DataTable";
 import { StatusBadge } from "@/components/ui/badge";
@@ -857,14 +857,12 @@ export default function BillingPage() {
       entitlements?.status === "PAUSED");
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <Sidebar
-        mobileOpen={open}
-        onClose={() => setOpen(false)}
-      />
-
-      <main className="lg:pl-[270px]">
-        <section className="mx-auto max-w-[1500px] p-5 lg:p-8">
+    <AppShell
+      mobileOpen={open}
+      onClose={() => setOpen(false)}
+      onMenu={() => setOpen(true)}
+    >
+      <section className="mx-auto max-w-[1500px] p-5 lg:p-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -1538,7 +1536,6 @@ export default function BillingPage() {
             </>
           )}
         </section>
-      </main>
-    </div>
+    </AppShell>
   );
 }

@@ -10,10 +10,9 @@ import {
   CheckCircle2,
   Play,
   ListTodo,
-  Menu,
 } from 'lucide-react';
 
-import Sidebar from '../../components/Sidebar';
+import AppShell from '../../components/AppShell';
 import {
   DataSourceBadge,
   FreshnessBadge,
@@ -744,28 +743,16 @@ export default function BusinessBrainPage() {
     );
 
   return (
-    <div className="min-h-screen bg-[#f7f8fb]">
-      <Sidebar
-        mobileOpen={mobileOpen}
-        onClose={() => setMobileOpen(false)}
-      />
-
-      <main className="lg:ml-64">
-        <div className="mx-auto max-w-[1440px] p-5 lg:p-8">
+    <AppShell
+      mobileOpen={mobileOpen}
+      onClose={() => setMobileOpen(false)}
+      onMenu={() => setMobileOpen(true)}
+    >
+      <div className="mx-auto max-w-[1440px] p-5 lg:p-8">
 
           {/* HEADER */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
-              <button
-                type="button"
-                onClick={() =>
-                  setMobileOpen(true)
-                }
-                aria-label="Open menu"
-                className="mt-1 border border-[#e5e7eb] bg-white p-2 text-[#111827] lg:hidden"
-              >
-                <Menu size={20} />
-              </button>
               <div>
                 <div className="flex items-center gap-2">
                   <Brain
@@ -1790,8 +1777,7 @@ export default function BusinessBrainPage() {
             </div>
           )}
         </div>
-      </main>
-    </div>
+    </AppShell>
   );
 }
 

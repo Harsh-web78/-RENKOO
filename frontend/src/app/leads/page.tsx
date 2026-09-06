@@ -19,10 +19,9 @@ import {
   IndianRupee,
   Wallet,
   ArrowUpRight,
-  Menu,
 } from 'lucide-react';
 
-import Sidebar from '../../components/Sidebar';
+import AppShell from '../../components/AppShell';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Link from 'next/link';
 
@@ -910,14 +909,12 @@ export default function LeadsPage() {
    */
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Sidebar
-        mobileOpen={mobileOpen}
-        onClose={() => setMobileOpen(false)}
-      />
-
-      <main className="lg:ml-64">
-        <div className="mx-auto max-w-7xl p-5 lg:p-8">
+    <AppShell
+      mobileOpen={mobileOpen}
+      onClose={() => setMobileOpen(false)}
+      onMenu={() => setMobileOpen(true)}
+    >
+      <div className="mx-auto max-w-7xl p-5 lg:p-8">
 
           {/* =====================================================
               HEADER
@@ -925,16 +922,6 @@ export default function LeadsPage() {
 
           <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
-              <button
-                type="button"
-                onClick={() =>
-                  setMobileOpen(true)
-                }
-                aria-label="Open menu"
-                className="mt-1 rounded-lg border border-slate-200 bg-white p-2 text-slate-600 lg:hidden"
-              >
-                <Menu size={20} />
-              </button>
               <div>
                 <div className="flex items-center gap-2">
                   <Users
@@ -1742,7 +1729,6 @@ export default function LeadsPage() {
           </section>
 
         </div>
-      </main>
 
       {/* =========================================================
           ADD / EDIT LEAD MODAL
@@ -2473,7 +2459,7 @@ export default function LeadsPage() {
           setPendingDeleteLead(null)
         }
       />
-    </div>
+    </AppShell>
   );
 }
 

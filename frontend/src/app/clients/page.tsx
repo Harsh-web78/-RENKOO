@@ -1,6 +1,6 @@
 'use client';
 
-import Sidebar from '@/components/Sidebar';
+import AppShell from '@/components/AppShell';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -413,10 +413,12 @@ export default function ClientsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <Sidebar mobileOpen={open} onClose={() => setOpen(false)} />
-      <main className="lg:pl-[270px]">
-        <section className="mx-auto max-w-[1500px] p-5 lg:p-8">
+    <AppShell
+      mobileOpen={open}
+      onClose={() => setOpen(false)}
+      onMenu={() => setOpen(true)}
+    >
+      <section className="mx-auto max-w-[1500px] p-5 lg:p-8">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
               Agency OS
@@ -777,7 +779,6 @@ export default function ClientsPage() {
             </>
           )}
         </section>
-      </main>
 
       <Drawer
         open={drawerClient !== null}
@@ -823,7 +824,7 @@ export default function ClientsPage() {
           }
         }}
       />
-    </div>
+    </AppShell>
   );
 }
 

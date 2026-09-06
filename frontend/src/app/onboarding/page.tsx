@@ -17,7 +17,10 @@ import {
   createWebsite,
   getGoogleConnectionStatus,
   getWebsites,
+  isLimitError,
+  limitUsageText,
 } from '../../lib/api';
+import PersonaSelector from '../../components/PersonaSelector';
 
 type Step = 1 | 2 | 3;
 
@@ -47,6 +50,8 @@ export default function OnboardingPage() {
     useState<number | null>(null);
 
   const [error, setError] = useState('');
+  const [limitError, setLimitError] =
+    useState<unknown>(null);
 
   // Honest OAuth-return + existing-website handling.
   // Reads only real signals: URL params from the Google redirect
@@ -162,6 +167,7 @@ export default function OnboardingPage() {
 
     try {
       setLoading(true);
+      setLimitError(null);
 
       await createWebsite({
         name: cleanName,
@@ -177,11 +183,15 @@ export default function OnboardingPage() {
     } catch (err) {
       console.error(err);
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Could not add your website.',
-      );
+      if (isLimitError(err)) {
+        setLimitError(err);
+      } else {
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Could not add your website.',
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -289,6 +299,30 @@ export default function OnboardingPage() {
             {error}
           </div>
         )}
+
+        {limitError ? (
+          <div className="mx-auto mt-6 max-w-2xl rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <p className="font-bold text-amber-900">
+              Free plan limit reached
+            </p>
+
+            <p className="mt-1">
+              This workspace already uses its
+              included website slot. Your
+              existing data is untouched.
+              {limitUsageText(limitError)
+                ? ` ${limitUsageText(limitError)}.`
+                : ''}
+            </p>
+
+            <a
+              href="/billing"
+              className="mt-3 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
+            >
+              View plans
+            </a>
+          </div>
+        ) : null}
 
         {/* ================================================= */}
         {/* STEP 1 */}
@@ -619,6 +653,22 @@ export default function OnboardingPage() {
                     : 'Connect later'
                 }
               />
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-slate-200 p-5">
+              <div className="font-bold text-slate-900">
+                Choose your role focus
+              </div>
+
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                This only changes ordering and
+                emphasis across RENKOO. It never
+                changes what you are allowed to do.
+              </p>
+
+              <div className="mt-3">
+                <PersonaSelector />
+              </div>
             </div>
 
             <div className="mt-4 rounded-2xl border border-slate-200 p-5">

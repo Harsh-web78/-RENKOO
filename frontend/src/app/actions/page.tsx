@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import AppShell from '@/components/AppShell';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import {
   getActions,
@@ -53,6 +54,7 @@ export default function ActionsPage() {
   const [sortMode, setSortMode] = useState<SortMode>('RECENT');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [navOpen, setNavOpen] = useState(false);
   const [error, setError] = useState('');
   const [expandedMap, setExpandedMap] = useState<Record<string, boolean>>(
     {},
@@ -212,7 +214,11 @@ export default function ActionsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f8fb] px-5 py-6 text-[#111827] md:px-8 lg:px-10">
+    <AppShell
+      mobileOpen={navOpen}
+      onClose={() => setNavOpen(false)}
+      onMenu={() => setNavOpen(true)}
+    >
       <div className="mx-auto max-w-[1440px]">
         <header className="flex flex-col gap-5 border-b border-[#e5e7eb] pb-7 md:flex-row md:items-end md:justify-between">
           <div>
@@ -465,7 +471,7 @@ export default function ActionsPage() {
         }}
         onCancel={() => setDismissTarget(null)}
       />
-    </main>
+    </AppShell>
   );
 }
 
@@ -1027,7 +1033,10 @@ function EmptyState() {
 
 function LoadingState() {
   return (
-    <main className="min-h-screen bg-[#f7f8fb] px-5 py-8 md:px-10">
+    <AppShell
+      mobileOpen={false}
+      onClose={() => undefined}
+    >
       <div className="mx-auto max-w-[1440px] animate-pulse">
         <div className="h-3 w-32 bg-[#e5e7eb]" />
         <div className="mt-4 h-10 w-64 bg-[#e5e7eb]" />
@@ -1047,7 +1056,7 @@ function LoadingState() {
           ))}
         </div>
       </div>
-    </main>
+    </AppShell>
   );
 }
 

@@ -19,6 +19,7 @@ import {
 } from './dto/run-ai-check.dto';
 import { AiProviderRegistry } from './providers/provider.registry';
 import { AiProviderError } from './providers/provider.errors';
+import { FREE_MONTHLY_AI_SCANS } from '../billing/plans.config';
 import {
   LiveAiProviderId,
   LiveProviderResultType,
@@ -27,12 +28,12 @@ import { analyzeAiResponse } from './analysis';
 
 /*
  * Free-workspace monthly allowance for live
- * provider checks. Mirrors BillingService
- * FREE_LIMITS AI_SCANS. Measured from persisted
- * checks (no subscription counter exists for
- * free workspaces).
+ * provider checks. Single source:
+ * billing/plans.config.ts
+ * (FREE_MONTHLY_AI_SCANS). Measured from
+ * persisted checks (no subscription counter
+ * exists for free workspaces).
  */
-const FREE_MONTHLY_AI_SCANS = 5;
 
 const RUN_MAX_OUTPUT_TOKENS = 512;
 

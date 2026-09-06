@@ -60,6 +60,8 @@ export const TRIAL_DAYS = 14;
 
 export const FREE_AI_GENERATIONS_PER_MONTH = 5;
 
+export const FREE_MONTHLY_AI_SCANS = 5;
+
 export const PLAN_ORDER = [
   'FREE',
   'STARTER',

@@ -108,6 +108,8 @@ export default function SearchVisibilityPage() {
   const [connected, setConnected] = useState<boolean | null>(null);
   const [properties, setProperties] = useState<GoogleProperty[]>([]);
   const [property, setProperty] = useState('');
+  const [hasSelection, setHasSelection] = useState(false);
+  const [draftProperty, setDraftProperty] = useState('');
   const [selecting, setSelecting] = useState(false);
   const [analytics, setAnalytics] = useState<any>(null);
   const [queries, setQueries] = useState<GoogleQueryRow[]>([]);
@@ -147,20 +149,26 @@ export default function SearchVisibilityPage() {
         (status as any)?.selectedProperty ||
         (status as any)?.property ||
         '';
-      const active =
+      const persisted =
         selected &&
         list.some(
           (p: any) => (p.siteUrl || p.url) === selected,
         )
           ? selected
-          : (list[0] as any)?.siteUrl ||
+          : '';
+      setHasSelection(Boolean(persisted));
+      if (!persisted) {
+        setProperty('');
+        setDraftProperty(
+          (list[0] as any)?.siteUrl ||
             (list[0] as any)?.url ||
-            '';
-      setProperty(active || '');
-      if (!active) {
+            '',
+        );
         setLoading(false);
         return;
       }
+      const active = persisted;
+      setProperty(active || '');
       const [a, q, pg, o] = await Promise.all([
         getGoogleAnalytics(startDate, endDate),
         getGoogleQueries(startDate, endDate),
@@ -211,6 +219,7 @@ export default function SearchVisibilityPage() {
       setSelecting(true);
       await selectGoogleProperty(siteUrl);
       setProperty(siteUrl);
+      setHasSelection(true);
       setLoading(true);
       await load();
     } catch (err: any) {
@@ -609,6 +618,55 @@ export default function SearchVisibilityPage() {
               void load();
             }}
           />
+        </div>
+      ) : !hasSelection ? (
+        <div className="mt-6">
+          <Panel
+            eyebrow="Action required"
+            title="Google Search Console is connected, but no property is selected"
+            description="Select your Search Console property to start importing data. This is not a subscription issue — RENKOO only fetches real data for the property you choose."
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <select
+                aria-label="Search Console property"
+                value={draftProperty}
+                onChange={(event) =>
+                  setDraftProperty(event.target.value)
+                }
+                className="rk-focusable min-w-0 flex-1 rounded-rk-md border border-rk-border bg-rk-surface px-3 py-2 text-sm"
+              >
+                {properties.map((p: any) => {
+                  const value =
+                    p.siteUrl || p.url || '';
+                  return (
+                    <option
+                      key={value || p.permission}
+                      value={value}
+                    >
+                      {value}
+                    </option>
+                  );
+                })}
+              </select>
+
+              <button
+                type="button"
+                disabled={
+                  selecting || !draftProperty
+                }
+                onClick={() =>
+                  void handleSelectProperty(
+                    draftProperty,
+                  )
+                }
+                className="rk-focusable shrink-0 rounded-rk-md bg-rk-ink px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
+              >
+                {selecting
+                  ? 'Selecting…'
+                  : 'Select property'}
+              </button>
+            </div>
+          </Panel>
         </div>
       ) : (
         <div className="mt-6 space-y-6">

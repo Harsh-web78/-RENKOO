@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import {
+  CrawlPage,
   SeoIssueSeverity,
   SeoIssueStatus,
 } from '@prisma/client';
@@ -13,13 +14,25 @@ export class SeoAuditService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async auditPage(crawlPageId: string) {
+  /*
+   * Accepts the already-loaded page record when the
+   * caller has it (saves one findUnique per page).
+   * The id form is kept for any caller that only
+   * holds the id.
+   */
+  async auditPage(
+    pageOrId: string | CrawlPage,
+  ) {
     const page =
-      await this.prisma.crawlPage.findUnique({
-        where: {
-          id: crawlPageId,
-        },
-      });
+      typeof pageOrId === 'string'
+        ? await this.prisma.crawlPage.findUnique(
+            {
+              where: {
+                id: pageOrId,
+              },
+            },
+          )
+        : pageOrId;
 
     if (!page) {
       throw new Error('Crawl page not found');

@@ -388,6 +388,20 @@ export class CrawlAnalysisService {
         }
       >();
 
+    /*
+     * Page id → URL lookup. The issue loop below
+     * runs once per open issue; a Map keeps it
+     * O(1) per issue instead of scanning pages
+     * linearly for every issue.
+     */
+
+    const pageUrlById = new Map(
+      pages.map((page) => [
+        page.id,
+        page.url,
+      ]),
+    );
+
     for (
       const issue of openIssues
     ) {
@@ -438,11 +452,9 @@ export class CrawlAnalysisService {
             issue.crawlPageId,
 
           url:
-            pages.find(
-              (page) =>
-                page.id ===
-                issue.crawlPageId,
-            )?.url || '',
+            pageUrlById.get(
+              issue.crawlPageId,
+            ) || '',
         },
       );
     }

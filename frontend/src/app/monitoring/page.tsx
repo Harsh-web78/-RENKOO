@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import AppShell from '@/components/AppShell';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import {
   getMonitoringChanges,
@@ -38,6 +39,7 @@ export default function MonitoringPage() {
     useState<DirectionFilter>('ALL');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [navOpen, setNavOpen] = useState(false);
   const [alertsLoading, setAlertsLoading] = useState(false);
   const [detecting, setDetecting] = useState(false);
   const [detectMessage, setDetectMessage] = useState('');
@@ -289,7 +291,11 @@ export default function MonitoringPage() {
 
   if (error && !changes) {
     return (
-      <main className="min-h-screen bg-[#f7f8fb] px-6 py-8 text-[#111827] md:px-10">
+      <AppShell
+        mobileOpen={navOpen}
+        onClose={() => setNavOpen(false)}
+        onMenu={() => setNavOpen(true)}
+      >
         <div className="mx-auto max-w-[1400px]">
           <PageHeader
             title="What Changed?"
@@ -313,7 +319,7 @@ export default function MonitoringPage() {
             )}
           </div>
         </div>
-      </main>
+      </AppShell>
     );
   }
 
@@ -328,7 +334,11 @@ export default function MonitoringPage() {
     (summary?.critical || 0) + (summary?.high || 0);
 
   return (
-    <main className="min-h-screen bg-[#f7f8fb] px-5 py-6 text-[#111827] md:px-8 lg:px-10">
+    <AppShell
+      mobileOpen={navOpen}
+      onClose={() => setNavOpen(false)}
+      onMenu={() => setNavOpen(true)}
+    >
       <div className="mx-auto max-w-[1440px]">
         <PageHeader
           title="What Changed?"
@@ -631,7 +641,7 @@ export default function MonitoringPage() {
         }}
         onCancel={() => setResolveTarget(null)}
       />
-    </main>
+    </AppShell>
   );
 }
 
@@ -1124,7 +1134,10 @@ function DirectionBadge({ direction }: { direction: string }) {
 
 function LoadingState() {
   return (
-    <main className="min-h-screen bg-[#f7f8fb] px-5 py-8 md:px-10">
+    <AppShell
+      mobileOpen={false}
+      onClose={() => undefined}
+    >
       <div className="mx-auto max-w-[1440px] animate-pulse">
         <div className="h-3 w-28 bg-[#e5e7eb]" />
         <div className="mt-4 h-10 w-72 bg-[#e5e7eb]" />
@@ -1141,7 +1154,7 @@ function LoadingState() {
           ))}
         </div>
       </div>
-    </main>
+    </AppShell>
   );
 }
 

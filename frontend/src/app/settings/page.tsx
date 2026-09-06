@@ -2,21 +2,28 @@
 
 import { getTeamMembers, inviteTeamMember, updateTeamMemberRole, removeTeamMember, TeamMember } from "../../lib/api";
 import { useEffect, useState } from 'react';
-import Sidebar from '@/components/Sidebar';
+import { useRouter } from 'next/navigation';
+import AppShell from '@/components/AppShell';
 import PersonaSelector from '@/components/PersonaSelector';
 import {
   getCurrentAccount,
+  isLimitError,
+  limitUsageText,
+  logout,
   updateProfile,
   updatePassword,
   type CurrentAccount,
 } from '@/lib/api';
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"ADMIN" | "MEMBER">("MEMBER");
   const [teamLoading, setTeamLoading] = useState(false);
   const [teamMessage, setTeamMessage] = useState("");
+  const [teamLimit, setTeamLimit] =
+    useState<unknown>(null);
 const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'workspace' | 'profile' | 'team' | 'security' | 'billing'>('workspace');
   const [account, setAccount] = useState<CurrentAccount | null>(null);
@@ -137,23 +144,12 @@ const [open, setOpen] = useState(false);
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <Sidebar
-        mobileOpen={open}
-        onClose={() => setOpen(false)}
-      />
-
-      <main className="lg:pl-[270px]">
-        <header className="flex h-[72px] items-center border-b border-slate-200 bg-white px-5 lg:px-8">
-          <div>
-            <div className="text-sm font-bold">RENKOO</div>
-            <div className="text-xs text-slate-400">
-              Account & Workspace
-            </div>
-          </div>
-        </header>
-
-        <section className="mx-auto max-w-[1150px] p-5 lg:p-8">
+    <AppShell
+      mobileOpen={open}
+      onClose={() => setOpen(false)}
+      onMenu={() => setOpen(true)}
+    >
+      <section className="mx-auto max-w-[1150px] p-5 lg:p-8">
           <h1 className="text-3xl font-bold">Settings</h1>
 
           <p className="mt-2 text-sm text-slate-500">
@@ -377,6 +373,24 @@ const [open, setOpen] = useState(false);
                     </span>
                   )}
                 </div>
+
+                <div className="mt-6 border-t border-slate-100 pt-5">
+                  <p className="text-sm font-semibold text-slate-700">
+                    Sign out of RENKOO on this device.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      logout();
+                      router.push('/login');
+                      router.refresh();
+                    }}
+                    className="mt-3 rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                  >
+                    Log out
+                  </button>
+                </div>
               </section>
 
               {/* ROLE FOCUS */}
@@ -445,6 +459,7 @@ const [open, setOpen] = useState(false);
                       if (!trimmedEmail) return;
                       setTeamLoading(true);
                       setTeamMessage("");
+                      setTeamLimit(null);
                       try {
                         await inviteTeamMember(trimmedEmail, inviteRole);
                         setInviteEmail("");
@@ -454,7 +469,11 @@ const [open, setOpen] = useState(false);
                           `Invite sent to ${trimmedEmail}. Member list refreshed — they will appear below once they accept.`
                         );
                       } catch (error) {
-                        setTeamMessage(error instanceof Error ? error.message : "Failed to invite member.");
+                        if (isLimitError(error)) {
+                          setTeamLimit(error);
+                        } else {
+                          setTeamMessage(error instanceof Error ? error.message : "Failed to invite member.");
+                        }
                       } finally {
                         setTeamLoading(false);
                       }
@@ -471,6 +490,29 @@ const [open, setOpen] = useState(false);
                     {teamMessage}
                   </div>
                 )}
+
+                {teamLimit ? (
+                  <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    <p className="font-bold text-amber-900">
+                      Free plan limit reached
+                    </p>
+
+                    <p className="mt-1">
+                      This workspace already uses
+                      its included team seat.
+                      {limitUsageText(teamLimit)
+                        ? ` ${limitUsageText(teamLimit)}.`
+                        : ''}
+                    </p>
+
+                    <a
+                      href="/billing"
+                      className="mt-3 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
+                    >
+                      View plans
+                    </a>
+                  </div>
+                ) : null}
 
                 <div className="divide-y divide-slate-100">
                   {teamMembers.map((member) => (
@@ -530,7 +572,6 @@ const [open, setOpen] = useState(false);
             </div>
           )}
         </section>
-      </main>
-    </div>
+    </AppShell>
   );
 }

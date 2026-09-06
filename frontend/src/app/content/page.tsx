@@ -27,6 +27,8 @@ import {
   listContentDrafts,
   createAction,
   getWebsites,
+  isLimitError,
+  limitUsageText,
   type Website,
 } from '@/lib/api';
 import AppShell from '@/components/AppShell';
@@ -49,6 +51,7 @@ import {
   LoadingBlock,
   ErrorState,
   EmptyState,
+  LimitReachedState,
   InsightBlock,
   RecommendationCallout,
   NextAction,
@@ -111,6 +114,8 @@ export default function ContentPage() {
   const [analysisError, setAnalysisError] = useState('');
   const [briefLoading, setBriefLoading] = useState(false);
   const [briefMsg, setBriefMsg] = useState('');
+  const [briefLimit, setBriefLimit] =
+    useState<unknown>(null);
   const [actionBusy, setActionBusy] = useState<
     Record<string, boolean>
   >({});
@@ -235,6 +240,7 @@ export default function ContentPage() {
     try {
       setBriefLoading(true);
       setBriefMsg('');
+      setBriefLimit(null);
       await generateContentBrief({
         websiteId: drawerOpp.websiteId || websiteId,
         query: String(drawerOpp.query || ''),
@@ -256,7 +262,13 @@ export default function ContentPage() {
         );
       }
     } catch (err: any) {
-      setBriefMsg(err?.message || 'Brief generation failed.');
+      if (isLimitError(err)) {
+        setBriefLimit(err);
+      } else {
+        setBriefMsg(
+          err?.message || 'Brief generation failed.',
+        );
+      }
     } finally {
       setBriefLoading(false);
     }
@@ -828,6 +840,19 @@ export default function ContentPage() {
                 {briefMsg ||
                   'Generate an evidence-backed brief. Review it in the Workspace section before drafting.'}
               </p>
+              {briefLimit ? (
+                <div className="mt-2">
+                  <LimitReachedState
+                    title="Free plan limit reached"
+                    description="This brief could not be generated because the workspace hit its AI generation allowance. Existing briefs are untouched."
+                    detail={limitUsageText(
+                      briefLimit,
+                    )}
+                    actionLabel="View plans"
+                    actionHref="/billing"
+                  />
+                </div>
+              ) : null}
             </DrawerSection>
             <DrawerSection title="Outcome">
               <NextAction

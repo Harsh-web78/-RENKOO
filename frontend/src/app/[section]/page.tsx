@@ -8,17 +8,20 @@ import {
   ChevronUp,
   Globe2,
   Loader2,
-  Menu,
   Play,
   RefreshCw,
   ShieldCheck,
 } from 'lucide-react';
 
-import Sidebar from '../../components/Sidebar';
+import AppShell from '../../components/AppShell';
+
+import { useElapsed } from '../../lib/useElapsed';
 
 import {
   getCrawlAnalysis,
   getWebsites,
+  isLimitError,
+  limitUsageText,
   startCrawl,
   Website,
 } from '../../lib/api';
@@ -195,10 +198,14 @@ export default function TechnicalSeoPage() {
 
   const [running, setRunning] = useState(false);
 
+  const crawlSeconds = useElapsed(running);
+
   const [loadingReport, setLoadingReport] =
     useState(false);
 
   const [error, setError] = useState('');
+  const [limitError, setLimitError] =
+    useState<unknown>(null);
 
   const [summary, setSummary] =
     useState<Summary | null>(null);
@@ -368,6 +375,7 @@ export default function TechnicalSeoPage() {
     try {
       setRunning(true);
       setError('');
+      setLimitError(null);
 
       const result = await startCrawl(
         selectedWebsite.id,
@@ -414,12 +422,16 @@ export default function TechnicalSeoPage() {
         );
       }
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : 'Unable to run website crawl.';
+      if (isLimitError(err)) {
+        setLimitError(err);
+      } else {
+        const message =
+          err instanceof Error
+            ? err.message
+            : 'Unable to run website crawl.';
 
-      setError(message);
+        setError(message);
+      }
     } finally {
       setRunning(false);
     }
@@ -481,61 +493,12 @@ export default function TechnicalSeoPage() {
     analysis?.pageIntelligence ?? [];
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <Sidebar
-        mobileOpen={open}
-        onClose={() => setOpen(false)}
-      />
-
-      <main className="lg:pl-[270px]">
-        <header className="flex h-[72px] items-center justify-between border-b border-slate-100 bg-white px-5 lg:px-8">
-          <div className="flex items-center">
-            <button
-              className="mr-4 lg:hidden"
-              onClick={() => setOpen(true)}
-              aria-label="Open menu"
-              type="button"
-            >
-              <Menu size={22} />
-            </button>
-
-            <div>
-              <div className="text-sm font-semibold text-slate-500">
-                RENKO / Technical SEO
-              </div>
-
-              <div className="mt-0.5 text-xs text-slate-400">
-                Technical website health & crawl intelligence
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={
-              loadingReport ||
-              running ||
-              loadingWebsites
-            }
-            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <RefreshCw
-              size={16}
-              className={
-                loadingReport ||
-                running ||
-                loadingWebsites
-                  ? 'animate-spin'
-                  : ''
-              }
-            />
-
-            Refresh
-          </button>
-        </header>
-
-        <section className="mx-auto max-w-[1500px] p-5 lg:p-8">
+    <AppShell
+      mobileOpen={open}
+      onClose={() => setOpen(false)}
+      onMenu={() => setOpen(true)}
+    >
+      <section className="mx-auto max-w-[1500px] p-5 lg:p-8">
           <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm lg:p-7">
             <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex items-start gap-4">
@@ -656,6 +619,31 @@ export default function TechnicalSeoPage() {
             )}
           </div>
 
+          {limitError ? (
+            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+              <div className="text-sm font-bold text-amber-900">
+                Free plan limit reached
+              </div>
+
+              <div className="mt-1 text-sm leading-6 text-amber-800">
+                This crawl could not start
+                because the workspace hit its
+                crawl allowance. Existing data
+                is untouched.
+                {limitUsageText(limitError)
+                  ? ` ${limitUsageText(limitError)}.`
+                  : ''}
+              </div>
+
+              <a
+                href="/billing"
+                className="mt-3 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
+              >
+                View plans
+              </a>
+            </div>
+          ) : null}
+
           {error && (
             <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5">
               <div className="flex items-start gap-3">
@@ -718,27 +706,52 @@ export default function TechnicalSeoPage() {
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={handleRunCrawl}
-                    disabled={running}
-                    className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {running ? (
-                      <>
-                        <Loader2
-                          size={17}
-                          className="animate-spin"
-                        />
-                        Crawling...
-                      </>
-                    ) : (
-                      <>
-                        <Play size={17} />
-                        Run Technical SEO Crawl
-                      </>
-                    )}
-                  </button>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <button
+                      type="button"
+                      onClick={handleRefresh}
+                      disabled={
+                        loadingReport ||
+                        running ||
+                        loadingWebsites
+                      }
+                      className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <RefreshCw
+                        size={16}
+                        className={
+                          loadingReport ||
+                          running ||
+                          loadingWebsites
+                            ? 'animate-spin'
+                            : ''
+                        }
+                      />
+                      Refresh
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleRunCrawl}
+                      disabled={running}
+                      className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {running ? (
+                        <>
+                          <Loader2
+                            size={17}
+                            className="animate-spin"
+                          />
+                          Crawling… {crawlSeconds}s
+                        </>
+                      ) : (
+                        <>
+                          <Play size={17} />
+                          Run Technical SEO Crawl
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -755,7 +768,7 @@ export default function TechnicalSeoPage() {
 
                       <div className="mt-4 text-sm font-bold">
                         {running
-                          ? 'Crawling website...'
+                          ? `Crawling website… ${crawlSeconds}s`
                           : 'Loading Technical SEO report...'}
                       </div>
 
@@ -763,6 +776,9 @@ export default function TechnicalSeoPage() {
                         RENKO is analyzing crawlability,
                         metadata, performance, accessibility,
                         schema and other technical signals.
+                        Larger sites can take a minute —
+                        this page waits for the real
+                        result.
                       </div>
                     </div>
                   </div>
@@ -1401,7 +1417,6 @@ export default function TechnicalSeoPage() {
             </>
           )}
         </section>
-      </main>
-    </div>
+    </AppShell>
   );
 }

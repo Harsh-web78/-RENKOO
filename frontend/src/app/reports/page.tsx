@@ -1,6 +1,6 @@
 'use client';
 
-import Sidebar from '@/components/Sidebar';
+import AppShell from '@/components/AppShell';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Badge,
@@ -17,6 +17,8 @@ import {
   getReport,
   getReportScheduling,
   getWebsites,
+  isLimitError,
+  limitUsageText,
   listClients,
   listReports,
   revokeReportShare,
@@ -60,6 +62,8 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
+  const [generateLimit, setGenerateLimit] =
+    useState<unknown>(null);
   const [shareLink, setShareLink] = useState('');
   const [deleteTarget, setDeleteTarget] =
     useState<ReportListItem | null>(null);
@@ -151,6 +155,7 @@ export default function ReportsPage() {
     try {
       setGenerating(true);
       setError('');
+      setGenerateLimit(null);
       setShareLink('');
 
       const report = await generateReport({
@@ -180,9 +185,13 @@ export default function ReportsPage() {
       ]);
       setSelected(report);
     } catch (err: any) {
-      setError(
-        err?.message || 'Report generation failed.',
-      );
+      if (isLimitError(err)) {
+        setGenerateLimit(err);
+      } else {
+        setError(
+          err?.message || 'Report generation failed.',
+        );
+      }
     } finally {
       setGenerating(false);
     }
@@ -424,10 +433,12 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <Sidebar mobileOpen={open} onClose={() => setOpen(false)} />
-      <main className="lg:pl-[270px]">
-        <section className="mx-auto max-w-[1500px] p-5 lg:p-8">
+    <AppShell
+      mobileOpen={open}
+      onClose={() => setOpen(false)}
+      onMenu={() => setOpen(true)}
+    >
+      <section className="mx-auto max-w-[1500px] p-5 lg:p-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -497,6 +508,30 @@ export default function ReportsPage() {
               {error}
             </div>
           )}
+
+          {generateLimit ? (
+            <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <p className="font-bold text-amber-900">
+                Free plan limit reached
+              </p>
+
+              <p className="mt-1">
+                This workspace already used its
+                included monthly reports. Your
+                existing reports are untouched.
+                {limitUsageText(generateLimit)
+                  ? ` ${limitUsageText(generateLimit)}.`
+                  : ''}
+              </p>
+
+              <a
+                href="/billing"
+                className="mt-3 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
+              >
+                View plans
+              </a>
+            </div>
+          ) : null}
 
           {scheduling && (
             <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-500">
@@ -642,7 +677,6 @@ export default function ReportsPage() {
             </div>
           </div>
         </section>
-      </main>
 
       <ConfirmDialog
         open={deleteTarget !== null}
@@ -661,7 +695,7 @@ export default function ReportsPage() {
           }
         }}
       />
-    </div>
+    </AppShell>
   );
 }
 

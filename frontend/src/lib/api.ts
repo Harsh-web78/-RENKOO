@@ -379,6 +379,112 @@ export function clearToken() {
 }
 
 /*
+ * Auth session helpers. Token lives in localStorage
+ * (key renkoo_access_token); there is no cookie
+ * session, so route protection must consult these
+ * helpers client-side (see components/AuthGate).
+ */
+export function isAuthenticated() {
+  return getToken() !== null;
+}
+
+export function logout() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  localStorage.removeItem('renkoo_access_token');
+  // Persona is a per-device view preference; clear it
+  // so the next account starts from the default view.
+  localStorage.removeItem(
+    'renkoo_persona_effective',
+  );
+}
+
+export interface LimitDetails {
+  metric?: string;
+  used?: number;
+  limit?: number;
+  planCode?: string;
+}
+
+/*
+ * Billing-limit recognition. Backend limit
+ * rejections carry `code: 'LIMIT_REACHED'` plus
+ * `details: { metric, used, limit, planCode }`.
+ * Everything else (expired token, no crawl,
+ * disconnected integration, provider outage)
+ * must keep its own error state — never render
+ * those as paywalls.
+ */
+export function isLimitError(
+  error: unknown,
+) {
+  return (
+    error instanceof Error &&
+    (error as Error & { code?: string })
+      .code === 'LIMIT_REACHED'
+  );
+}
+
+export function limitDetails(
+  error: unknown,
+): LimitDetails {
+  if (!(error instanceof Error)) {
+    return {};
+  }
+
+  const details = (
+    error as Error & {
+      details?: unknown;
+    }
+  ).details;
+
+  if (!details || typeof details !== 'object') {
+    return {};
+  }
+
+  const record = details as Record<
+    string,
+    unknown
+  >;
+
+  return {
+    metric:
+      typeof record.metric === 'string'
+        ? record.metric
+        : undefined,
+    used:
+      typeof record.used === 'number'
+        ? record.used
+        : undefined,
+    limit:
+      typeof record.limit === 'number'
+        ? record.limit
+        : undefined,
+    planCode:
+      typeof record.planCode === 'string'
+        ? record.planCode
+        : undefined,
+  };
+}
+
+export function limitUsageText(
+  error: unknown,
+) {
+  const { used, limit } = limitDetails(error);
+
+  if (
+    typeof used === 'number' &&
+    typeof limit === 'number'
+  ) {
+    return `Current usage: ${used} / ${limit}`;
+  }
+
+  return undefined;
+}
+
+/*
  * =========================================================
  * GENERIC API REQUEST
  * =========================================================
@@ -479,7 +585,38 @@ async function request<T>(
       },
     );
 
-    throw new Error(errorMessage);
+    /*
+     * Preserve machine-readable billing/limit
+     * context. Plain `message` handling above is
+     * unchanged, so every existing
+     * `catch (err) { err.message }` keeps working;
+     * pages that understand limits branch on
+     * `err.code === 'LIMIT_REACHED'` and render
+     * LimitReachedState with real usage numbers.
+     */
+
+    const limitError = new Error(
+      errorMessage,
+    ) as Error & {
+      code?: string;
+      status?: number;
+      details?: unknown;
+    };
+
+    limitError.status = response.status;
+
+    if (
+      data &&
+      typeof data === 'object' &&
+      typeof (data as any).code ===
+        'string'
+    ) {
+      limitError.code = (data as any).code;
+      limitError.details = (data as any)
+        .details;
+    }
+
+    throw limitError;
   }
 
   // 204 No Content is a valid successful response.

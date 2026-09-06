@@ -7,11 +7,10 @@ import {
   ExternalLink,
   Globe2,
   Loader2,
-  Menu,
   RefreshCw,
 } from 'lucide-react';
 
-import Sidebar from '../../components/Sidebar';
+import AppShell from '../../components/AppShell';
 
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Panel from '../../components/ui/Panel';
@@ -505,38 +504,12 @@ export default function IntegrationsPage() {
    */
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <Sidebar
-        mobileOpen={open}
-        onClose={() => setOpen(false)}
-      />
-
-      <main className="lg:pl-[270px]">
-        {/* HEADER */}
-
-        <header className="flex h-[72px] items-center border-b border-slate-200 bg-white px-5 lg:px-8">
-          <button
-            className="mr-4 lg:hidden"
-            onClick={() =>
-              setOpen(true)
-            }
-            aria-label="Open menu"
-          >
-            <Menu />
-          </button>
-
-          <div>
-            <div className="text-sm font-bold">
-              RENKOO
-            </div>
-
-            <div className="text-xs text-slate-400">
-              Integrations
-            </div>
-          </div>
-        </header>
-
-        <section className="mx-auto max-w-[1100px] p-5 lg:p-8">
+    <AppShell
+      mobileOpen={open}
+      onClose={() => setOpen(false)}
+      onMenu={() => setOpen(true)}
+    >
+      <section className="mx-auto max-w-[1100px] p-5 lg:p-8">
 
           {/* PAGE HEADER */}
 
@@ -755,6 +728,23 @@ export default function IntegrationsPage() {
                     </div>
                   )}
 
+                {connected && (
+                  <div className="mt-3 text-xs text-slate-500">
+                    <span className="font-semibold text-slate-700">
+                      Next action:{' '}
+                    </span>
+
+                    {health?.status ===
+                    'RECONNECT_REQUIRED'
+                      ? 'Reconnect your Google account to restore data.'
+                      : !selectedProperty
+                        ? 'Select a Search Console property below to start importing search data.'
+                        : !selectedAnalyticsProperty
+                          ? 'Select a GA4 property below to start importing traffic data.'
+                          : 'You are set — RENKOO pulls real data automatically.'}
+                  </div>
+                )}
+
               </div>
 
               {/* ACTION */}
@@ -796,6 +786,41 @@ export default function IntegrationsPage() {
                   </button>
                 ) : (
                   <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                    {health?.status ===
+                      'RECONNECT_REQUIRED' && (
+                      <button
+                        type="button"
+                        onClick={
+                          handleConnectGoogle
+                        }
+                        disabled={
+                          connecting ||
+                          loadingConnection
+                        }
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                      >
+                        {connecting ? (
+                          <>
+                            <Loader2
+                              size={17}
+                              className="animate-spin"
+                            />
+
+                            Reconnecting...
+                          </>
+                        ) : (
+                          <>
+                            Reconnect Google
+
+                            <ExternalLink
+                              size={16}
+                            />
+                          </>
+                        )}
+
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => {
@@ -1524,8 +1549,7 @@ export default function IntegrationsPage() {
           />
 
         </section>
-      </main>
-    </div>
+    </AppShell>
   );
 }
 

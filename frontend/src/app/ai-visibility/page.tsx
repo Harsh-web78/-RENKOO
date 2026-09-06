@@ -23,6 +23,8 @@ import {
   recordAiVisibilityCheck,
   runAiVisibilityCheck,
   createActionFromRecommendation,
+  isLimitError,
+  limitUsageText,
   type Website,
 } from '@/lib/api';
 import AppShell from '@/components/AppShell';
@@ -44,6 +46,7 @@ import {
   LoadingBlock,
   ErrorState,
   EmptyState,
+  LimitReachedState,
   InsightBlock,
   EvidenceList,
   ConfidenceIndicator,
@@ -127,6 +130,8 @@ export default function AiVisibilityPage() {
   });
   const [running, setRunning] = useState(false);
   const [runMsg, setRunMsg] = useState('');
+  const [runLimit, setRunLimit] =
+    useState<unknown>(null);
   const [actionBusy, setActionBusy] = useState<
     Record<string, boolean>
   >({});
@@ -431,6 +436,7 @@ export default function AiVisibilityPage() {
     try {
       setRunning(true);
       setRunMsg('');
+      setRunLimit(null);
       const res = await runAiVisibilityCheck({
         websiteId,
         query: runForm.query.trim(),
@@ -444,7 +450,13 @@ export default function AiVisibilityPage() {
       );
       await loadAll(websiteId);
     } catch (err: any) {
-      setRunMsg(err?.message || 'Live check failed.');
+      if (isLimitError(err)) {
+        setRunLimit(err);
+      } else {
+        setRunMsg(
+          err?.message || 'Live check failed.',
+        );
+      }
     } finally {
       setRunning(false);
     }
@@ -998,6 +1010,17 @@ export default function AiVisibilityPage() {
                   </div>
                   {runMsg ? (
                     <p className="rk-body">{runMsg}</p>
+                  ) : null}
+                  {runLimit ? (
+                    <LimitReachedState
+                      title="Free plan limit reached"
+                      description="This check could not run because the workspace hit its AI scan allowance. Existing data is untouched."
+                      detail={limitUsageText(
+                        runLimit,
+                      )}
+                      actionLabel="View plans"
+                      actionHref="/billing"
+                    />
                   ) : null}
                 </div>
               </Panel>

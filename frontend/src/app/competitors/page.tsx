@@ -17,6 +17,8 @@ import {
   deleteCompetitor,
   crawlCompetitor,
   getLatestCompetitorCrawl,
+  isLimitError,
+  limitUsageText,
   type Website,
   type Competitor,
 } from '@/lib/api';
@@ -40,6 +42,7 @@ import {
   LoadingBlock,
   ErrorState,
   EmptyState,
+  LimitReachedState,
   InsightBlock,
   EvidenceList,
   NextAction,
@@ -72,6 +75,7 @@ interface Row {
   crawl: any;
   crawlState: 'idle' | 'loading' | 'crawling' | 'error';
   crawlError: string;
+  crawlLimit?: unknown;
 }
 
 export default function CompetitorsPage() {
@@ -87,6 +91,8 @@ export default function CompetitorsPage() {
   const [newUrl, setNewUrl] = useState('');
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState('');
+  const [formLimit, setFormLimit] =
+    useState<unknown>(null);
   const [deleteTarget, setDeleteTarget] = useState<Row | null>(
     null,
   );
@@ -207,6 +213,7 @@ export default function CompetitorsPage() {
     try {
       setCreating(true);
       setFormError('');
+      setFormLimit(null);
       const created = await createCompetitor({
         name,
         url,
@@ -226,9 +233,13 @@ export default function CompetitorsPage() {
       setShowAdd(false);
       void loadLatest([created]);
     } catch (err: any) {
-      setFormError(
-        err?.message || 'Could not add competitor.',
-      );
+      if (isLimitError(err)) {
+        setFormLimit(err);
+      } else {
+        setFormError(
+          err?.message || 'Could not add competitor.',
+        );
+      }
     } finally {
       setCreating(false);
     }
@@ -239,7 +250,12 @@ export default function CompetitorsPage() {
     setRows((prev) =>
       prev.map((r) =>
         r.competitor.id === id
-          ? { ...r, crawlState: 'crawling', crawlError: '' }
+          ? {
+              ...r,
+              crawlState: 'crawling',
+              crawlError: '',
+              crawlLimit: null,
+            }
           : r,
       ),
     );
@@ -294,8 +310,13 @@ export default function CompetitorsPage() {
             ? {
                 ...r,
                 crawlState: 'error' as const,
-                crawlError:
-                  err?.message || 'Crawl failed to start.',
+                crawlError: isLimitError(err)
+                  ? ''
+                  : err?.message ||
+                    'Crawl failed to start.',
+                crawlLimit: isLimitError(err)
+                  ? err
+                  : null,
               }
             : r,
         ),
@@ -641,6 +662,19 @@ export default function CompetitorsPage() {
                   {formError}
                 </p>
               ) : null}
+              {formLimit ? (
+                <div className="mt-2">
+                  <LimitReachedState
+                    title="Free plan limit reached"
+                    description="This workspace already tracks its included competitor. Existing data is untouched."
+                    detail={limitUsageText(
+                      formLimit,
+                    )}
+                    actionLabel="View plans"
+                    actionHref="/billing"
+                  />
+                </div>
+              ) : null}
             </Panel>
           )}
 
@@ -780,6 +814,19 @@ export default function CompetitorsPage() {
                 },
               ]}
             />
+            {drawerRow.crawlLimit ? (
+              <DrawerSection title="Plan limit">
+                <LimitReachedState
+                  title="Free plan limit reached"
+                  description="This crawl could not start because the workspace hit its crawl allowance. Existing data is untouched."
+                  detail={limitUsageText(
+                    drawerRow.crawlLimit,
+                  )}
+                  actionLabel="View plans"
+                  actionHref="/billing"
+                />
+              </DrawerSection>
+            ) : null}
             {drawerRow.crawlError ? (
               <DrawerSection title="Crawl note">
                 <p className="text-sm text-rk-danger">

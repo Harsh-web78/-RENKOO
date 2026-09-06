@@ -1382,9 +1382,9 @@ export default function Home() {
         ) : websites.length === 0 ? (
           <NotConnectedState
             title="No website connected"
-            description="Connect your first website to activate the Growth Command Center. Nothing here is estimated until real data arrives."
-            connectLabel="Connect your first website"
-            connectHref="/integrations"
+            description="Set up your first website to activate the Growth Command Center. Nothing here is estimated until real data arrives."
+            connectLabel="Set up your first website"
+            connectHref="/onboarding"
           />
         ) : (
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

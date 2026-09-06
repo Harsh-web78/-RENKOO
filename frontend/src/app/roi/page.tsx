@@ -5,7 +5,6 @@ import {
   ArrowUpRight,
   BarChart3,
   DollarSign,
-  Menu,
   Plus,
   RefreshCw,
   Trash2,
@@ -14,7 +13,7 @@ import {
   Wallet,
 } from "lucide-react";
 
-import Sidebar from "@/components/Sidebar";
+import AppShell from "@/components/AppShell";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import {
   EmptyState,
@@ -418,26 +417,16 @@ export default function RoiPage() {
     )[0] || null;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Sidebar
-        mobileOpen={mobileOpen}
-        onClose={() => setMobileOpen(false)}
-      />
-
-      <main className="lg:pl-64">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    <AppShell
+      mobileOpen={mobileOpen}
+      onClose={() => setMobileOpen(false)}
+      onMenu={() => setMobileOpen(true)}
+    >
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
 
           {/* HEADER */}
           <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-start gap-3">
-              <button
-                type="button"
-                onClick={() => setMobileOpen(true)}
-                aria-label="Open menu"
-                className="mt-1 rounded-lg border border-slate-200 bg-white p-2 text-slate-600 lg:hidden"
-              >
-                <Menu size={20} />
-              </button>
               <div>
                 <div className="flex items-center gap-2">
                   <BarChart3 className="h-5 w-5 text-slate-500" />
@@ -1238,8 +1227,7 @@ export default function RoiPage() {
           onConfirm={confirmRemoveSpend}
           onCancel={() => setPendingDeleteSpend(null)}
         />
-      </main>
-    </div>
+    </AppShell>
   );
 }
 

@@ -13,9 +13,20 @@
  */
 
 import Link from 'next/link';
-import { Bell, Menu, Search } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import {
+  Bell,
+  LogOut,
+  Menu,
+  Search,
+  Settings,
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
 
-import type { CurrentAccount } from '@/lib/api';
+import {
+  logout,
+  type CurrentAccount,
+} from '@/lib/api';
 import { PERSONA_META, usePersona } from '@/lib/persona';
 
 export default function Topbar({
@@ -28,6 +39,37 @@ export default function Topbar({
   account: CurrentAccount | null;
 }) {
   const { effectivePersona } = usePersona();
+  const router = useRouter();
+  const [menuOpen, setMenuOpen] =
+    useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+
+    function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+      }
+    }
+
+    document.addEventListener('keydown', onKey);
+
+    return () => {
+      document.removeEventListener(
+        'keydown',
+        onKey,
+      );
+    };
+  }, [menuOpen]);
+
+  function handleLogout() {
+    logout();
+    setMenuOpen(false);
+    router.push('/login');
+    router.refresh();
+  }
 
   const organizationName =
     account?.organization?.name || 'Workspace';
@@ -94,22 +136,76 @@ export default function Topbar({
             <Bell size={17} aria-hidden />
           </Link>
 
-          <Link
-            href="/settings"
-            aria-label={`Account settings — ${userLabel}, ${PERSONA_META[effectivePersona].label} view`}
-            title={`${userLabel} · ${PERSONA_META[effectivePersona].label}`}
-            className="rk-focusable flex h-9 items-center gap-2 rounded-rk-md px-2 hover:bg-rk-soft"
-          >
-            <span
-              aria-hidden
-              className="grid h-7 w-7 place-items-center rounded-full bg-rk-ink text-[11px] font-black text-white"
+          <div className="relative ml-auto shrink-0">
+            <button
+              type="button"
+              onClick={() =>
+                setMenuOpen((open) => !open)
+              }
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-label={`Account menu — ${userLabel}, ${PERSONA_META[effectivePersona].label} view`}
+              title={`${userLabel} · ${PERSONA_META[effectivePersona].label}`}
+              className="rk-focusable flex h-9 items-center gap-2 rounded-rk-md px-2 hover:bg-rk-soft"
             >
-              {userLabel.slice(0, 1).toUpperCase()}
-            </span>
-            <span className="hidden max-w-[140px] truncate text-xs font-semibold text-rk-ink md:block">
-              {userLabel}
-            </span>
-          </Link>
+              <span
+                aria-hidden
+                className="grid h-7 w-7 place-items-center rounded-full bg-rk-ink text-[11px] font-black text-white"
+              >
+                {userLabel.slice(0, 1).toUpperCase()}
+              </span>
+              <span className="hidden max-w-[140px] truncate text-xs font-semibold text-rk-ink md:block">
+                {userLabel}
+              </span>
+            </button>
+
+            {menuOpen ? (
+              <>
+                <button
+                  type="button"
+                  aria-label="Close account menu"
+                  onClick={() => setMenuOpen(false)}
+                  className="fixed inset-0 z-30 cursor-default bg-transparent"
+                />
+
+                <div
+                  role="menu"
+                  aria-label="Account"
+                  className="absolute right-0 z-40 mt-2 w-52 overflow-hidden rounded-rk-md border border-rk-border bg-rk-surface py-1.5 shadow-lg"
+                >
+                  <p className="truncate px-3.5 pb-1.5 pt-1 text-xs text-rk-muted">
+                    {userLabel}
+                  </p>
+
+                  <Link
+                    href="/settings"
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                    className="rk-focusable flex items-center gap-2.5 px-3.5 py-2 text-sm text-rk-secondary hover:bg-rk-soft hover:text-rk-ink"
+                  >
+                    <Settings
+                      size={15}
+                      aria-hidden
+                    />
+                    Settings
+                  </Link>
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleLogout}
+                    className="rk-focusable flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm text-rk-secondary hover:bg-rk-soft hover:text-rk-ink"
+                  >
+                    <LogOut
+                      size={15}
+                      aria-hidden
+                    />
+                    Log out
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
         </div>
       </div>
     </header>

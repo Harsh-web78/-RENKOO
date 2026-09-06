@@ -1,9 +1,13 @@
 ﻿'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sparkles } from 'lucide-react';
-import { register } from '../../lib/api';
+import {
+  getMe,
+  isAuthenticated,
+  register,
+} from '../../lib/api';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -16,6 +20,30 @@ export default function SignupPage() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Already signed in: new accounts start at
+  // onboarding, existing sessions go home.
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      return;
+    }
+
+    let cancelled = false;
+
+    getMe()
+      .then(() => {
+        if (!cancelled) {
+          router.replace('/');
+        }
+      })
+      .catch(() => {
+        // Stale token: stay on signup.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();

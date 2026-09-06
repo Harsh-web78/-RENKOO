@@ -14,6 +14,8 @@ import Link from 'next/link';
 import {
   getTechnicalSeoLatest,
   getWebsites,
+  isLimitError,
+  limitUsageText,
   startCrawl,
   resolveSeoIssue,
   ignoreSeoIssue,
@@ -23,6 +25,7 @@ import {
   type Website,
 } from '@/lib/api';
 import AppShell from '@/components/AppShell';
+import { useElapsed } from '@/lib/useElapsed';
 import {
   PageHeader,
   Panel,
@@ -41,6 +44,7 @@ import {
   LoadingBlock,
   ErrorState,
   EmptyState,
+  LimitReachedState,
   InsightBlock,
   EvidenceList,
   RecommendationCallout,
@@ -81,7 +85,10 @@ export default function TechnicalSeoPage() {
   const [statusFilter, setStatusFilter] = useState('OPEN');
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const auditSeconds = useElapsed(running);
   const [runMsg, setRunMsg] = useState('');
+  const [limitError, setLimitError] =
+    useState<unknown>(null);
   const [error, setError] = useState('');
   const [data, setData] = useState<any>(null);
   const [alertCount, setAlertCount] = useState<number | null>(
@@ -102,11 +109,13 @@ export default function TechnicalSeoPage() {
     if (!id) return;
     try {
       setError('');
-      const res = await getTechnicalSeoLatest(id);
+      const [res, alerts] = await Promise.all([
+        getTechnicalSeoLatest(id),
+        listMonitoringAlerts({
+          websiteId: id,
+        }).catch(() => null),
+      ]);
       setData(res);
-      const alerts = await listMonitoringAlerts({
-        websiteId: id,
-      }).catch(() => null);
       setAlertCount(
         Array.isArray((alerts as any)?.alerts)
           ? (alerts as any).alerts.length
@@ -170,13 +179,21 @@ export default function TechnicalSeoPage() {
     try {
       setRunning(true);
       setRunMsg('');
+      setLimitError(null);
       await startCrawl(websiteId);
-      setRunMsg(
-        'Audit started. Reload in a minute to see fresh results.',
-      );
       await load(websiteId);
+      setRunMsg(
+        'Audit complete — results refreshed below.',
+      );
     } catch (err: any) {
-      setRunMsg(err?.message || 'Audit failed to start.');
+      if (isLimitError(err)) {
+        setLimitError(err);
+        setRunMsg('');
+      } else {
+        setRunMsg(
+          err?.message || 'Audit failed to start.',
+        );
+      }
     } finally {
       setRunning(false);
     }
@@ -400,7 +417,9 @@ export default function TechnicalSeoPage() {
               onClick={() => void handleRunAudit()}
               disabled={running || !websiteId}
             >
-              {running ? 'Auditing…' : 'Run audit'}
+              {running
+                ? `Auditing… ${auditSeconds}s`
+                : 'Run audit'}
             </SecondaryButton>
             <Link href="/actions">
               <PrimaryButton type="button">
@@ -498,6 +517,19 @@ export default function TechnicalSeoPage() {
             />
             {runMsg ? (
               <p className="rk-body mt-2">{runMsg}</p>
+            ) : null}
+            {limitError ? (
+              <div className="mt-2">
+                <LimitReachedState
+                  title="Free plan limit reached"
+                  description="This audit could not start because the workspace hit its crawl allowance. Your existing data is untouched — raising the limit unlocks the next audit."
+                  detail={limitUsageText(
+                    limitError,
+                  )}
+                  actionLabel="View plans"
+                  actionHref="/billing"
+                />
+              </div>
             ) : null}
           </Panel>
 

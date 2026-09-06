@@ -15,6 +15,7 @@ import { BillingService } from '../billing/billing.service';
 import { AiProviderRegistry } from '../ai-visibility/providers/provider.registry';
 import { AiProviderError } from '../ai-visibility/providers/provider.errors';
 import { PrismaService } from '../prisma/prisma.service';
+import { FREE_AI_GENERATIONS_PER_MONTH } from '../billing/plans.config';
 import {
   classifyIntent,
   type SearchIntent,
@@ -55,7 +56,14 @@ const MODE_CREDIT_COST: Record<string, number> = {
   DRAFT: 3,
 };
 
-const FREE_MONTHLY_AI_CREDITS = 20;
+/*
+ * Free monthly AI credit allowance is defined
+ * once in billing/plans.config.ts
+ * (FREE_AI_GENERATIONS_PER_MONTH). This service
+ * must not carry its own copy.
+ */
+const FREE_MONTHLY_AI_CREDITS =
+  FREE_AI_GENERATIONS_PER_MONTH;
 
 @Injectable()
 export class ContentService {

@@ -1,9 +1,37 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sparkles } from 'lucide-react';
-import { login } from '../../lib/api';
+import {
+  getMe,
+  isAuthenticated,
+  login,
+} from '../../lib/api';
+
+function safeNextPath(value: string | null) {
+  if (
+    value &&
+    value.startsWith('/') &&
+    !value.startsWith('//')
+  ) {
+    return value;
+  }
+
+  return '/';
+}
+
+function readNext() {
+  if (typeof window === 'undefined') {
+    return '/';
+  }
+
+  return safeNextPath(
+    new URLSearchParams(window.location.search).get(
+      'next',
+    ),
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,6 +40,31 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Already signed in (e.g. refresh on /login):
+  // validate the token and go where it points.
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      return;
+    }
+
+    let cancelled = false;
+
+    getMe()
+      .then(() => {
+        if (!cancelled) {
+          router.replace(readNext());
+        }
+      })
+      .catch(() => {
+        // Stale token: stay on login; the gate
+        // clears it when leaving this page.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -25,7 +78,7 @@ export default function LoginPage() {
         password,
       });
 
-      router.push('/');
+      router.push(readNext());
       router.refresh();
     } catch (err) {
       setError(

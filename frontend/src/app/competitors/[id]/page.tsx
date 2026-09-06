@@ -25,6 +25,8 @@ import {
   getCompetitorCrawlHistory,
   getCompetitorRecommendations,
   createActionFromRecommendation,
+  isLimitError,
+  limitUsageText,
   type ComparisonOpportunity,
   type MetricComparison,
   type PageGap,
@@ -47,6 +49,7 @@ import {
   LoadingBlock,
   ErrorState,
   EmptyState,
+  LimitReachedState,
   InsightBlock,
   EvidenceList,
   RecommendationCallout,
@@ -90,6 +93,8 @@ export default function CompetitorDetailPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [crawlLimit, setCrawlLimit] =
+    useState<unknown>(null);
   const [actionError, setActionError] = useState('');
   const [comparison, setComparison] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
@@ -161,6 +166,7 @@ export default function CompetitorDetailPage() {
     if (!competitorId || crawling) return;
     try {
       setCrawling(true);
+      setCrawlLimit(null);
       await crawlCompetitor(competitorId);
       const deadline = Date.now() + 10 * 60 * 1000;
       let settled = false;
@@ -190,7 +196,13 @@ export default function CompetitorDetailPage() {
       }
       await load();
     } catch (err: any) {
-      setError(err?.message || 'Crawl failed to start.');
+      if (isLimitError(err)) {
+        setCrawlLimit(err);
+      } else {
+        setError(
+          err?.message || 'Crawl failed to start.',
+        );
+      }
     } finally {
       setCrawling(false);
     }
@@ -511,6 +523,17 @@ export default function CompetitorDetailPage() {
               title="Action failed"
               description={actionError}
               onRetry={() => setActionError('')}
+            />
+          ) : null}
+          {crawlLimit ? (
+            <LimitReachedState
+              title="Free plan limit reached"
+              description="This crawl could not start because the workspace hit its crawl allowance. Existing data is untouched."
+              detail={limitUsageText(
+                crawlLimit,
+              )}
+              actionLabel="View plans"
+              actionHref="/billing"
             />
           ) : null}
 

@@ -367,9 +367,15 @@ export class BillingService {
       const used = usage?.used ?? 0;
 
       if (used + amount > limit) {
-        throw new BadRequestException(
-          `${metric} usage limit reached. Upgrade your plan to continue.`,
-        );
+        throw new ForbiddenException({
+          code: 'LIMIT_REACHED',
+          message: `${metric} usage limit reached on the ${subscription.plan.code} plan (${used}/${limit}). Upgrade to continue. Existing data is untouched.`,
+          metric,
+          used,
+          limit,
+          planCode:
+            subscription.plan.code,
+        });
       }
 
       if (!usage) {
@@ -400,9 +406,15 @@ export class BillingService {
       });
 
       if (updated.count !== 1) {
-        throw new BadRequestException(
-          `${metric} usage limit reached. Upgrade your plan to continue.`,
-        );
+        throw new ForbiddenException({
+          code: 'LIMIT_REACHED',
+          message: `${metric} usage limit reached on the ${subscription.plan.code} plan. Upgrade to continue. Existing data is untouched.`,
+          metric,
+          used: limit,
+          limit,
+          planCode:
+            subscription.plan.code,
+        });
       }
 
       return tx.usageCounter.findUnique({

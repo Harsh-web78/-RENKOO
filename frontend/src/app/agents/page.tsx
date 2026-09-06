@@ -1,6 +1,6 @@
 'use client';
 
-import Sidebar from '@/components/Sidebar';
+import AppShell from '@/components/AppShell';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -193,10 +193,12 @@ export default function AgentsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <Sidebar mobileOpen={open} onClose={() => setOpen(false)} />
-      <main className="lg:pl-[270px]">
-        <section className="mx-auto max-w-[1150px] p-5 lg:p-8">
+    <AppShell
+      mobileOpen={open}
+      onClose={() => setOpen(false)}
+      onMenu={() => setOpen(true)}
+    >
+      <section className="mx-auto max-w-[1150px] p-5 lg:p-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -363,8 +365,7 @@ export default function AgentsPage() {
             RENKOO never changes your website by itself.
           </p>
         </section>
-      </main>
-    </div>
+    </AppShell>
   );
 }
 
