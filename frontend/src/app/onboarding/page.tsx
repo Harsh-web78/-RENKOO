@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
@@ -15,6 +15,8 @@ import {
 import {
   connectGoogle,
   createWebsite,
+  getGoogleConnectionStatus,
+  getWebsites,
 } from '../../lib/api';
 
 type Step = 1 | 2 | 3;
@@ -41,7 +43,84 @@ export default function OnboardingPage() {
   const [googleLoading, setGoogleLoading] =
     useState(false);
 
+  const [existingCount, setExistingCount] =
+    useState<number | null>(null);
+
   const [error, setError] = useState('');
+
+  // Honest OAuth-return + existing-website handling.
+  // Reads only real signals: URL params from the Google redirect
+  // and the real connection/website status from the API.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkReturnState() {
+      let googleSignal = false;
+
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(
+          window.location.search,
+        );
+
+        googleSignal =
+          params.get('google') === 'connected' ||
+          params.get('connected') === 'true' ||
+          params.get('google_connected') === 'true' ||
+          params.get('step') === '3';
+      }
+
+      try {
+        const websites = await getWebsites();
+
+        if (cancelled) return;
+
+        setExistingCount(
+          Array.isArray(websites)
+            ? websites.length
+            : 0,
+        );
+
+        // A returning user already has a website; treat the
+        // website step as satisfied without inventing data.
+        if (
+          Array.isArray(websites) &&
+          websites.length > 0
+        ) {
+          setWebsiteCreated(true);
+        }
+      } catch {
+        if (!cancelled) setExistingCount(0);
+      }
+
+      try {
+        const status =
+          await getGoogleConnectionStatus();
+
+        if (cancelled) return;
+
+        if (status?.connected) {
+          setGoogleConnected(true);
+
+          // OAuth redirect lands back here with a fresh state;
+          // advance honestly only when Google is really connected.
+          if (googleSignal) setStep(3);
+        } else if (googleSignal) {
+          // Redirect signal without a real connection:
+          // keep the Skip flow, do not claim a connection.
+          setGoogleConnected(false);
+        }
+      } catch {
+        // No signal exists — keep Skip flow, Step-3 card
+        // renders from real status only (defaults to "Connect later").
+      }
+    }
+
+    checkReturnState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function normalizeUrl(value: string) {
     let finalUrl = value.trim();
@@ -235,6 +314,45 @@ export default function OnboardingPage() {
                 </p>
               </div>
             </div>
+
+            {existingCount !== null &&
+              existingCount > 0 && (
+                <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+                  <div className="text-sm font-bold text-emerald-900">
+                    You already have{' '}
+                    {existingCount} website
+                    {existingCount === 1
+                      ? ''
+                      : 's'}
+                  </div>
+
+                  <p className="mt-1 text-xs leading-5 text-emerald-700">
+                    You can continue with your
+                    existing workspace or add
+                    another website below.
+                  </p>
+
+                  <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                    <a
+                      href="/"
+                      className="rounded-xl bg-emerald-600 px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-emerald-700"
+                    >
+                      Open Growth Command Center
+                    </a>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWebsiteCreated(true);
+                        setStep(2);
+                      }}
+                      className="rounded-xl border border-emerald-200 bg-white px-5 py-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+                    >
+                      Continue
+                    </button>
+                  </div>
+                </div>
+              )}
 
             <form
               onSubmit={handleWebsiteSubmit}
@@ -479,17 +597,17 @@ export default function OnboardingPage() {
               </p>
             </div>
 
-            <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            <div className="mt-8 grid gap-4 sm:grid-cols-2">
               <SetupCard
                 icon={<Globe2 size={20} />}
                 title="Website"
-                description="Connected"
-              />
-
-              <SetupCard
-                icon={<ShieldCheck size={20} />}
-                title="Technical SEO"
-                description="Ready to audit"
+                description={
+                  websiteCreated ||
+                  (existingCount !== null &&
+                    existingCount > 0)
+                    ? 'Connected'
+                    : 'Not added yet'
+                }
               />
 
               <SetupCard
@@ -501,6 +619,53 @@ export default function OnboardingPage() {
                     : 'Connect later'
                 }
               />
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-slate-200 p-5">
+              <div className="flex items-start gap-4">
+                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                  <ShieldCheck size={23} />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="font-bold text-slate-900">
+                    What to do next
+                  </div>
+
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Audit starts from the workspace
+                    — onboarding does not run
+                    crawls.
+                  </p>
+
+                  <div className="mt-4 grid gap-2">
+                    <a
+                      href="/"
+                      className="flex items-center justify-between gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
+                    >
+                      Open Growth Command Center
+                      <ArrowRight size={16} />
+                    </a>
+
+                    <a
+                      href="/technical-seo"
+                      className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+                    >
+                      Run your first audit in
+                      Technical SEO
+                      <ArrowRight size={16} />
+                    </a>
+
+                    <a
+                      href="/opportunities"
+                      className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+                    >
+                      See first opportunities
+                      <ArrowRight size={16} />
+                    </a>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <button

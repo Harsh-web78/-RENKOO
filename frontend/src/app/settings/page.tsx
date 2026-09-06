@@ -18,6 +18,7 @@ export default function SettingsPage() {
   const [teamLoading, setTeamLoading] = useState(false);
   const [teamMessage, setTeamMessage] = useState("");
 const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'workspace' | 'profile' | 'team' | 'security' | 'billing'>('workspace');
   const [account, setAccount] = useState<CurrentAccount | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -124,6 +125,17 @@ const [open, setOpen] = useState(false);
     }
   }
 
+  function scrollToSection(
+    tab: 'workspace' | 'profile' | 'team' | 'security' | 'billing',
+  ) {
+    setActiveTab(tab);
+    if (typeof document !== 'undefined') {
+      document
+        .getElementById(`settings-${tab}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <Sidebar
@@ -148,6 +160,36 @@ const [open, setOpen] = useState(false);
             Manage your RENKOO account, workspace and security.
           </p>
 
+          {/* SECTION NAV — lightweight in-page anchor tabs */}
+          <nav
+            aria-label="Settings sections"
+            className="mt-6 flex flex-wrap gap-2"
+          >
+            {(
+              [
+                { key: 'workspace', label: 'Workspace' },
+                { key: 'profile', label: 'Profile' },
+                { key: 'team', label: 'Team' },
+                { key: 'security', label: 'Security' },
+                { key: 'billing', label: 'Billing' },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => scrollToSection(tab.key)}
+                aria-current={activeTab === tab.key ? 'true' : undefined}
+                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  activeTab === tab.key
+                    ? 'bg-slate-900 text-white'
+                    : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+
           {loading ? (
             <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-500">
               Loading account...
@@ -156,7 +198,7 @@ const [open, setOpen] = useState(false);
             <div className="mt-8 space-y-6">
 
               {/* PROFILE */}
-              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <section id="settings-profile" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h2 className="text-lg font-bold">Profile</h2>
@@ -214,7 +256,7 @@ const [open, setOpen] = useState(false);
               </section>
 
               {/* WORKSPACE */}
-              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <section id="settings-workspace" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <h2 className="text-lg font-bold">Workspace</h2>
 
                 <p className="mt-1 text-sm text-slate-500">
@@ -227,7 +269,7 @@ const [open, setOpen] = useState(false);
                       Organization
                     </div>
                     <div className="mt-2 text-base font-semibold">
-                      {account?.organization.name || 'ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â'}
+                      {account?.organization.name || '—'}
                     </div>
                   </div>
 
@@ -236,7 +278,7 @@ const [open, setOpen] = useState(false);
                       Workspace slug
                     </div>
                     <div className="mt-2 text-base font-semibold">
-                      {account?.organization.slug || 'ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â'}
+                      {account?.organization.slug || '—'}
                     </div>
                   </div>
 
@@ -267,7 +309,7 @@ const [open, setOpen] = useState(false);
               </section>
 
               {/* SECURITY */}
-              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <section id="settings-security" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <h2 className="text-lg font-bold">Security</h2>
 
                 <p className="mt-1 text-sm text-slate-500">
@@ -275,35 +317,47 @@ const [open, setOpen] = useState(false);
                 </p>
 
                 <div className="mt-6 grid gap-5 md:grid-cols-3">
-                  <input
-                    type="password"
-                    placeholder="Current password"
-                    value={currentPassword}
-                    onChange={(e) =>
-                      setCurrentPassword(e.target.value)
-                    }
-                    className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
-                  />
+                  <label className="block text-xs font-semibold text-slate-600">
+                    Current password
+                    <input
+                      type="password"
+                      placeholder="Current password"
+                      value={currentPassword}
+                      onChange={(e) =>
+                        setCurrentPassword(e.target.value)
+                      }
+                      autoComplete="current-password"
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                    />
+                  </label>
 
-                  <input
-                    type="password"
-                    placeholder="New password"
-                    value={newPassword}
-                    onChange={(e) =>
-                      setNewPassword(e.target.value)
-                    }
-                    className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
-                  />
+                  <label className="block text-xs font-semibold text-slate-600">
+                    New password
+                    <input
+                      type="password"
+                      placeholder="New password"
+                      value={newPassword}
+                      onChange={(e) =>
+                        setNewPassword(e.target.value)
+                      }
+                      autoComplete="new-password"
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                    />
+                  </label>
 
-                  <input
-                    type="password"
-                    placeholder="Confirm new password"
-                    value={confirmPassword}
-                    onChange={(e) =>
-                      setConfirmPassword(e.target.value)
-                    }
-                    className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
-                  />
+                  <label className="block text-xs font-semibold text-slate-600">
+                    Confirm new password
+                    <input
+                      type="password"
+                      placeholder="Confirm new password"
+                      value={confirmPassword}
+                      onChange={(e) =>
+                        setConfirmPassword(e.target.value)
+                      }
+                      autoComplete="new-password"
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                    />
+                  </label>
                 </div>
 
                 <div className="mt-5 flex items-center gap-4">
@@ -344,7 +398,7 @@ const [open, setOpen] = useState(false);
               </section>
 
               {/* BILLING */}
-              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <section id="settings-billing" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <h2 className="text-lg font-bold">Billing</h2>
 
                 <p className="mt-1 text-sm text-slate-500">
@@ -359,117 +413,124 @@ const [open, setOpen] = useState(false);
                 </a>
               </section>
 
+              {/* TEAM — inside the main container like other sections */}
+              <section id="settings-team" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="mb-5">
+                  <h2 className="text-lg font-semibold text-slate-900">Team</h2>
+                  <p className="text-sm text-slate-500">
+                    Manage organization members and permissions.
+                  </p>
+                </div>
+
+                <div className="mb-6 flex flex-col gap-3 sm:flex-row">
+                  <input
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="team@example.com"
+                    className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-slate-500"
+                  />
+
+                  <select
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value as "ADMIN" | "MEMBER")}
+                    className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm"
+                  >
+                    <option value="MEMBER">Member</option>
+                    <option value="ADMIN">Admin</option>
+                  </select>
+
+                  <button
+                    onClick={async () => {
+                      const trimmedEmail = inviteEmail.trim();
+                      if (!trimmedEmail) return;
+                      setTeamLoading(true);
+                      setTeamMessage("");
+                      try {
+                        await inviteTeamMember(trimmedEmail, inviteRole);
+                        setInviteEmail("");
+                        const refreshed = await getTeamMembers();
+                        setTeamMembers(refreshed);
+                        setTeamMessage(
+                          `Invite sent to ${trimmedEmail}. Member list refreshed — they will appear below once they accept.`
+                        );
+                      } catch (error) {
+                        setTeamMessage(error instanceof Error ? error.message : "Failed to invite member.");
+                      } finally {
+                        setTeamLoading(false);
+                      }
+                    }}
+                    disabled={teamLoading}
+                    className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    {teamLoading ? "Inviting..." : "Invite"}
+                  </button>
+                </div>
+
+                {teamMessage && (
+                  <div className="mb-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                    {teamMessage}
+                  </div>
+                )}
+
+                <div className="divide-y divide-slate-100">
+                  {teamMembers.map((member) => (
+                    <div key={member.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="font-medium text-slate-900">
+                          {member.user.name || member.user.email}
+                        </div>
+                        <div className="text-sm text-slate-500">{member.user.email}</div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {member.role === "OWNER" ? (
+                          <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700">
+                            Owner
+                          </span>
+                        ) : (
+                          <>
+                            <select
+                              value={member.role}
+                              onChange={async (e) => {
+                                await updateTeamMemberRole(
+                                  member.id,
+                                  e.target.value as "ADMIN" | "MEMBER"
+                                );
+                                setTeamMembers(await getTeamMembers());
+                              }}
+                              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+                            >
+                              <option value="MEMBER">Member</option>
+                              <option value="ADMIN">Admin</option>
+                            </select>
+
+                            <button
+                              onClick={async () => {
+                                await removeTeamMember(member.id);
+                                setTeamMembers(await getTeamMembers());
+                              }}
+                              className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600"
+                            >
+                              Remove
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+
+                  {teamMembers.length === 0 && (
+                    <div className="py-8 text-center text-sm text-slate-500">
+                      No team members found.
+                    </div>
+                  )}
+                </div>
+              </section>
+
             </div>
           )}
         </section>
-      
-      <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6">
-        <div className="mb-5">
-          <h2 className="text-lg font-semibold text-slate-900">Team</h2>
-          <p className="text-sm text-slate-500">
-            Manage organization members and permissions.
-          </p>
-        </div>
-
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row">
-          <input
-            value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
-            placeholder="team@example.com"
-            className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-slate-500"
-          />
-
-          <select
-            value={inviteRole}
-            onChange={(e) => setInviteRole(e.target.value as "ADMIN" | "MEMBER")}
-            className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm"
-          >
-            <option value="MEMBER">Member</option>
-            <option value="ADMIN">Admin</option>
-          </select>
-
-          <button
-            onClick={async () => {
-              if (!inviteEmail.trim()) return;
-              setTeamLoading(true);
-              setTeamMessage("");
-              try {
-                await inviteTeamMember(inviteEmail, inviteRole);
-                setInviteEmail("");
-                setTeamMessage("Invitation created successfully.");
-              } catch (error) {
-                setTeamMessage(error instanceof Error ? error.message : "Failed to invite member.");
-              } finally {
-                setTeamLoading(false);
-              }
-            }}
-            disabled={teamLoading}
-            className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {teamLoading ? "Inviting..." : "Invite"}
-          </button>
-        </div>
-
-        {teamMessage && (
-          <div className="mb-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-            {teamMessage}
-          </div>
-        )}
-
-        <div className="divide-y divide-slate-100">
-          {teamMembers.map((member) => (
-            <div key={member.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="font-medium text-slate-900">
-                  {member.user.name || member.user.email}
-                </div>
-                <div className="text-sm text-slate-500">{member.user.email}</div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {member.role === "OWNER" ? (
-                  <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700">
-                    Owner
-                  </span>
-                ) : (
-                  <>
-                    <select
-                      value={member.role}
-                      onChange={async (e) => {
-                        await updateTeamMemberRole(
-                          member.id,
-                          e.target.value as "ADMIN" | "MEMBER"
-                        );
-                        setTeamMembers(await getTeamMembers());
-                      }}
-                      className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
-                    >
-                      <option value="MEMBER">Member</option>
-                      <option value="ADMIN">Admin</option>
-                    </select>
-
-                    <button
-                      onClick={async () => {
-                        await removeTeamMember(member.id);
-                        setTeamMembers(await getTeamMembers());
-                      }}
-                      className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600"
-                    >
-                      Remove
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
-
-          {teamMembers.length === 0 && (
-            <div className="py-8 text-center text-sm text-slate-500">
-              No team members found.
-            </div>
-          )}
-        </div>
-      </section></main>
+      </main>
     </div>
   );
 }

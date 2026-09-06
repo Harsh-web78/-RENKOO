@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   BarChart3,
   DollarSign,
+  Menu,
   Plus,
   RefreshCw,
   Trash2,
@@ -14,13 +15,23 @@ import {
 } from "lucide-react";
 
 import Sidebar from "@/components/Sidebar";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import {
+  EmptyState,
+  ErrorState,
+  LoadingBlock,
+} from "@/components/ui/states";
+import { FunnelStages } from "@/components/charts/RenkooCharts";
+import Link from "next/link";
 import {
   createMarketingSpend,
   deleteMarketingSpend,
   getMarketingSpend,
+  getRoiOutcome,
   getRoiSummary,
   getWebsites,
   MarketingSpend,
+  OutcomeResponse,
   RoiSummary,
   Website,
 } from "@/lib/api";
@@ -135,6 +146,13 @@ export default function RoiPage() {
   const [data, setData] = useState<RoiSummary | null>(null);
   const [spends, setSpends] = useState<MarketingSpend[]>([]);
 
+  const [outcome, setOutcome] =
+    useState<OutcomeResponse | null>(null);
+  const [outcomeLoading, setOutcomeLoading] = useState(false);
+  const [outcomeError, setOutcomeError] = useState("");
+  const [pendingDeleteSpend, setPendingDeleteSpend] =
+    useState<MarketingSpend | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -155,20 +173,35 @@ export default function RoiPage() {
     if (!id) return;
 
     setLoading(true);
+    setOutcomeLoading(true);
     setError("");
+    setOutcomeError("");
 
     try {
-      const [roi, spendResponse] = await Promise.all([
+      const [roi, spendResponse, outcomeData] = await Promise.all([
         getRoiSummary(
           id,
           fromDate || undefined,
           toDate || undefined,
         ),
         getMarketingSpend(id),
+        getRoiOutcome(
+          id,
+          fromDate || undefined,
+          toDate || undefined,
+        ).catch((err) => {
+          setOutcomeError(
+            err instanceof Error
+              ? err.message
+              : "Unable to load attribution and outcome.",
+          );
+          return null;
+        }),
       ]);
 
       setData(roi);
       setSpends(spendResponse.spends || []);
+      setOutcome(outcomeData);
     } catch (err) {
       setError(
         err instanceof Error
@@ -177,6 +210,7 @@ export default function RoiPage() {
       );
     } finally {
       setLoading(false);
+      setOutcomeLoading(false);
     }
   }
 
@@ -193,19 +227,31 @@ export default function RoiPage() {
           setWebsiteId(firstWebsiteId);
 
           try {
-            const [roi, spendResponse] = await Promise.all([
+            setOutcomeLoading(true);
+            const [roi, spendResponse, outcomeData] = await Promise.all([
               getRoiSummary(firstWebsiteId),
               getMarketingSpend(firstWebsiteId),
+              getRoiOutcome(firstWebsiteId).catch((err) => {
+                setOutcomeError(
+                  err instanceof Error
+                    ? err.message
+                    : "Unable to load attribution and outcome.",
+                );
+                return null;
+              }),
             ]);
 
             setData(roi);
             setSpends(spendResponse.spends || []);
+            setOutcome(outcomeData);
           } catch (err) {
             setError(
               err instanceof Error
                 ? err.message
                 : "Unable to load ROI data.",
             );
+          } finally {
+            setOutcomeLoading(false);
           }
         }
       } catch (err) {
@@ -226,11 +272,16 @@ export default function RoiPage() {
     setWebsiteId(id);
     setFromDate("");
     setToDate("");
+    setOutcome(null);
+    setOutcomeError("");
+    setPendingDeleteSpend(null);
     await load(id);
   }
 
   async function saveSpend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (savingSpend) return;
 
     if (!websiteId) {
       setError("Select a website first.");
@@ -283,11 +334,21 @@ export default function RoiPage() {
   async function removeSpend(id: string) {
     if (!websiteId) return;
 
-    setDeletingSpend(id);
+    const target =
+      spends.find((item) => item.id === id) || null;
+    setPendingDeleteSpend(target);
+  }
+
+  async function confirmRemoveSpend() {
+    const target = pendingDeleteSpend;
+    if (!websiteId || !target) return;
+
+    setDeletingSpend(target.id);
     setError("");
 
     try {
-      await deleteMarketingSpend(websiteId, id);
+      await deleteMarketingSpend(websiteId, target.id);
+      setPendingDeleteSpend(null);
       await load(websiteId);
     } catch (err) {
       setError(
@@ -368,21 +429,31 @@ export default function RoiPage() {
 
           {/* HEADER */}
           <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5 text-slate-500" />
-                <span className="text-sm font-medium text-slate-500">
-                  Business Intelligence
-                </span>
+            <div className="flex items-start gap-3">
+              <button
+                type="button"
+                onClick={() => setMobileOpen(true)}
+                aria-label="Open menu"
+                className="mt-1 rounded-lg border border-slate-200 bg-white p-2 text-slate-600 lg:hidden"
+              >
+                <Menu size={20} />
+              </button>
+              <div>
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5 text-slate-500" />
+                  <span className="text-sm font-medium text-slate-500">
+                    Business Intelligence
+                  </span>
+                </div>
+
+                <h1 className="mt-1 text-2xl font-semibold text-slate-900">
+                  Leads → Revenue → ROI
+                </h1>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Understand which marketing investment is producing business results.
+                </p>
               </div>
-
-              <h1 className="mt-1 text-2xl font-semibold text-slate-900">
-                Leads → Revenue → ROI
-              </h1>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Understand which marketing investment is producing business results.
-              </p>
             </div>
 
             <div className="flex items-center gap-2">
@@ -621,8 +692,201 @@ export default function RoiPage() {
                 />
               </div>
 
+              {/* ATTRIBUTION & OUTCOME */}
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-base font-semibold text-slate-900">
+                      Attribution &amp; outcome
+                    </h2>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Lead-to-revenue funnel and attributed ROI for the
+                      selected website and date range.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  {outcomeLoading ? (
+                    <LoadingBlock title="Loading attribution and outcome…" />
+                  ) : outcomeError && !outcome ? (
+                    <ErrorState
+                      title="Attribution and outcome unavailable"
+                      description={outcomeError}
+                      onRetry={() =>
+                        websiteId && load(websiteId)
+                      }
+                    />
+                  ) : !outcome ? (
+                    <EmptyState
+                      title="No attribution data yet"
+                      description="Record leads, revenue, and marketing spend to measure attribution and outcome."
+                    />
+                  ) : (
+                    <>
+                      <FunnelStages
+                        state="ready"
+                        stages={[
+                          ...(outcome.funnel.visitors !== null
+                            ? [
+                                {
+                                  label: "Visitors",
+                                  value:
+                                    outcome.funnel.visitors,
+                                },
+                              ]
+                            : []),
+                          {
+                            label: "Leads",
+                            value: outcome.funnel.leads,
+                          },
+                          {
+                            label: "Qualified",
+                            value: outcome.funnel.qualified,
+                          },
+                          {
+                            label: "Conversions",
+                            value:
+                              outcome.funnel.conversions,
+                          },
+                        ]}
+                        summary={`Leads ${outcome.funnel.leads}, qualified ${outcome.funnel.qualified}, conversions ${outcome.funnel.conversions}`}
+                        emptyTitle="No funnel data yet"
+                        emptyDescription="No leads recorded in range."
+                      />
+
+                      <div className="mt-4 grid gap-4 md:grid-cols-3">
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                          <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                            Attribution coverage
+                          </div>
+                          <div className="mt-2 text-lg font-semibold text-slate-900">
+                            {outcome.attribution.coverage !==
+                            null
+                              ? `${outcome.attribution.coverage.toFixed(1)}%`
+                              : "— (no recognized revenue)"}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {money(
+                              outcome.attribution
+                                .attributedRevenue,
+                              outcome.currency ||
+                                currency,
+                            )}{" "}
+                            of{" "}
+                            {money(
+                              outcome.attribution
+                                .totalRevenue,
+                              outcome.currency ||
+                                currency,
+                            )}{" "}
+                            recognized revenue attributed
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                          <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                            Attributed ROI
+                          </div>
+                          {outcome.roi.measurable &&
+                          outcome.roi.attributedRoi !==
+                            null &&
+                          outcome.roi.attributedRevenue >
+                            0 ? (
+                            <>
+                              <div className="mt-2 text-lg font-semibold text-slate-900">
+                                {`${outcome.roi.attributedRoi.toFixed(1)}%`}
+                              </div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                {money(
+                                  outcome.roi
+                                    .attributedRevenue,
+                                  outcome.currency ||
+                                    currency,
+                                )}{" "}
+                                attributed revenue against{" "}
+                                {money(
+                                  outcome.roi.spend,
+                                  outcome.currency ||
+                                    currency,
+                                )}{" "}
+                                spend
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="mt-2 text-lg font-semibold text-slate-900">
+                                ROI not measurable — no
+                                attributed revenue
+                              </div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                {outcome.roi.spend <= 0
+                                  ? "No marketing spend is recorded in range."
+                                  : "No attributed revenue is recorded in range."}
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                          <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                            Conversion rate
+                          </div>
+                          <div className="mt-2 text-lg font-semibold text-slate-900">
+                            {outcome.funnel
+                              .conversionRate !== null
+                              ? `${outcome.funnel.conversionRate.toFixed(1)}%`
+                              : "Not measurable — no leads recorded"}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            Conversions against recorded
+                            leads in range
+                          </div>
+                        </div>
+                      </div>
+
+                      {outcome.conversionGaps.length >
+                        0 && (
+                        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+                          <div className="text-xs font-bold uppercase tracking-wide text-amber-800">
+                            Conversion gaps
+                          </div>
+                          <ul className="mt-2 space-y-2">
+                            {outcome.conversionGaps.map(
+                              (gap) => (
+                                <li
+                                  key={gap.id}
+                                  className="text-sm text-slate-700"
+                                >
+                                  <span className="font-semibold text-slate-900">
+                                    {gap.title}
+                                  </span>
+                                  <span className="text-slate-500">
+                                    {" "}
+                                    — {gap.description}
+                                  </span>
+                                </li>
+                              ),
+                            )}
+                          </ul>
+                          <Link
+                            href="/opportunities"
+                            className="mt-3 inline-flex text-sm font-semibold text-blue-700 hover:underline"
+                          >
+                            Review in Opportunities
+                          </Link>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+
               {/* MARKETING SPEND */}
-              <div className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div
+                id="roi-spend"
+                className="mt-6 scroll-mt-24 rounded-2xl border border-slate-200 bg-white shadow-sm"
+              >
                 <div className="flex flex-col gap-3 border-b border-slate-100 p-6 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h2 className="text-base font-semibold text-slate-900">
@@ -947,9 +1211,33 @@ export default function RoiPage() {
               <p className="mt-2 text-sm text-slate-500">
                 Connect revenue and marketing spend data to measure business ROI.
               </p>
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+                <Link
+                  href="/leads"
+                  className="inline-flex rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+                >
+                  Record leads & revenue
+                </Link>
+                <a
+                  href="#roi-spend"
+                  className="inline-flex rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700"
+                >
+                  Add marketing spend
+                </a>
+              </div>
             </div>
           )}
         </div>
+
+        <ConfirmDialog
+          open={pendingDeleteSpend !== null}
+          title="Delete marketing spend?"
+          description={`Delete ${pendingDeleteSpend ? money(pendingDeleteSpend.amount, pendingDeleteSpend.currency) : "this spend"} for "${pendingDeleteSpend?.source || "unknown source"}"? This cannot be undone.`}
+          confirmLabel="Delete spend"
+          confirming={deletingSpend !== null}
+          onConfirm={confirmRemoveSpend}
+          onCancel={() => setPendingDeleteSpend(null)}
+        />
       </main>
     </div>
   );

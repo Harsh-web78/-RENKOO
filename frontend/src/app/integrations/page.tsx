@@ -13,15 +13,23 @@ import {
 
 import Sidebar from '../../components/Sidebar';
 
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import Panel from '../../components/ui/Panel';
+import { StatusBadge } from '../../components/ui/badge';
+
 import {
   connectGoogle,
+  disconnectGoogle,
+  getGbpStatus,
   getGoogleConnectionStatus,
+  getGoogleHealth,
   getGoogleProperties,
   selectGoogleProperty,
   getGoogleAnalyticsProperties,
   selectGoogleAnalyticsProperty,
   GoogleProperty,
   GoogleAnalyticsProperty,
+  GoogleIntegrationHealth,
 } from '../../lib/api';
 
 export default function IntegrationsPage() {
@@ -64,6 +72,24 @@ export default function IntegrationsPage() {
   ] = useState<string | null>(null);
 
   const [connected, setConnected] =
+    useState(false);
+
+  const [health, setHealth] =
+    useState<GoogleIntegrationHealth | null>(
+      null,
+    );
+
+  const [gbpStatus, setGbpStatus] =
+    useState<{
+      status: string;
+      limitation?: string | null;
+      dataAvailable?: boolean | null;
+    } | null>(null);
+
+  const [disconnecting, setDisconnecting] =
+    useState(false);
+
+  const [disconnectOpen, setDisconnectOpen] =
     useState(false);
 
   const [error, setError] =
@@ -215,6 +241,19 @@ export default function IntegrationsPage() {
           null,
       );
 
+      const [healthData, gbpData] =
+        await Promise.all([
+          getGoogleHealth().catch(
+            () => null,
+          ),
+          getGbpStatus().catch(
+            () => null,
+          ),
+        ]);
+
+      setHealth(healthData);
+      setGbpStatus(gbpData);
+
       if (connection.connected) {
         await Promise.all([
           loadProperties(),
@@ -338,6 +377,65 @@ export default function IntegrationsPage() {
         null,
       );
     }
+  }
+
+  /*
+   * =========================================================
+   * DISCONNECT GOOGLE
+   * =========================================================
+   */
+
+  async function handleDisconnectGoogle() {
+    if (disconnecting) {
+      return;
+    }
+
+    try {
+      setDisconnecting(true);
+      setError('');
+      setSuccess('');
+
+      const result =
+        await disconnectGoogle();
+
+      setConnected(false);
+      setHealth(null);
+      setSelectedProperty(null);
+      setSelectedAnalyticsProperty(null);
+      setProperties([]);
+      setAnalyticsProperties([]);
+
+      setSuccess(
+        result.message ??
+          'Google has been disconnected.',
+      );
+
+      setDisconnectOpen(false);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to disconnect Google.',
+      );
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
+  /*
+   * =========================================================
+   * SYNC FRESHNESS (honest: only what getGoogleHealth returns)
+   * =========================================================
+   */
+
+  function formatSyncDate(
+    value?: string | null,
+  ): string {
+    if (!value) return '—';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? '—'
+      : date.toLocaleString();
   }
 
   /*
@@ -479,10 +577,19 @@ export default function IntegrationsPage() {
           )}
 
           {/* =================================================
+              SEARCH (GSC + GA4)
+              ================================================= */}
+
+        <Panel
+          eyebrow="SEARCH"
+          title="Search (GSC + GA4)"
+          description="Google Search Console and Analytics data, powered by the existing Google connection. Provider: Google."
+        >
+          {/* =================================================
               GOOGLE ACCOUNT
               ================================================= */}
 
-          <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
 
               {/* ICON */}
@@ -535,6 +642,119 @@ export default function IntegrationsPage() {
                     </div>
                   )}
 
+                {connected && health && (
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-400">
+                      GSC:
+                    </span>
+
+                    <StatusBadge
+                      status={
+                        health.gsc?.status ??
+                        'UNKNOWN'
+                      }
+                    />
+
+                    <span className="ml-2 text-xs font-semibold text-slate-400">
+                      GA4:
+                    </span>
+
+                    <StatusBadge
+                      status={
+                        health.ga4?.status ??
+                        'UNKNOWN'
+                      }
+                    />
+
+                    <span className="ml-2 text-xs font-semibold text-slate-400">
+                      GBP:
+                    </span>
+
+                    <StatusBadge
+                      status={
+                        health.gbp?.status ??
+                        'UNKNOWN'
+                      }
+                    />
+                  </div>
+                )}
+
+                {connected && (
+                  <div className="mt-3 space-y-1 text-xs text-slate-500">
+                    <div>
+                      Provider:{' '}
+                      {health?.provider ??
+                        'Google'}{' '}
+                      · GSC data:{' '}
+                      {typeof health?.gsc
+                        ?.dataAvailable ===
+                      'boolean'
+                        ? health.gsc
+                            .dataAvailable
+                          ? 'Yes'
+                          : 'No'
+                        : 'Unknown'}{' '}
+                      · GA4 data:{' '}
+                      {typeof health?.ga4
+                        ?.dataAvailable ===
+                      'boolean'
+                        ? health.ga4
+                            .dataAvailable
+                          ? 'Yes'
+                          : 'No'
+                        : 'Unknown'}
+                    </div>
+
+                    {health?.lastSuccessfulRequestAt ? (
+                      <div>
+                        Last synced{' '}
+                        {formatSyncDate(
+                          health.lastSuccessfulRequestAt,
+                        )}
+                      </div>
+                    ) : (
+                      <div>
+                        Sync status unavailable —
+                        connection state only
+                      </div>
+                    )}
+
+                    {health?.lastErrorCode && (
+                      <div>
+                        Last error{' '}
+                        {health.lastErrorCode}
+                        {health?.lastErrorAt
+                          ? ` at ${formatSyncDate(health.lastErrorAt)}`
+                          : ''}
+                      </div>
+                    )}
+
+                    {(health?.limitation ||
+                      health?.gsc?.limitation ||
+                      health?.ga4?.limitation) && (
+                      <div>
+                        {[
+                          health?.limitation,
+                          health?.gsc?.limitation,
+                          health?.ga4?.limitation,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {connected &&
+                  health?.status ===
+                    'RECONNECT_REQUIRED' && (
+                    <div className="mt-3 text-xs font-semibold text-red-600">
+                      Google authorization needs
+                      attention. Reconnect your
+                      account to restore data.
+                    </div>
+                  )}
+
               </div>
 
               {/* ACTION */}
@@ -575,32 +795,51 @@ export default function IntegrationsPage() {
 
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      loadProperties();
-                      loadAnalyticsProperties();
-                    }}
-                    disabled={
-                      loadingProperties ||
-                      loadingAnalyticsProperties
-                    }
-                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                  >
-
-                    <RefreshCw
-                      size={16}
-                      className={
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        loadProperties();
+                        loadAnalyticsProperties();
+                      }}
+                      disabled={
                         loadingProperties ||
                         loadingAnalyticsProperties
-                          ? 'animate-spin'
-                          : ''
                       }
-                    />
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                    >
 
-                    Refresh
+                      <RefreshCw
+                        size={16}
+                        className={
+                          loadingProperties ||
+                          loadingAnalyticsProperties
+                            ? 'animate-spin'
+                            : ''
+                        }
+                      />
 
-                  </button>
+                      Refresh
+
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDisconnectOpen(true)
+                      }
+                      disabled={
+                        disconnecting
+                      }
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-5 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                    >
+
+                      {disconnecting
+                        ? 'Disconnecting...'
+                        : 'Disconnect'}
+
+                    </button>
+                  </div>
                 )}
 
               </div>
@@ -818,9 +1057,18 @@ export default function IntegrationsPage() {
 
                 <div className="flex-1">
 
-                  <h2 className="text-lg font-bold">
-                    Google Analytics 4
-                  </h2>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h2 className="text-lg font-bold">
+                      Google Analytics 4
+                    </h2>
+
+                    <StatusBadge
+                      status={
+                        health?.ga4?.status ??
+                        'UNKNOWN'
+                      }
+                    />
+                  </div>
 
                   <p className="mt-1 text-sm leading-6 text-slate-500">
                     Connect GA4 to bring users, sessions,
@@ -1080,6 +1328,150 @@ export default function IntegrationsPage() {
             </div>
           )}
 
+        </Panel>
+
+          {/* =================================================
+              LOCAL (GBP, READ-ONLY)
+              ================================================= */}
+
+        <Panel
+          eyebrow="LOCAL"
+          title="Local (Google Business Profile)"
+          description="Read-only business profile status from the existing Google connection. GBP management stays in Google."
+        >
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+
+              <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
+                <Globe2 size={26} />
+              </div>
+
+              <div className="flex-1">
+                <div className="flex flex-wrap items-center gap-3">
+                  <h2 className="text-lg font-bold">
+                    Google Business Profile
+                  </h2>
+
+                  <StatusBadge
+                    status={
+                      gbpStatus?.status ??
+                      health?.gbp?.status ??
+                      'NOT_AVAILABLE'
+                    }
+                  />
+                </div>
+
+                <p className="mt-1 text-sm leading-6 text-slate-500">
+                  {gbpStatus?.limitation ??
+                    health?.gbp?.limitation ??
+                    'Google Business Profile is not connected.'}
+                </p>
+
+                <div className="mt-2 text-xs text-slate-500">
+                  Provider: Google · Data
+                  available:{' '}
+                  {typeof (
+                    gbpStatus?.dataAvailable ??
+                    health?.gbp?.dataAvailable
+                  ) === 'boolean'
+                    ? (
+                        gbpStatus?.dataAvailable ??
+                        health?.gbp?.dataAvailable
+                      )
+                      ? 'Yes'
+                      : 'No'
+                    : 'Unknown'}
+                </div>
+
+                <div className="mt-1 text-xs text-slate-400">
+                  Read-only view — manage your
+                  profile in Google. No
+                  connection action here; use
+                  the Google connection above.
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </Panel>
+
+          {/* =================================================
+              OTHER PROVIDERS (HONEST PLACEHOLDERS)
+              ================================================= */}
+
+        <Panel
+          eyebrow="MORE"
+          title="Other integrations"
+          description="Honest status for providers that are not connected through this page. Only real API data is shown."
+        >
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-semibold text-slate-800">
+                  AI provider
+                </div>
+
+                <StatusBadge status="NOT_AVAILABLE" />
+              </div>
+
+              <div className="mt-1 text-xs leading-5 text-slate-500">
+                Provider: none connected here ·
+                Data available: No
+              </div>
+
+              <div className="mt-1 text-xs leading-5 text-slate-500">
+                AI provider status is managed in
+                AI Visibility.
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-semibold text-slate-800">
+                  Email delivery
+                </div>
+
+                <StatusBadge status="NOT_AVAILABLE" />
+              </div>
+
+              <div className="mt-1 text-xs leading-5 text-slate-500">
+                Provider: none connected here ·
+                Data available: No
+              </div>
+
+              <div className="mt-1 text-xs leading-5 text-slate-500">
+                Scheduled delivery unavailable.
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-semibold text-slate-800">
+                  Payments
+                </div>
+
+                <StatusBadge status="NOT_AVAILABLE" />
+              </div>
+
+              <div className="mt-1 text-xs leading-5 text-slate-500">
+                Provider: none connected here ·
+                Data available: No
+              </div>
+
+              <div className="mt-1 text-xs leading-5 text-slate-500">
+                Payments: see{' '}
+                <a
+                  href="/billing"
+                  className="font-bold text-blue-700 hover:underline"
+                >
+                  /billing
+                </a>
+                .
+              </div>
+            </div>
+          </div>
+        </Panel>
+
           {/* =================================================
               SETUP GUIDE
               ================================================= */}
@@ -1113,6 +1505,23 @@ export default function IntegrationsPage() {
 
               </div>
             )}
+
+          <ConfirmDialog
+            open={disconnectOpen}
+            title="Disconnect Google?"
+            description="Disconnect Google from this workspace? Search Console and Analytics data will become unavailable in RENKOO until you reconnect."
+            confirmLabel="Disconnect"
+            cancelLabel="Keep connected"
+            confirming={disconnecting}
+            onConfirm={() =>
+              void handleDisconnectGoogle()
+            }
+            onCancel={() => {
+              if (!disconnecting) {
+                setDisconnectOpen(false);
+              }
+            }}
+          />
 
         </section>
       </main>

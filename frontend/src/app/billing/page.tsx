@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  CreditCard,
   CheckCircle2,
   Loader2,
   RefreshCw,
@@ -10,6 +9,9 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import DataTable from "@/components/ui/DataTable";
+import { StatusBadge } from "@/components/ui/badge";
 import {
   cancelBillingSubscription,
   getBillingEntitlements,
@@ -92,6 +94,7 @@ export default function BillingPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [open, setOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
 
   const loadBilling = useCallback(async () => {
     try {
@@ -215,14 +218,8 @@ export default function BillingPage() {
     }
   }
 
-  async function handleCancel() {
+  async function handleConfirmCancel() {
     if (busy) return;
-
-    const confirmed = window.confirm(
-      "Cancel your subscription at the end of the current period? Your websites, clients, reports and history are preserved — only new usage is limited afterward.",
-    );
-
-    if (!confirmed) return;
 
     try {
       setBusy("cancel");
@@ -233,6 +230,7 @@ export default function BillingPage() {
       setNotice(
         "Subscription will cancel at the end of the current period. All data is preserved.",
       );
+      setCancelOpen(false);
       await loadBilling();
     } catch (err: any) {
       setError(
@@ -395,7 +393,7 @@ export default function BillingPage() {
                         <button
                           type="button"
                           disabled={busy === "cancel"}
-                          onClick={handleCancel}
+                          onClick={() => setCancelOpen(true)}
                           className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
                         >
                           {busy === "cancel"
@@ -624,47 +622,92 @@ export default function BillingPage() {
                   Payment history
                 </h2>
 
-                {invoices.length === 0 ? (
-                  <p className="mt-2 flex items-start gap-2 text-sm text-slate-500">
-                    <CreditCard
-                      size={16}
-                      className="mt-0.5 shrink-0"
-                    />
-                    {invoicesNote ||
-                      "No payment history. Invoices appear here once billing is connected."}
-                  </p>
-                ) : (
-                  <div className="mt-3 divide-y divide-slate-100">
-                    {invoices.map((invoice) => (
-                      <div
-                        key={invoice.id}
-                        className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div className="text-sm font-semibold">
-                          {money(
-                            invoice.amount,
-                            invoice.currency,
-                          )}{" "}
-                          <span className="ml-2 text-xs font-medium text-slate-400">
-                            {invoice.status} ·{" "}
-                            {formatDate(invoice.created)}
+                <div className="mt-3">
+                  <DataTable<BillingInvoice>
+                    caption="Payment history"
+                    rows={invoices}
+                    keyOf={(row) => row.id}
+                    emptyTitle="Invoice history unavailable"
+                    emptyDescription={
+                      invoicesNote ||
+                      "No payment history. Invoices appear here once billing is connected."
+                    }
+                    columns={[
+                      {
+                        key: "invoice",
+                        label: "Invoice",
+                        render: (row) => (
+                          <span className="font-semibold">
+                            {row.id}
                           </span>
-                        </div>
-                        {invoice.url && (
-                          <a
-                            href={invoice.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs font-bold text-blue-700 hover:underline"
-                          >
-                            View invoice
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                        ),
+                      },
+                      {
+                        key: "date",
+                        label: "Date",
+                        render: (row) =>
+                          formatDate(row.created),
+                      },
+                      {
+                        key: "amount",
+                        label: "Amount",
+                        align: "right",
+                        render: (row) =>
+                          money(
+                            row.amount,
+                            row.currency,
+                          ),
+                      },
+                      {
+                        key: "status",
+                        label: "Status",
+                        render: (row) => (
+                          <StatusBadge
+                            status={
+                              row.status ?? "UNKNOWN"
+                            }
+                          />
+                        ),
+                      },
+                      {
+                        key: "receipt",
+                        label: "Receipt",
+                        align: "right",
+                        render: (row) =>
+                          row.url ? (
+                            <a
+                              href={row.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs font-bold text-blue-700 hover:underline"
+                            >
+                              View invoice
+                            </a>
+                          ) : (
+                            "—"
+                          ),
+                      },
+                    ]}
+                  />
+                </div>
               </div>
+
+              <ConfirmDialog
+                open={cancelOpen}
+                title="Cancel subscription at period end?"
+                description="Your subscription will cancel at the end of the current period. Your websites, clients, reports and history are preserved — only new usage is limited afterward."
+                confirmLabel="Cancel at period end"
+                cancelLabel="Keep subscription"
+                confirming={busy === "cancel"}
+                onConfirm={() =>
+                  void handleConfirmCancel()
+                }
+                onCancel={() => {
+                  if (busy !== "cancel") {
+                    setCancelOpen(false);
+                  }
+                }}
+              />
             </>
           )}
         </section>

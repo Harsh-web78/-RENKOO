@@ -19,9 +19,12 @@ import {
   IndianRupee,
   Wallet,
   ArrowUpRight,
+  Menu,
 } from 'lucide-react';
 
 import Sidebar from '../../components/Sidebar';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import Link from 'next/link';
 
 import {
   getWebsites,
@@ -33,12 +36,58 @@ import {
   getRevenue,
   getRevenueSummary,
   createRevenue,
+  getRoiOutcome,
+  createActionFromRecommendation,
   Website,
   Lead,
   LeadsSummary,
   Revenue,
   RevenueSummary,
+  OutcomeResponse,
 } from '../../lib/api';
+
+type DateRangeKey =
+  | 'LAST_7'
+  | 'LAST_30'
+  | 'LAST_90'
+  | 'ALL_TIME';
+
+const DATE_RANGES: Array<{
+  key: DateRangeKey;
+  label: string;
+}> = [
+  { key: 'LAST_7', label: 'Last 7 days' },
+  { key: 'LAST_30', label: 'Last 30 days' },
+  { key: 'LAST_90', label: 'Last 90 days' },
+  { key: 'ALL_TIME', label: 'All time' },
+];
+
+function rangeToDates(
+  range: DateRangeKey,
+): {
+  from?: string;
+  to?: string;
+} {
+  if (range === 'ALL_TIME') {
+    return {};
+  }
+
+  const days =
+    range === 'LAST_7'
+      ? 7
+      : range === 'LAST_90'
+        ? 90
+        : 30;
+  const to = new Date();
+  const from = new Date();
+
+  from.setDate(from.getDate() - days);
+
+  return {
+    from: from.toISOString(),
+    to: to.toISOString(),
+  };
+}
 
 /*
  * =========================================================
@@ -117,6 +166,8 @@ export default function LeadsPage() {
 
   const [websites, setWebsites] = useState<Website[]>([]);
   const [websiteId, setWebsiteId] = useState('');
+  const [mobileOpen, setMobileOpen] =
+    useState(false);
 
   /*
    * =========================================================
@@ -140,6 +191,22 @@ export default function LeadsPage() {
   const [revenueSummary, setRevenueSummary] =
     useState<RevenueSummary | null>(null);
 
+  const [dateRange, setDateRange] =
+    useState<DateRangeKey>('LAST_30');
+
+  const [outcome, setOutcome] =
+    useState<OutcomeResponse | null>(
+      null,
+    );
+
+  const [outcomeError, setOutcomeError] =
+    useState('');
+
+  const [gapActionMap, setGapActionMap] =
+    useState<Record<string, boolean>>(
+      {},
+    );
+
   /*
    * =========================================================
    * LOADING STATE
@@ -157,6 +224,9 @@ export default function LeadsPage() {
 
   const [deletingId, setDeletingId] =
     useState<string | null>(null);
+
+  const [pendingDeleteLead, setPendingDeleteLead] =
+    useState<Lead | null>(null);
 
   const [error, setError] =
     useState('');
@@ -202,7 +272,7 @@ export default function LeadsPage() {
     if (websiteId) {
       loadData();
     }
-  }, [websiteId]);
+  }, [websiteId, dateRange]);
 
   /*
    * =========================================================
@@ -231,6 +301,7 @@ export default function LeadsPage() {
         setSummary(null);
         setRevenues([]);
         setRevenueSummary(null);
+        setOutcome(null);
         setLoading(false);
       }
     } catch (e: any) {
@@ -258,17 +329,37 @@ export default function LeadsPage() {
       setLoading(true);
       setError('');
 
+      const { from, to } =
+        rangeToDates(dateRange);
+
+      setOutcomeError('');
+
       const [
         leadData,
         summaryData,
         revenueData,
         revenueSummaryData,
+        outcomeData,
       ] = await Promise.all([
         getLeads(websiteId),
         getLeadsSummary(websiteId),
         getRevenue(websiteId),
         getRevenueSummary(websiteId),
+        getRoiOutcome(
+          websiteId,
+          from,
+          to,
+        ).catch((outcomeErr: any) => {
+          setOutcomeError(
+            outcomeErr?.message ||
+              'Outcome engine unavailable',
+          );
+
+          return null;
+        }),
       ]);
+
+      setOutcome(outcomeData);
 
       /*
        * -------------------------------------------------------
@@ -331,8 +422,44 @@ export default function LeadsPage() {
       setSummary(null);
       setRevenues([]);
       setRevenueSummary(null);
+      setOutcome(null);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleGapAction(
+    gapId: string,
+  ) {
+    if (
+      gapActionMap[gapId] ||
+      !outcome
+    ) {
+      return;
+    }
+
+    try {
+      setGapActionMap((prev) => ({
+        ...prev,
+        [gapId]: true,
+      }));
+
+      await createActionFromRecommendation(
+        gapId,
+      );
+    } catch (e: any) {
+      setError(
+        e?.message ||
+          'Failed to create action',
+      );
+
+      setGapActionMap((prev) => {
+        const next = { ...prev };
+
+        delete next[gapId];
+
+        return next;
+      });
     }
   }
 
@@ -489,6 +616,8 @@ export default function LeadsPage() {
   ) {
     event.preventDefault();
 
+    if (saving) return;
+
     if (!websiteId) {
       setError(
         'Please select a website first.',
@@ -608,6 +737,8 @@ export default function LeadsPage() {
   ) {
     event.preventDefault();
 
+    if (savingRevenue) return;
+
     if (!websiteId) {
       setError(
         'Please select a website first.',
@@ -682,16 +813,13 @@ export default function LeadsPage() {
   async function handleDeleteLead(
     lead: Lead,
   ) {
-    const confirmed =
-      window.confirm(
-        `Delete lead "${
-          lead.name ||
-          lead.email ||
-          'Unnamed lead'
-        }"?`,
-      );
+    setPendingDeleteLead(lead);
+  }
 
-    if (!confirmed) {
+  async function confirmDeleteLead() {
+    const lead = pendingDeleteLead;
+
+    if (!lead) {
       return;
     }
 
@@ -704,6 +832,7 @@ export default function LeadsPage() {
         lead.id,
       );
 
+      setPendingDeleteLead(null);
       await loadData();
     } catch (e: any) {
       setError(
@@ -783,8 +912,8 @@ export default function LeadsPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <Sidebar
-        mobileOpen={false}
-        onClose={() => {}}
+        mobileOpen={mobileOpen}
+        onClose={() => setMobileOpen(false)}
       />
 
       <main className="lg:ml-64">
@@ -795,23 +924,35 @@ export default function LeadsPage() {
           ====================================================== */}
 
           <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <Users
-                  size={23}
-                  className="text-blue-600"
-                />
+            <div className="flex items-start gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  setMobileOpen(true)
+                }
+                aria-label="Open menu"
+                className="mt-1 rounded-lg border border-slate-200 bg-white p-2 text-slate-600 lg:hidden"
+              >
+                <Menu size={20} />
+              </button>
+              <div>
+                <div className="flex items-center gap-2">
+                  <Users
+                    size={23}
+                    className="text-blue-600"
+                  />
 
-                <h1 className="text-2xl font-bold text-slate-900">
-                  Leads & Revenue
-                </h1>
-              </div>
+                  <h1 className="text-2xl font-bold text-slate-900">
+                    Leads & Revenue
+                  </h1>
+                </div>
 
               <p className="mt-1 text-sm text-slate-500">
                 Track leads, pipeline value,
                 conversions, revenue and
                 acquisition sources.
               </p>
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -834,6 +975,28 @@ export default function LeadsPage() {
                       value={website.id}
                     >
                       {website.name}
+                    </option>
+                  ),
+                )}
+              </select>
+
+              <select
+                value={dateRange}
+                onChange={(e) =>
+                  setDateRange(
+                    e.target.value as DateRangeKey,
+                  )
+                }
+                disabled={!websiteId}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {DATE_RANGES.map(
+                  (range) => (
+                    <option
+                      key={range.key}
+                      value={range.key}
+                    >
+                      {range.label}
                     </option>
                   ),
                 )}
@@ -905,29 +1068,39 @@ export default function LeadsPage() {
             <Metric
               label="New"
               value={
-                summary?.new ?? 0
+                summary == null
+                  ? '—'
+                  : (summary.new ?? 0)
               }
             />
 
             <Metric
               label="Qualified"
               value={
-                summary?.qualified ??
-                0
+                summary == null
+                  ? '—'
+                  : (summary.qualified ?? 0)
               }
             />
 
             <Metric
               label="Converted"
               value={
-                summary?.converted ??
-                0
+                summary == null
+                  ? '—'
+                  : (summary.converted ?? 0)
               }
             />
 
             <Metric
               label="Conversion Rate"
-              value={`${summary?.conversionRate ?? 0}%`}
+              value={
+                summary == null
+                  ? '—'
+                  : summary.conversionRate == null
+                    ? 'Not measurable — no leads recorded'
+                    : `${summary.conversionRate}%`
+              }
             />
           </div>
 
@@ -938,20 +1111,82 @@ export default function LeadsPage() {
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <Metric
               label="Pipeline Value"
-              value={formatMoney(
-                summary?.pipelineValue ??
-                  0,
-              )}
+              value={
+                summary == null
+                  ? '—'
+                  : formatMoney(
+                      summary.pipelineValue ??
+                        0,
+                    )
+              }
             />
 
             <Metric
               label="Revenue"
-              value={formatMoney(
-                revenueSummary?.totalRevenue ??
-                  summary?.revenue ??
-                  0,
-              )}
+              value={(() => {
+                if (
+                  revenueSummary == null &&
+                  summary == null
+                ) {
+                  return '—';
+                }
+
+                const revenueRaw =
+                  revenueSummary != null &&
+                  (revenueSummary as any)
+                    .totalRevenue !==
+                    undefined
+                    ? (revenueSummary as any)
+                        .totalRevenue
+                    : summary != null &&
+                        (summary as any)
+                          .revenue !==
+                          undefined
+                      ? (summary as any)
+                          .revenue
+                      : undefined;
+
+                if (
+                  revenueRaw == null &&
+                  (revenueSummary != null ||
+                    summary != null)
+                ) {
+                  return 'Not measurable — no leads recorded';
+                }
+
+                return formatMoney(
+                  revenueRaw ?? 0,
+                );
+              })()}
             />
+          </div>
+
+          <OutcomeSection
+            outcome={outcome}
+            outcomeError={outcomeError}
+            dateLabel={
+              DATE_RANGES.find(
+                (range) =>
+                  range.key ===
+                  dateRange,
+              )?.label ?? ''
+            }
+            onGapAction={
+              handleGapAction
+            }
+            gapActionMap={
+              gapActionMap
+            }
+          />
+
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+            <Link
+              href="/roi"
+              className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:underline"
+            >
+              Open Revenue Intelligence
+              <ArrowUpRight size={13} />
+            </Link>
           </div>
 
           {/* =====================================================
@@ -1253,10 +1488,14 @@ export default function LeadsPage() {
                   />
                 }
                 label="Total Revenue"
-                value={formatMoney(
-                  revenueSummary?.totalRevenue ??
-                    0,
-                )}
+                value={
+                  revenueSummary == null
+                    ? '—'
+                    : formatMoney(
+                        revenueSummary.totalRevenue ??
+                          0,
+                      )
+                }
               />
 
               <RevenueMetric
@@ -1267,8 +1506,10 @@ export default function LeadsPage() {
                 }
                 label="Transactions"
                 value={
-                  revenueSummary?.transactions ??
-                  0
+                  revenueSummary == null
+                    ? '—'
+                    : (revenueSummary.transactions ??
+                      0)
                 }
               />
 
@@ -1279,10 +1520,14 @@ export default function LeadsPage() {
                   />
                 }
                 label="Average Revenue"
-                value={formatMoney(
-                  revenueSummary?.averageRevenue ??
-                    0,
-                )}
+                value={
+                  revenueSummary == null
+                    ? '—'
+                    : formatMoney(
+                        revenueSummary.averageRevenue ??
+                          0,
+                      )
+                }
               />
 
             </div>
@@ -1866,6 +2111,21 @@ export default function LeadsPage() {
               </div>
             </form>
           </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+            <Link
+              href="/opportunities"
+              className="font-semibold text-blue-700 hover:underline"
+            >
+              Review in Opportunities
+            </Link>
+            <Link
+              href="/actions"
+              className="font-semibold text-blue-700 hover:underline"
+            >
+              Open Actions
+            </Link>
+          </div>
         </div>
       )}
 
@@ -2197,6 +2457,22 @@ export default function LeadsPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingDeleteLead !== null}
+        title="Delete lead?"
+        description={`Delete lead "${
+          pendingDeleteLead?.name ||
+          pendingDeleteLead?.email ||
+          'Unnamed lead'
+        }"? This cannot be undone.`}
+        confirmLabel="Delete lead"
+        confirming={deletingId !== null}
+        onConfirm={confirmDeleteLead}
+        onCancel={() =>
+          setPendingDeleteLead(null)
+        }
+      />
     </div>
   );
 }
@@ -2257,6 +2533,468 @@ function Metric({
       </div>
     </div>
   );
+}
+
+/*
+ * =========================================================
+ * OUTCOME SECTION
+ * =========================================================
+ */
+
+function OutcomeSection({
+  outcome,
+  outcomeError,
+  dateLabel,
+  onGapAction,
+  gapActionMap,
+}: {
+  outcome: OutcomeResponse | null;
+  outcomeError: string;
+  dateLabel: string;
+  onGapAction: (
+    gapId: string,
+  ) => void;
+  gapActionMap: Record<
+    string,
+    boolean
+  >;
+}) {
+  if (outcomeError && !outcome) {
+    return (
+      <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+        <div className="text-sm font-bold text-amber-800">
+          Outcome engine unavailable
+        </div>
+
+        <p className="mt-1 text-xs text-amber-700">
+          {outcomeError} Lead and
+          revenue records below remain
+          fully available.
+        </p>
+      </section>
+    );
+  }
+
+  if (!outcome) {
+    return null;
+  }
+
+  const funnel = outcome.funnel;
+  const roi = outcome.roi;
+  const coverage =
+    outcome.attribution.coverage;
+
+  const funnelStages: Array<{
+    label: string;
+    display: string;
+    availability?: string;
+  }> = [
+    {
+      label: 'Visitors',
+      display:
+        funnel.visitors !== null
+          ? String(funnel.visitors)
+          : '—',
+      availability:
+        funnel.visitorsAvailability,
+    },
+    {
+      label: 'Leads',
+      display: String(
+        funnel.leads,
+      ),
+    },
+    {
+      label: 'Qualified',
+      display: String(
+        funnel.qualified,
+      ),
+    },
+    {
+      label: 'Conversions',
+      display: String(
+        funnel.conversions,
+      ),
+    },
+    {
+      label: 'Revenue',
+      display: formatOutcomeMoney(
+        funnel.revenue,
+      ),
+    },
+  ];
+
+  return (
+    <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 p-5">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-sm font-bold text-slate-900">
+            Business Outcome
+          </h2>
+
+          <span className="text-xs text-slate-400">
+            {dateLabel} · real records
+            only
+          </span>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {funnelStages.map(
+            (stage) => (
+              <div
+                key={stage.label}
+                className="rounded-xl border border-slate-100 bg-slate-50 p-4"
+              >
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  {stage.label}
+                </div>
+
+                <div className="mt-1 text-xl font-bold text-slate-900">
+                  {stage.display}
+                </div>
+
+                {stage.availability &&
+                  stage.availability !==
+                    'AVAILABLE' && (
+                    <div className="mt-1 text-[11px] text-slate-400">
+                      {formatAvailability(
+                        stage.availability,
+                      )}
+                    </div>
+                  )}
+              </div>
+            ),
+          )}
+        </div>
+
+        <div className="mt-3 text-xs text-slate-500">
+          Conversion rate:{' '}
+          <span className="font-bold text-slate-900">
+            {funnel.conversionRate !==
+            null
+              ? `${funnel.conversionRate}%`
+              : '— (no leads in range)'}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid gap-0 lg:grid-cols-2">
+        <div className="border-b border-slate-100 p-5 lg:border-b-0 lg:border-r">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
+            Revenue attribution
+          </h3>
+
+          <div className="mt-3 space-y-2">
+            <AttributionRow
+              label="Directly attributed (linked lead)"
+              count={
+                outcome.attribution
+                  .tiers
+                  .DIRECTLY_ATTRIBUTED
+                  ?.count ?? 0
+              }
+              amount={
+                outcome.attribution
+                  .tiers
+                  .DIRECTLY_ATTRIBUTED
+                  ?.amount ?? 0
+              }
+            />
+
+            <AttributionRow
+              label="Source recorded"
+              count={
+                outcome.attribution
+                  .tiers
+                  .SOURCE_RECORDED
+                  ?.count ?? 0
+              }
+              amount={
+                outcome.attribution
+                  .tiers
+                  .SOURCE_RECORDED
+                  ?.amount ?? 0
+              }
+            />
+
+            <AttributionRow
+              label="Unattributed"
+              count={
+                outcome.attribution
+                  .tiers.UNATTRIBUTED
+                  ?.count ?? 0
+              }
+              amount={
+                outcome.attribution
+                  .tiers.UNATTRIBUTED
+                  ?.amount ?? 0
+              }
+            />
+          </div>
+
+          <div className="mt-3 text-xs text-slate-500">
+            Attribution coverage:{' '}
+            <span className="font-bold text-slate-900">
+              {coverage !== null
+                ? `${coverage}%`
+                : '— (no recognized revenue)'}
+            </span>
+          </div>
+        </div>
+
+        <div className="p-5">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
+            Attributed ROI
+          </h3>
+
+          {roi.measurable &&
+          roi.attributedRoi !==
+            null ? (
+            <div className="mt-3">
+              <div className="text-3xl font-bold text-slate-900">
+                {roi.attributedRoi}%
+              </div>
+
+              <p className="mt-1 text-xs text-slate-500">
+                {formatOutcomeMoney(
+                  roi.attributedRevenue,
+                )}{' '}
+                attributed revenue
+                against{' '}
+                {formatOutcomeMoney(
+                  roi.spend,
+                )}{' '}
+                spend.
+              </p>
+            </div>
+          ) : (
+            <p className="mt-3 text-xs leading-5 text-slate-500">
+              ROI unavailable —
+              insufficient
+              spend/attribution
+              data.
+              {roi.spend <= 0
+                ? ' No marketing spend is recorded in range.'
+                : ' No attributed revenue is recorded in range.'}
+            </p>
+          )}
+
+          <div className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">
+            <span className="font-semibold text-slate-700">
+              Recent 30d vs prior 30d:
+            </span>{' '}
+            leads{' '}
+            {
+              outcome.recentChanges
+                .leadsRecent
+            }{' '}
+            ({signed(
+              outcome.recentChanges
+                .leadsDelta,
+            )}
+            ) · revenue{' '}
+            {formatOutcomeMoney(
+              outcome.recentChanges
+                .revenueRecent,
+            )}{' '}
+            ({signedMoney(
+              outcome.recentChanges
+                .revenueDelta,
+            )}
+            )
+          </div>
+        </div>
+      </div>
+
+      {outcome.sources.length >
+        0 && (
+        <div className="border-t border-slate-100 p-5">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
+            Source performance
+          </h3>
+
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 text-[11px] uppercase tracking-wide text-slate-400">
+                  <th className="py-2 pr-3">
+                    Source
+                  </th>
+                  <th className="py-2 pr-3 text-right">
+                    Leads
+                  </th>
+                  <th className="py-2 pr-3 text-right">
+                    Conv.
+                  </th>
+                  <th className="py-2 pr-3 text-right">
+                    Attr. revenue
+                  </th>
+                  <th className="py-2 pr-3 text-right">
+                    Spend
+                  </th>
+                  <th className="py-2 text-right">
+                    ROI
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {outcome.sources.map(
+                  (row) => (
+                    <tr
+                      key={row.source}
+                      className="border-b border-slate-50 last:border-0"
+                    >
+                      <td className="py-2 pr-3 font-semibold text-slate-900">
+                        {row.source}
+                      </td>
+                      <td className="py-2 pr-3 text-right tabular-nums">
+                        {row.leads}
+                      </td>
+                      <td className="py-2 pr-3 text-right tabular-nums">
+                        {row.conversions}
+                        {row.conversionRate !==
+                        null
+                          ? ` (${row.conversionRate}%)`
+                          : ''}
+                      </td>
+                      <td className="py-2 pr-3 text-right tabular-nums">
+                        {formatOutcomeMoney(
+                          row.attributedRevenue,
+                        )}
+                      </td>
+                      <td className="py-2 pr-3 text-right tabular-nums">
+                        {formatOutcomeMoney(
+                          row.spend,
+                        )}
+                      </td>
+                      <td className="py-2 text-right tabular-nums font-semibold">
+                        {row.roi !== null
+                          ? `${row.roi}%`
+                          : '—'}
+                      </td>
+                    </tr>
+                  ),
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {outcome.conversionGaps
+        .length > 0 && (
+        <div className="border-t border-slate-100 bg-amber-50/50 p-5">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-amber-800">
+            Outcome opportunities
+          </h3>
+
+          <div className="mt-3 space-y-2">
+            {outcome.conversionGaps.map(
+              (gap) => {
+                const busy =
+                  gapActionMap[
+                    gap.id
+                  ];
+
+                return (
+                  <div
+                    key={gap.id}
+                    className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div>
+                      <div className="text-sm font-bold text-slate-900">
+                        {gap.title}
+                      </div>
+
+                      <p className="mt-0.5 text-xs leading-5 text-slate-500">
+                        {gap.description}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        onGapAction(
+                          gap.id,
+                        )
+                      }
+                      className="shrink-0 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white transition hover:bg-slate-700 disabled:opacity-60"
+                    >
+                      {busy
+                        ? 'Added ✓'
+                        : 'Add to Actions'}
+                    </button>
+                  </div>
+                );
+              },
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function formatOutcomeMoney(
+  value: number,
+) {
+  const safe = Number(value ?? 0);
+
+  return `₹${safe.toLocaleString('en-IN', {
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function AttributionRow({
+  label,
+  count,
+  amount,
+}: {
+  label: string;
+  count: number;
+  amount: number;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-2.5">
+      <span className="text-xs font-semibold text-slate-600">
+        {label}
+      </span>
+
+      <span className="text-xs tabular-nums text-slate-900">
+        <span className="font-bold">
+          {count}
+        </span>{' '}
+        ·{' '}
+        {formatOutcomeMoney(
+          amount,
+        )}
+      </span>
+    </div>
+  );
+}
+
+function formatAvailability(
+  value: string,
+) {
+  if (
+    value === 'NOT_CONNECTED'
+  ) {
+    return 'Analytics not connected';
+  }
+
+  return 'No data available';
+}
+
+function signed(value: number) {
+  return `${value > 0 ? '+' : ''}${value}`;
+}
+
+function signedMoney(
+  value: number,
+) {
+  return `${value > 0 ? '+' : ''}${formatOutcomeMoney(value)}`;
 }
 
 /*
