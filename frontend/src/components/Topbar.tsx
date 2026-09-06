@@ -1,19 +1,7 @@
-'use client';
+﻿"use client";
 
-/*
- * RENKOO V2 — Topbar.
- * Shared application header for the AppShell foundation:
- * mobile menu button, current workspace + website context,
- * global search trigger (opens the command palette), a
- * notifications entry point, and the account area.
- * Presentation only: auth/session/token behavior is untouched
- * (account data comes from the existing getCurrentAccount
- * call owned by AppShell; unauthenticated redirects stay in
- * pages).
- */
-
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Bell,
   CreditCard,
@@ -21,14 +9,15 @@ import {
   Menu,
   Search,
   Settings,
-} from 'lucide-react';
-import { useEffect, useState } from 'react';
+} from "lucide-react";
+import { useEffect, useState } from "react";
 
 import {
   logout,
   type CurrentAccount,
-} from '@/lib/api';
-import { PERSONA_META, usePersona } from '@/lib/persona';
+} from "@/lib/api";
+import { PERSONA_META, usePersona } from "@/lib/persona";
+import WebsiteSelector from "./WebsiteSelector";
 
 export default function Topbar({
   onMenu,
@@ -41,47 +30,38 @@ export default function Topbar({
 }) {
   const { effectivePersona } = usePersona();
   const router = useRouter();
-  const [menuOpen, setMenuOpen] =
-    useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
-    if (!menuOpen) {
-      return;
-    }
+    if (!menuOpen) return;
 
     function onKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         setMenuOpen(false);
       }
     }
 
-    document.addEventListener('keydown', onKey);
+    document.addEventListener("keydown", onKey);
 
     return () => {
-      document.removeEventListener(
-        'keydown',
-        onKey,
-      );
+      document.removeEventListener("keydown", onKey);
     };
   }, [menuOpen]);
 
   function handleLogout() {
     logout();
     setMenuOpen(false);
-    router.push('/login');
+    router.push("/login");
     router.refresh();
   }
 
   const organizationName =
-    account?.organization?.name || 'Workspace';
-  const websiteName =
-    account?.website?.name ||
-    account?.website?.url ||
-    'No website connected';
+    account?.organization?.name || "Workspace";
+
   const userLabel =
     account?.user?.name ||
     account?.user?.email ||
-    'Account';
+    "Account";
 
   return (
     <header className="rk-topbar sticky top-0 z-20 border-b backdrop-blur">
@@ -102,12 +82,13 @@ export default function Topbar({
           >
             {organizationName}
           </p>
-          <p
-            className="truncate text-xs text-rk-secondary"
-            title={websiteName}
-          >
-            {websiteName}
+          <p className="truncate text-xs text-rk-secondary">
+            Workspace
           </p>
+        </div>
+
+        <div className="ml-2 min-w-0">
+          <WebsiteSelector />
         </div>
 
         <button
@@ -118,8 +99,9 @@ export default function Topbar({
         >
           <Search size={15} aria-hidden />
           <span className="truncate">
-            Search pages, reports, actions…
+            Search pages, reports, actions...
           </span>
+
           <kbd
             aria-hidden
             className="ml-auto hidden shrink-0 rounded border border-rk-border bg-rk-surface px-1.5 py-0.5 text-[10px] font-bold text-rk-muted sm:block"
@@ -164,6 +146,7 @@ export default function Topbar({
               >
                 {userLabel.slice(0, 1).toUpperCase()}
               </span>
+
               <span className="hidden max-w-[140px] truncate text-xs font-semibold text-rk-ink md:block">
                 {userLabel}
               </span>
@@ -193,10 +176,7 @@ export default function Topbar({
                     onClick={() => setMenuOpen(false)}
                     className="rk-focusable flex items-center gap-2.5 px-3.5 py-2 text-sm text-rk-secondary hover:bg-rk-soft hover:text-rk-ink"
                   >
-                    <Settings
-                      size={15}
-                      aria-hidden
-                    />
+                    <Settings size={15} aria-hidden />
                     Settings
                   </Link>
 
@@ -206,10 +186,7 @@ export default function Topbar({
                     onClick={handleLogout}
                     className="rk-focusable flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm text-rk-secondary hover:bg-rk-soft hover:text-rk-ink"
                   >
-                    <LogOut
-                      size={15}
-                      aria-hidden
-                    />
+                    <LogOut size={15} aria-hidden />
                     Log out
                   </button>
                 </div>

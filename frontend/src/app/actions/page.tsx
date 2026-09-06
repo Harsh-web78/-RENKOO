@@ -47,6 +47,7 @@ export default function ActionsPage() {
   const [actions, setActions] = useState<RenkooAction[]>([]);
   const [websites, setWebsites] = useState<Website[]>([]);
   const [websiteFilter, setWebsiteFilter] = useState<string>('ALL');
+  const [selectedWebsiteId, setSelectedWebsiteId] = useState<string>('');
   const [statusFilter, setStatusFilter] =
     useState<StatusFilter>('ALL');
   const [priorityFilter, setPriorityFilter] =
@@ -86,6 +87,15 @@ export default function ActionsPage() {
   }
 
   useEffect(() => {
+    const selectedId = window.localStorage.getItem(
+      'renkoo_website_id',
+    );
+
+    if (selectedId) {
+      setSelectedWebsiteId(selectedId);
+      setWebsiteFilter(selectedId);
+    }
+
     loadActions();
   }, []);
 
@@ -1129,3 +1139,5 @@ function formatMetadataValue(value: unknown) {
     return '—';
   }
 }
+
+

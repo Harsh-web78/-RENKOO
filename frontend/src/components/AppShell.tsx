@@ -1,19 +1,19 @@
-'use client';
+﻿'use client';
 
 /*
- * RENKOO V2 — AppShell (Phase 2 foundation).
+ * RENKOO V2 â€” AppShell (Phase 2 foundation).
  * Grouped primary navigation (7 groups) with the Money
  * group giving /roi its proper home alongside Leads &
  * Revenue. Persona composes through the existing orderNav
  * helper: items re-order within their groups, groups stay
- * fixed, and nothing is ever hidden — RBAC remains the
+ * fixed, and nothing is ever hidden â€” RBAC remains the
  * sole authority server-side.
  *
  * Legacy /[section] is intentionally absent from
  * navigation; the route itself is preserved untouched.
  * Auth-only routes (/login, /signup, /invite, /onboarding,
  * /reset-password, /verify-email, /share/*) never mount
- * this shell — pages own their auth redirects as before.
+ * this shell â€” pages own their auth redirects as before.
  *
  * Sidebar.tsx stays authoritative for existing pages until
  * each route migrates. New work may opt into AppShell +
@@ -75,7 +75,7 @@ interface NavGroup {
 
 export const NAV_GROUPS: NavGroup[] = [
   {
-    label: 'Grow',
+    label: 'Command',
     items: [
       {
         name: 'Dashboard',
@@ -100,7 +100,7 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: 'Visibility',
+    label: 'Insights',
     items: [
       {
         name: 'Search Visibility',
@@ -140,7 +140,7 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: 'Market',
+    label: 'Growth',
     items: [
       {
         name: 'Competitors',
@@ -155,7 +155,7 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: 'Money',
+    label: 'Impact',
     items: [
       {
         name: 'Leads & Revenue',
@@ -167,10 +167,15 @@ export const NAV_GROUPS: NavGroup[] = [
         href: '/roi',
         Icon: Wallet,
       },
+      {
+        name: 'Reports',
+        href: '/reports',
+        Icon: Newspaper,
+      },
     ],
   },
   {
-    label: 'Intelligence',
+    label: 'AI',
     items: [
       {
         name: 'Ask RENKOO',
@@ -187,16 +192,16 @@ export const NAV_GROUPS: NavGroup[] = [
         href: '/business-brain',
         Icon: Brain,
       },
-      {
-        name: 'Reports',
-        href: '/reports',
-        Icon: Newspaper,
-      },
     ],
   },
   {
-    label: 'Agency',
+    label: 'Workspace',
     items: [
+      {
+        name: 'Websites',
+        href: '/websites',
+        Icon: Globe2,
+      },
       {
         name: 'Clients',
         href: '/clients',
@@ -250,7 +255,7 @@ export default function AppShell({
    * Persona ranks every destination once; groups then
    * render in their fixed order with persona-ranked
    * items inside. Group labels are structural, not
-   * permissions — all routes remain reachable.
+   * permissions â€” all routes remain reachable.
    */
   const flat = NAV_GROUPS.flatMap((group) =>
     group.items.map((item) => ({
@@ -366,7 +371,7 @@ export default function AppShell({
             aria-label="Close menu"
             className="rk-focusable ml-auto grid h-8 w-8 place-items-center rounded-rk-md text-rk-secondary lg:hidden"
           >
-            ×
+            Ã—
           </button>
         </div>
 
@@ -483,3 +488,5 @@ export default function AppShell({
     </div>
   );
 }
+
+

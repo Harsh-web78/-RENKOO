@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -15,6 +15,7 @@ import {
 import {
   connectGoogle,
   createWebsite,
+  startCrawl,
   getGoogleConnectionStatus,
   getWebsites,
   isLimitError,
@@ -36,6 +37,9 @@ export default function OnboardingPage() {
 
   const [websiteCreated, setWebsiteCreated] =
     useState(false);
+
+  const [firstCrawlResult, setFirstCrawlResult] =
+    useState<Awaited<ReturnType<typeof startCrawl>> | null>(null);
 
   const [googleConnected, setGoogleConnected] =
     useState(false);
@@ -115,7 +119,7 @@ export default function OnboardingPage() {
           setGoogleConnected(false);
         }
       } catch {
-        // No signal exists — keep Skip flow, Step-3 card
+        // No signal exists â€” keep Skip flow, Step-3 card
         // renders from real status only (defaults to "Connect later").
       }
     }
@@ -169,7 +173,7 @@ export default function OnboardingPage() {
       setLoading(true);
       setLimitError(null);
 
-      await createWebsite({
+      const createdWebsite = await createWebsite({
         name: cleanName,
         url: cleanUrl,
         industry:
@@ -179,6 +183,10 @@ export default function OnboardingPage() {
       });
 
       setWebsiteCreated(true);
+
+      const crawlResult = await startCrawl(createdWebsite.id);
+      setFirstCrawlResult(crawlResult);
+
       setStep(2);
     } catch (err) {
       console.error(err);
@@ -615,6 +623,52 @@ export default function OnboardingPage() {
         {step === 3 && (
           <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
 
+            {firstCrawlResult && (
+              <div className="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                <div className="border-b border-slate-200 px-5 py-4">
+                  <p className="text-xs font-bold uppercase tracking-wider text-blue-600">
+                    First crawl complete
+                  </p>
+                  <h3 className="mt-1 text-xl font-bold text-slate-900">
+                    Your first growth snapshot
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    RENKOO has analyzed your website and created your technical baseline.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 divide-x divide-y divide-slate-200 sm:grid-cols-4 sm:divide-y-0">
+                  <div className="bg-white p-4">
+                    <p className="text-xs font-semibold text-slate-500">SEO score</p>
+                    <p className="mt-1 text-3xl font-black text-slate-900">
+                      {firstCrawlResult.summary.score}
+                      <span className="ml-1 text-sm font-semibold text-slate-400">/100</span>
+                    </p>
+                  </div>
+
+                  <div className="bg-white p-4">
+                    <p className="text-xs font-semibold text-slate-500">Pages analyzed</p>
+                    <p className="mt-1 text-3xl font-black text-slate-900">
+                      {firstCrawlResult.pagesCrawled}
+                    </p>
+                  </div>
+
+                  <div className="bg-white p-4">
+                    <p className="text-xs font-semibold text-slate-500">Open issues</p>
+                    <p className="mt-1 text-3xl font-black text-slate-900">
+                      {firstCrawlResult.summary.open}
+                    </p>
+                  </div>
+
+                  <div className="bg-white p-4">
+                    <p className="text-xs font-semibold text-slate-500">Critical issues</p>
+                    <p className="mt-1 text-3xl font-black text-slate-900">
+                      {firstCrawlResult.summary.critical}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="text-center">
               <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-blue-50 to-violet-50 text-blue-600">
                 <Sparkles size={30} />
@@ -682,11 +736,7 @@ export default function OnboardingPage() {
                     What to do next
                   </div>
 
-                  <p className="mt-1 text-xs leading-5 text-slate-500">
-                    Audit starts from the workspace
-                    — onboarding does not run
-                    crawls.
-                  </p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">`r`n                    Your first crawl is complete. Use your snapshot above to decide what to improve first.`r`n                  </p>
 
                   <div className="mt-4 grid gap-2">
                     <a
@@ -701,7 +751,7 @@ export default function OnboardingPage() {
                       href="/technical-seo"
                       className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
                     >
-                      Run your first audit in
+                      View your technical findings
                       Technical SEO
                       <ArrowRight size={16} />
                     </a>
@@ -804,3 +854,8 @@ function SetupCard({
     </div>
   );
 }
+
+
+
+
+
