@@ -1,5 +1,14 @@
 ﻿'use client';
 
+/*
+ * RENKOO — Business Brain (V2 design-system pass).
+ * UI ONLY: shared PageHeader / Panel / Metric / FilterBar /
+ * DataTable / badges / buttons / states. All API calls, brain
+ * normalization, analysis/save flows, recommendation → action
+ * flows, action status transitions, forms, validation and
+ * business logic are unchanged.
+ */
+
 import { useEffect, useState } from 'react';
 import {
   Brain,
@@ -8,15 +17,33 @@ import {
   Save,
   AlertTriangle,
   CheckCircle2,
-  Play,
-  ListTodo,
+  X,
 } from 'lucide-react';
 
 import AppShell from '../../components/AppShell';
+import PageHeader from '../../components/ui/PageHeader';
+import Panel from '../../components/ui/Panel';
+import SharedMetric from '../../components/ui/Metric';
+import FilterBar from '../../components/ui/FilterBar';
+import DataTable, {
+  type DataTableColumn,
+} from '../../components/ui/DataTable';
 import {
+  Badge,
   DataSourceBadge,
-  FreshnessBadge,
 } from '../../components/ui/badge';
+import {
+  PrimaryButton,
+  SecondaryButton,
+} from '../../components/ui/buttons';
+import {
+  EmptyState,
+  LoadingBlock,
+} from '../../components/ui/states';
+import {
+  InsightBlock,
+  RecommendationCallout,
+} from '../../components/ui/insights';
 import {
   getWebsites,
   getBusinessBrain,
@@ -178,6 +205,26 @@ function brainToForm(
   };
 }
 
+function priorityTone(
+  priority: string,
+): 'neutral' | 'info' | 'positive' | 'warning' | 'danger' {
+  const key = String(priority || '').toUpperCase();
+  if (key === 'CRITICAL') return 'danger';
+  if (key === 'HIGH') return 'warning';
+  if (key === 'MEDIUM') return 'info';
+  return 'neutral';
+}
+
+function actionStatusTone(
+  status: string,
+): 'neutral' | 'info' | 'positive' | 'warning' | 'danger' {
+  const key = String(status || '').toUpperCase();
+  if (key === 'DONE' || key === 'COMPLETED') return 'positive';
+  if (key === 'IN_PROGRESS') return 'info';
+  if (key === 'DISMISSED') return 'neutral';
+  return 'neutral';
+}
+
 export default function BusinessBrainPage() {
   const [websites, setWebsites] = useState<Website[]>([]);
   const [websiteId, setWebsiteId] = useState('');
@@ -235,6 +282,7 @@ export default function BusinessBrainPage() {
       loadRecommendations(),
       loadActions(),
     ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [websiteId]);
 
   async function loadContext() {
@@ -702,6 +750,10 @@ export default function BusinessBrainPage() {
     }));
   }
 
+  function handleWebsiteChange(id: string) {
+    setWebsiteId(id);
+  }
+
   const selectedWebsite =
     websites.find(
       (item) => item.id === websiteId,
@@ -742,248 +794,351 @@ export default function BusinessBrainPage() {
         action.websiteId === websiteId,
     );
 
+  const recommendationColumns: DataTableColumn<BusinessBrainRecommendation>[] = [
+    {
+      key: 'recommendation',
+      label: 'Recommendation',
+      priority: 'high',
+      render: (recommendation) => {
+        const linkedAction =
+          websiteActions.find(
+            (action) =>
+              action.recommendationId ===
+              recommendation.id,
+          );
+        return (
+          <span className="block min-w-0">
+            <span className="block font-bold text-rk-ink">
+              {recommendation.title}
+            </span>
+            <span className="mt-0.5 block text-[13px] leading-5 text-rk-secondary">
+              {recommendation.description}
+            </span>
+            {linkedAction ? (
+              <span className="rk-metadata mt-1 block">
+                Linked action: {linkedAction.status.replace('_', ' ')}
+              </span>
+            ) : null}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'priority',
+      label: 'Priority',
+      priority: 'high',
+      render: (recommendation) => (
+        <Badge
+          label={String(
+            recommendation.priority || 'MEDIUM',
+          )}
+          tone={priorityTone(
+            String(
+              recommendation.priority || 'MEDIUM',
+            ),
+          )}
+        />
+      ),
+    },
+    {
+      key: 'type',
+      label: 'Type',
+      priority: 'medium',
+      render: (recommendation) => (
+        <Badge
+          label={String(recommendation.type || '—')}
+          tone="neutral"
+        />
+      ),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      priority: 'medium',
+      render: (recommendation) => (
+        <Badge
+          label={String(recommendation.status || 'OPEN')}
+          tone={actionStatusTone(
+            String(recommendation.status || 'OPEN'),
+          )}
+        />
+      ),
+    },
+  ];
+
+  const actionColumns: DataTableColumn<RenkooAction>[] = [
+    {
+      key: 'action',
+      label: 'Action',
+      priority: 'high',
+      render: (action) => (
+        <span className="block min-w-0">
+          <span className="block font-bold text-rk-ink">
+            {action.title}
+          </span>
+          {action.description ? (
+            <span className="mt-0.5 block text-[13px] leading-5 text-rk-secondary">
+              {action.description}
+            </span>
+          ) : null}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      priority: 'high',
+      render: (action) => (
+        <Badge
+          label={String(action.status || 'TODO')}
+          tone={actionStatusTone(String(action.status || ''))}
+        />
+      ),
+    },
+    {
+      key: 'priority',
+      label: 'Priority',
+      priority: 'medium',
+      render: (action) => (
+        <Badge
+          label={String(action.priority || '—')}
+          tone={priorityTone(String(action.priority || ''))}
+        />
+      ),
+    },
+  ];
+
   return (
     <AppShell
       mobileOpen={mobileOpen}
       onClose={() => setMobileOpen(false)}
       onMenu={() => setMobileOpen(true)}
     >
-      <div className="mx-auto max-w-[1440px] p-5 lg:p-8">
-
-          {/* HEADER */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Brain
-                    size={24}
-                    className="text-[#111827]"
-                  />
-
-                  <h1 className="text-3xl font-semibold tracking-[-0.04em] text-[#111827]">
-                    Business Brain
-                  </h1>
-                </div>
-
-                <p className="mt-1 text-sm text-[#6b7280]">
-                  Your business context powering
-                  RENKOO AI.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <select
-                value={websiteId}
-                onChange={(e) =>
-                  setWebsiteId(
-                    e.target.value,
-                  )
-                }
-                disabled={
-                  websites.length === 0
-                }
-                className="rounded-none border border-[#e5e7eb] bg-white px-4 py-2 text-sm font-medium outline-none focus:border-[#111827]"
-              >
-                {websites.length === 0 ? (
-                  <option value="">
-                    No websites
-                  </option>
-                ) : (
-                  websites.map(
-                    (website) => (
-                      <option
-                        key={website.id}
-                        value={website.id}
-                      >
-                        {website.name}
-                      </option>
-                    ),
-                  )
-                )}
-              </select>
-
-              <button
-                type="button"
-                onClick={() => {
-                  void handleAnalyze();
-                }}
-                disabled={
-                  analyzing ||
-                  saving ||
-                  !websiteId
-                }
-                className="flex items-center gap-2 rounded-none bg-[#111827] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#374151] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {analyzing ? (
-                  <RefreshCw
-                    size={16}
-                    className="animate-spin"
-                  />
-                ) : (
-                  <Sparkles size={16} />
-                )}
-
-                {analyzing
-                  ? 'Analyzing...'
-                  : 'Analyze'}
-              </button>
-            </div>
-          </div>
-
-          {websiteId ? (
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className="rk-page">
+        <PageHeader
+          eyebrow="Foundation"
+          title="Business Brain"
+          description="Your business context powering RENKOO AI."
+          meta={
+            <>
+              {selectedWebsite ? (
+                <span className="truncate">{selectedWebsite.name}</span>
+              ) : (
+                <span>No website selected</span>
+              )}
+              <span aria-hidden>·</span>
+              {brain?.lastAnalyzedAt ? (
+                <span>
+                  Analyzed{' '}
+                  {new Date(
+                    brain.lastAnalyzedAt,
+                  ).toLocaleDateString()}
+                </span>
+              ) : (
+                <span>Never analyzed</span>
+              )}
+              <span aria-hidden>·</span>
               <DataSourceBadge
                 source="Business Brain"
                 connected={hasBrain}
               />
-              <FreshnessBadge
-                label={
-                  brain?.lastAnalyzedAt
-                    ? `Analyzed ${new Date(
-                        brain.lastAnalyzedAt,
-                      ).toLocaleDateString()}`
-                    : 'Never analyzed'
+            </>
+          }
+          actions={
+            <>
+              <SecondaryButton
+                onClick={() => {
+                  void handleSave();
+                }}
+                disabled={
+                  saving || analyzing || !websiteId
                 }
-              />
-            </div>
-          ) : null}
+              >
+                <Save size={14} aria-hidden />
+                {saving ? 'Saving…' : 'Save'}
+              </SecondaryButton>
 
-          {/* ERROR */}
-          {error && (
-            <div className="mt-6 flex items-start gap-2 rounded-none border border-red-200 bg-[#fafafa] p-4 text-sm text-[#4b5563]">
+              <PrimaryButton
+                onClick={() => {
+                  void handleAnalyze();
+                }}
+                disabled={
+                  analyzing || saving || !websiteId
+                }
+              >
+                <Sparkles size={14} aria-hidden />
+                {analyzing ? 'Analyzing…' : 'Analyze'}
+              </PrimaryButton>
+            </>
+          }
+        />
+
+        <div className="mt-5">
+          <FilterBar
+            selects={[
+              {
+                key: 'website',
+                label: 'Website',
+                value: websiteId,
+                options: websites.map((website) => ({
+                  value: website.id,
+                  label: website.name,
+                })),
+                onChange: handleWebsiteChange,
+              },
+            ]}
+            meta={
+              selectedWebsite
+                ? `Showing business context for ${selectedWebsite.name}`
+                : 'Select a website to load its Business Brain'
+            }
+          />
+        </div>
+
+        {error ? (
+          <div className="mt-4">
+            <div
+              role="alert"
+              className="flex items-start gap-2.5 rounded-rk-md border border-rk-danger/30 bg-rk-dangerSoft px-3.5 py-3 text-sm font-medium leading-5 text-rk-danger"
+            >
               <AlertTriangle
-                size={17}
+                size={16}
+                aria-hidden
                 className="mt-0.5 shrink-0"
               />
-
-              <span>{error}</span>
+              <span className="min-w-0 flex-1">{error}</span>
+              <button
+                type="button"
+                onClick={() => setError('')}
+                aria-label="Dismiss error"
+                className="rk-focusable grid h-7 w-7 shrink-0 place-items-center rounded-rk-sm hover:bg-rk-danger/10"
+              >
+                <X size={15} aria-hidden />
+              </button>
             </div>
-          )}
+          </div>
+        ) : null}
 
-          {/* SUCCESS */}
-          {success && (
-            <div className="mt-6 flex items-center gap-2 rounded-none border border-emerald-200 bg-[#f3f4f6] p-4 text-sm font-semibold text-[#374151]">
-              <CheckCircle2 size={17} />
-              <span>{success}</span>
-            </div>
-          )}
-
-          {/* LOADING */}
-          {loading ? (
-            <div className="mt-8 rounded-none border border-[#e5e7eb] bg-white p-10">
-              <div className="flex items-center gap-3 text-sm text-[#6b7280]">
-                <RefreshCw
-                  size={20}
-                  className="animate-spin text-[#111827]"
-                />
-
-                Loading Business Brain...
-              </div>
-            </div>
-          ) : !websiteId ? (
-            <div className="mt-8 rounded-none border border-[#e5e7eb] bg-white p-10 text-center">
-              <Brain
-                size={40}
-                className="mx-auto text-[#c4c8ce]"
+        {success ? (
+          <div className="mt-4">
+            <div
+              role="status"
+              className="flex items-start gap-2.5 rounded-rk-md border border-rk-success/30 bg-rk-successSoft px-3.5 py-3 text-sm font-medium leading-5 text-rk-success"
+            >
+              <CheckCircle2
+                size={16}
+                aria-hidden
+                className="mt-0.5 shrink-0"
               />
-
-              <h2 className="mt-4 text-lg font-bold text-[#111827]">
-                No website configured
-              </h2>
-
-              <p className="mx-auto mt-2 max-w-md text-sm text-[#6b7280]">
-                Add a website first to build
-                its Business Brain.
-              </p>
+              <span className="min-w-0 flex-1">{success}</span>
+              <button
+                type="button"
+                onClick={() => setSuccess('')}
+                aria-label="Dismiss message"
+                className="rk-focusable grid h-7 w-7 shrink-0 place-items-center rounded-rk-sm hover:bg-rk-success/10"
+              >
+                <X size={15} aria-hidden />
+              </button>
             </div>
-          ) : (
-            <div className="mt-8 space-y-5">
+          </div>
+        ) : null}
 
+        {loading ? (
+          <div className="mt-4">
+            <LoadingBlock title="Loading Business Brain…" lines={5} />
+          </div>
+        ) : !websiteId ? (
+          <div className="mt-4">
+            <EmptyState
+              title="No website configured"
+              description="Add a website first to build its Business Brain."
+              icon={<Brain size={18} aria-hidden />}
+            />
+          </div>
+        ) : (
+          <>
+            <div className="mt-6">
               <UnderstandingPanel
                 context={context}
                 loading={loadingContext}
               />
+            </div>
 
-              {/* BUSINESS IDENTITY */}
-              <section className="rounded-none border border-[#e5e7eb] bg-white p-6 ">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
-                      Business Identity
-                    </h2>
+            <section aria-label="Profile completeness" className="mt-6">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+                  <SharedMetric
+                    label="Brain score"
+                    value={hasBrain ? `${score} / 100` : '—'}
+                    detail={
+                      hasBrain
+                        ? 'Profile completeness'
+                        : 'No business context yet'
+                    }
+                    tone={hasBrain && score >= 70 ? 'positive' : 'neutral'}
+                  />
+                </div>
 
-                    <p className="mt-1 text-xs text-[#6b7280]">
-                      Core information about the
-                      business.
-                    </p>
-                  </div>
+                <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+                  <SharedMetric
+                    label="Recommendations"
+                    value={String(recommendations.length)}
+                    detail="AI opportunities from analysis"
+                  />
+                </div>
 
-                  <button
-                    type="button"
+                <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+                  <SharedMetric
+                    label="Actions"
+                    value={String(websiteActions.length)}
+                    detail="Tracked execution"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <div className="mt-6">
+              <Panel
+                eyebrow="Business identity"
+                title="Core business information"
+                description="This context powers RENKOO AI across SEO, content, visibility and growth workflows."
+                actions={
+                  <SecondaryButton
+                    size="sm"
                     onClick={() => {
                       void handleSave();
                     }}
                     disabled={
-                      saving ||
-                      analyzing ||
-                      !websiteId
+                      saving || analyzing || !websiteId
                     }
-                    className="flex items-center justify-center gap-2 rounded-none border border-[#e5e7eb] bg-white px-4 py-2 text-sm font-semibold text-[#111827] transition hover:bg-[#f7f8fb] disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {saving ? (
-                      <RefreshCw
-                        size={15}
-                        className="animate-spin"
-                      />
-                    ) : (
-                      <Save size={15} />
-                    )}
-
-                    {saving
-                      ? 'Saving...'
-                      : 'Save'}
-                  </button>
-                </div>
-
-                <div className="mt-6 grid gap-5 md:grid-cols-2">
-
+                    <Save size={14} aria-hidden />
+                    {saving ? 'Saving…' : 'Save'}
+                  </SecondaryButton>
+                }
+              >
+                <div className="grid gap-4 md:grid-cols-2">
                   <Field
                     label="Business Name"
-                    value={
-                      form.businessName
-                    }
+                    value={form.businessName}
                     onChange={(value) =>
-                      updateField(
-                        'businessName',
-                        value,
-                      )
+                      updateField('businessName', value)
                     }
                   />
 
                   <Field
                     label="Industry"
-                    value={
-                      form.industry
-                    }
+                    value={form.industry}
                     onChange={(value) =>
-                      updateField(
-                        'industry',
-                        value,
-                      )
+                      updateField('industry', value)
                     }
                   />
 
                   <Field
                     label="Country"
-                    value={
-                      form.country
-                    }
+                    value={form.country}
                     onChange={(value) =>
-                      updateField(
-                        'country',
-                        value,
-                      )
+                      updateField('country', value)
                     }
                   />
 
@@ -991,57 +1146,37 @@ export default function BusinessBrainPage() {
                     label="City"
                     value={form.city}
                     onChange={(value) =>
-                      updateField(
-                        'city',
-                        value,
-                      )
+                      updateField('city', value)
                     }
                   />
 
                   <Field
                     label="Target Audience"
-                    value={
-                      form.targetAudience
-                    }
+                    value={form.targetAudience}
                     onChange={(value) =>
-                      updateField(
-                        'targetAudience',
-                        value,
-                      )
+                      updateField('targetAudience', value)
                     }
                   />
 
                   <Field
                     label="Primary Goal"
-                    value={
-                      form.primaryGoal
-                    }
+                    value={form.primaryGoal}
                     onChange={(value) =>
-                      updateField(
-                        'primaryGoal',
-                        value,
-                      )
+                      updateField('primaryGoal', value)
                     }
                   />
 
                   <Field
                     label="Brand Tone"
-                    value={
-                      form.brandTone
-                    }
+                    value={form.brandTone}
                     onChange={(value) =>
-                      updateField(
-                        'brandTone',
-                        value,
-                      )
+                      updateField('brandTone', value)
                     }
                   />
 
                   <Field
                     label="Unique Selling Point"
-                    value={
-                      form.uniqueSellingPoint
-                    }
+                    value={form.uniqueSellingPoint}
                     onChange={(value) =>
                       updateField(
                         'uniqueSellingPoint',
@@ -1051,14 +1186,12 @@ export default function BusinessBrainPage() {
                   />
 
                   <div className="md:col-span-2">
-                    <label className="text-xs font-semibold text-[#4b5563]">
+                    <label className="rk-field-label">
                       Business Description
                     </label>
 
                     <textarea
-                      value={
-                        form.description
-                      }
+                      value={form.description}
                       onChange={(e) =>
                         updateField(
                           'description',
@@ -1066,717 +1199,367 @@ export default function BusinessBrainPage() {
                         )
                       }
                       rows={5}
-                      className="mt-2 w-full rounded-none border border-[#e5e7eb] px-4 py-3 text-sm outline-none transition focus:border-[#111827] focus:ring-2 focus:ring-[#f3f4f6]"
+                      className="rk-input mt-1.5 resize-y"
                       placeholder="Describe what the business does..."
                     />
                   </div>
                 </div>
-              </section>
+              </Panel>
+            </div>
 
-              {/* BUSINESS DATA */}
-              <section className="grid gap-5 md:grid-cols-2">
-
-                <ArrayCard
-                  title="Services"
-                  value={
-                    form.services
-                  }
-                  onChange={(value) =>
-                    updateArrayField(
-                      'services',
-                      value,
-                    )
-                  }
-                />
-
-                <ArrayCard
-                  title="Products"
-                  value={
-                    form.products
-                  }
-                  onChange={(value) =>
-                    updateArrayField(
-                      'products',
-                      value,
-                    )
-                  }
-                />
-
-                <ArrayCard
-                  title="Primary Keywords"
-                  value={
-                    form.primaryKeywords
-                  }
-                  onChange={(value) =>
-                    updateArrayField(
-                      'primaryKeywords',
-                      value,
-                    )
-                  }
-                />
-
-                <ArrayCard
-                  title="Target Locations"
-                  value={
-                    form.targetLocations
-                  }
-                  onChange={(value) =>
-                    updateArrayField(
-                      'targetLocations',
-                      value,
-                    )
-                  }
-                />
-              </section>
-
-              {/* SCORE */}
-              {hasBrain ? (
-                <section className="rounded-none border border-[#e5e7eb] bg-white p-6 ">
-                  <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
-                        Business Brain Score
-                      </h2>
-
-                      <p className="mt-1 text-xs text-[#6b7280]">
-                        Profile completeness based on
-                        the configured business context.
-                      </p>
-                    </div>
-
-                    <div className="text-right">
-                      <div className="text-3xl font-bold text-[#111827]">
-                        {score}
-                        <span className="text-base text-[#9ca3af]">
-                          /100
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className="h-full rounded-full bg-[#111827] transition-all duration-500"
-                      style={{
-                        width: `${Math.min(
-                          100,
-                          Math.max(
-                            0,
-                            score,
-                          ),
-                        )}%`,
-                      }}
-                    />
-                  </div>
-                </section>
-              ) : (
-                <section className="rounded-none border border-[#e5e7eb] bg-white p-6 text-center">
-                  <Brain
-                    size={28}
-                    className="mx-auto text-[#c4c8ce]"
-                  />
-                  <h2 className="mt-2 text-sm font-semibold text-[#111827]">
-                    No Business Brain yet
-                  </h2>
-                  <p className="mx-auto mt-1 max-w-md text-xs text-[#6b7280]">
-                    Add business details above or run
-                    analysis to build the profile.
-                    No score is shown until real
-                    business context exists.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleAnalyze();
-                    }}
-                    disabled={
-                      analyzing ||
-                      saving ||
-                      !websiteId
+            <div className="mt-6">
+              <Panel
+                eyebrow="Business data"
+                title="Offerings & targeting"
+                description="Separate multiple items with commas."
+              >
+                <div className="grid gap-4 md:grid-cols-2">
+                  <ArrayCard
+                    title="Services"
+                    value={form.services}
+                    onChange={(value) =>
+                      updateArrayField('services', value)
                     }
-                    className="mx-auto mt-4 flex items-center gap-2 bg-[#111827] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#374151] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {analyzing ? (
-                      <RefreshCw
-                        size={16}
-                        className="animate-spin"
-                      />
-                    ) : (
-                      <Sparkles size={16} />
-                    )}
-                    {analyzing
-                      ? 'Analyzing...'
-                      : 'Analyze Business Brain'}
-                  </button>
-                </section>
-              )}
+                  />
 
-              {/* RECOMMENDATIONS */}
-              <section className="rounded-none border border-[#e5e7eb] bg-white p-6 ">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Sparkles
-                        size={18}
-                        className="text-[#111827]"
-                      />
+                  <ArrayCard
+                    title="Products"
+                    value={form.products}
+                    onChange={(value) =>
+                      updateArrayField('products', value)
+                    }
+                  />
 
-                      <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
-                        Growth Recommendations
-                      </h2>
-                    </div>
+                  <ArrayCard
+                    title="Primary Keywords"
+                    value={form.primaryKeywords}
+                    onChange={(value) =>
+                      updateArrayField(
+                        'primaryKeywords',
+                        value,
+                      )
+                    }
+                  />
 
-                    <p className="mt-1 text-xs text-[#6b7280]">
-                      AI-generated opportunities from
-                      your Business Brain analysis.
-                    </p>
-                  </div>
+                  <ArrayCard
+                    title="Target Locations"
+                    value={form.targetLocations}
+                    onChange={(value) =>
+                      updateArrayField(
+                        'targetLocations',
+                        value,
+                      )
+                    }
+                  />
+                </div>
+              </Panel>
+            </div>
 
-                  <button
-                    type="button"
+            {!hasBrain ? (
+              <div className="mt-6">
+                <EmptyState
+                  title="No Business Brain yet"
+                  description="Add business details above or run analysis to build the profile. No score is shown until real business context exists."
+                  actionLabel={
+                    analyzing ? 'Analyzing…' : 'Analyze Business Brain'
+                  }
+                  onAction={() => {
+                    void handleAnalyze();
+                  }}
+                  icon={<Brain size={18} aria-hidden />}
+                />
+              </div>
+            ) : null}
+
+            <div className="mt-6">
+              <Panel
+                eyebrow="Growth recommendations"
+                title="AI opportunities from analysis"
+                description="Real recommendations generated from your Business Brain analysis."
+                actions={
+                  <SecondaryButton
+                    size="sm"
                     onClick={() => {
                       void loadRecommendations();
                     }}
                     disabled={
-                      loadingRecommendations ||
-                      !websiteId
+                      loadingRecommendations || !websiteId
                     }
-                    className="flex items-center justify-center gap-2 rounded-none border border-[#e5e7eb] px-3 py-2 text-xs font-semibold text-[#374151] hover:bg-[#f7f8fb] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <RefreshCw
                       size={14}
+                      aria-hidden
                       className={
                         loadingRecommendations
                           ? 'animate-spin'
                           : ''
                       }
                     />
-
                     Refresh
-                  </button>
-                </div>
-
-                {loadingRecommendations ? (
-                  <div className="mt-6 flex items-center gap-2 text-sm text-[#6b7280]">
-                    <RefreshCw
-                      size={16}
-                      className="animate-spin text-[#111827]"
-                    />
-
-                    Loading recommendations...
-                  </div>
-                ) : recommendations.length === 0 ? (
-                  <div className="mt-6 rounded-none bg-[#f7f8fb] p-6 text-center">
-                    <Sparkles
-                      size={28}
-                      className="mx-auto text-[#c4c8ce]"
-                    />
-
-                    <p className="mt-2 text-sm font-medium text-[#4b5563]">
-                      No recommendations yet
-                    </p>
-
-                    <p className="mt-1 text-xs text-[#9ca3af]">
-                      Run Business Brain analysis to
-                      generate real recommendations.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="mt-6 space-y-3">
-                    {recommendations.map(
-                      (recommendation) => {
-                        const linkedAction =
-                          websiteActions.find(
-                            (action) =>
-                              action.recommendationId ===
-                              recommendation.id,
-                          );
-
-                        const priority =
-                          String(
-                            recommendation.priority ||
-                              'MEDIUM',
-                          ).toUpperCase();
-
-                        const isCompleted =
-                          recommendation.status ===
-                          'COMPLETED';
-
-                        const isCreating =
-                          actionLoading ===
-                          recommendation.id;
-
-                        return (
-                          <div
-                            key={
-                              recommendation.id
-                            }
-                            className="rounded-none border border-[#e5e7eb] p-4 transition hover:border-[#d1d5db] hover:"
-                          >
-                            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-
-                                  <span
-                                    className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
-                                      priority ===
-                                      'CRITICAL'
-                                        ? 'bg-[#f3f4f6] text-[#4b5563]'
-                                        : priority ===
-                                          'HIGH'
-                                        ? 'bg-[#fafafa] text-[#4b5563]'
-                                        : priority ===
-                                          'MEDIUM'
-                                        ? 'bg-[#f3f4f6] text-[#374151]'
-                                        : 'bg-slate-100 text-[#4b5563]'
-                                    }`}
-                                  >
-                                    {priority}
-                                  </span>
-
-                                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#6b7280]">
-                                    {
-                                      recommendation.type
-                                    }
-                                  </span>
-
-                                  {isCompleted && (
-                                    <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600">
-                                      <CheckCircle2
-                                        size={12}
-                                      />
-                                      COMPLETED
-                                    </span>
-                                  )}
-                                </div>
-
-                                <h3 className="mt-2 text-sm font-bold text-[#111827]">
-                                  {
-                                    recommendation.title
-                                  }
-                                </h3>
-
-                                <p className="mt-1 text-xs leading-5 text-[#6b7280]">
-                                  {
-                                    recommendation.description
-                                  }
-                                </p>
-
-                                {recommendation.actionText && (
-                                  <p className="mt-2 text-xs font-medium text-[#374151]">
-                                    ?{' '}
-                                    {
-                                      recommendation.actionText
-                                    }
-                                  </p>
-                                )}
-
-                                {(recommendation.impact ||
-                                  recommendation.effort) && (
-                                  <div className="mt-3 flex flex-wrap gap-2">
-                                    {recommendation.impact && (
-                                      <span className="rounded-none bg-[#f3f4f6] px-2.5 py-1 text-[10px] font-semibold text-[#374151]">
-                                        Impact:{' '}
-                                        {
-                                          recommendation.impact
-                                        }
-                                      </span>
-                                    )}
-
-                                    {recommendation.effort && (
-                                      <span className="rounded-none bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-[#4b5563]">
-                                        Effort:{' '}
-                                        {
-                                          recommendation.effort
-                                        }
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="shrink-0">
-
-                                {linkedAction ? (
-                                  <div className="flex flex-col items-end gap-2">
-
-                                    <span
-                                      className={`flex items-center gap-1.5 rounded-none px-3 py-2 text-xs font-bold ${
-                                        linkedAction.status ===
-                                        'DONE'
-                                          ? 'bg-[#f3f4f6] text-[#374151]'
-                                          : linkedAction.status ===
-                                            'IN_PROGRESS'
-                                          ? 'bg-[#f3f4f6] text-[#374151]'
-                                          : 'bg-[#fafafa] text-[#374151]'
-                                      }`}
-                                    >
-                                      {linkedAction.status ===
-                                      'DONE' ? (
-                                        <CheckCircle2
-                                          size={14}
-                                        />
-                                      ) : (
-                                        <ListTodo
-                                          size={14}
-                                        />
-                                      )}
-
-                                      {linkedAction.status ===
-                                      'DONE'
-                                        ? 'Completed'
-                                        : linkedAction.status ===
-                                          'IN_PROGRESS'
-                                        ? 'In Progress'
-                                        : 'Action Created'}
-                                    </span>
-
-                                    {linkedAction.status ===
-                                      'TODO' && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          void handleActionStatus(
-                                            linkedAction.id,
-                                            'IN_PROGRESS',
-                                          );
-                                        }}
-                                        disabled={
-                                          actionLoading ===
-                                          linkedAction.id
-                                        }
-                                        className="flex items-center gap-1.5 rounded-none bg-[#f3f4f6]0 px-3 py-2 text-xs font-bold text-white transition hover:bg-[#374151] disabled:cursor-not-allowed disabled:opacity-50"
-                                      >
-                                        <Play size={13} />
-                                        Start
-                                      </button>
-                                    )}
-
-                                    {linkedAction.status ===
-                                      'IN_PROGRESS' && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          void handleActionStatus(
-                                            linkedAction.id,
-                                            'DONE',
-                                          );
-                                        }}
-                                        disabled={
-                                          actionLoading ===
-                                          linkedAction.id
-                                        }
-                                        className="flex items-center gap-1.5 rounded-none bg-[#111827] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#374151] disabled:cursor-not-allowed disabled:opacity-50"
-                                      >
-                                        <CheckCircle2
-                                          size={13}
-                                        />
-                                        Complete
-                                      </button>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    aria-label={`Create action for ${recommendation.title}`}
-                                    onClick={async (event) => {
-                                      event.preventDefault();
-                                      event.stopPropagation();
-
-                                      if (
-                                        isCompleted ||
-                                        isCreating
-                                      ) {
-                                        return;
-                                      }
-
-                                      await handleCreateAction(
-                                        recommendation.id,
-                                      );
-                                    }}
-                                    disabled={
-                                      isCreating ||
-                                      isCompleted
-                                    }
-                                    className="relative z-10 flex min-w-[130px] cursor-pointer items-center justify-center gap-2 rounded-none bg-[#111827] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#374151] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                                  >
-                                    {isCreating ? (
-                                      <>
-                                        <RefreshCw
-                                          size={14}
-                                          className="animate-spin"
-                                        />
-                                        Creating...
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Play
-                                          size={14}
-                                        />
-                                        Create Action
-                                      </>
-                                    )}
-                                  </button>
-                                )}
-
-                              </div>
-                            </div>
-                          </div>
+                  </SecondaryButton>
+                }
+                padded={false}
+              >
+                <div className="px-2 py-2 sm:px-3">
+                  <DataTable
+                    caption="Growth recommendations"
+                    columns={recommendationColumns}
+                    rows={recommendations}
+                    keyOf={(recommendation) =>
+                      recommendation.id
+                    }
+                    loading={loadingRecommendations}
+                    emptyTitle="No recommendations yet"
+                    emptyDescription="Run Business Brain analysis to generate real recommendations."
+                    pageSize={8}
+                    rowActions={(recommendation) => {
+                      const linkedAction =
+                        websiteActions.find(
+                          (action) =>
+                            action.recommendationId ===
+                            recommendation.id,
                         );
-                      },
+                      const isCompleted =
+                        recommendation.status ===
+                        'COMPLETED';
+                      const isCreating =
+                        actionLoading ===
+                        recommendation.id;
+
+                      if (linkedAction) {
+                        if (
+                          linkedAction.status ===
+                          'TODO'
+                        ) {
+                          return [
+                            {
+                              label:
+                                actionLoading ===
+                                linkedAction.id
+                                  ? 'Starting…'
+                                  : 'Start',
+                              onSelect: () =>
+                                void handleActionStatus(
+                                  linkedAction.id,
+                                  'IN_PROGRESS',
+                                ),
+                            },
+                          ];
+                        }
+                        if (
+                          linkedAction.status ===
+                          'IN_PROGRESS'
+                        ) {
+                          return [
+                            {
+                              label:
+                                actionLoading ===
+                                linkedAction.id
+                                  ? 'Completing…'
+                                  : 'Complete',
+                              onSelect: () =>
+                                void handleActionStatus(
+                                  linkedAction.id,
+                                  'DONE',
+                                ),
+                            },
+                          ];
+                        }
+                        return [];
+                      }
+
+                      return [
+                        {
+                          label: isCreating
+                            ? 'Creating…'
+                            : isCompleted
+                              ? 'Completed'
+                              : 'Create Action',
+                          onSelect: () =>
+                            void handleCreateAction(
+                              recommendation.id,
+                            ),
+                        },
+                      ];
+                    }}
+                    renderExpanded={(recommendation) => (
+                      <dl className="grid gap-x-6 gap-y-2 text-[13px] sm:grid-cols-2">
+                        {recommendation.actionText ? (
+                          <div className="sm:col-span-2">
+                            <dt className="rk-field-label">
+                              Suggested action
+                            </dt>
+                            <dd className="mt-0.5 font-medium text-rk-ink">
+                              {recommendation.actionText}
+                            </dd>
+                          </div>
+                        ) : null}
+                        <div>
+                          <dt className="rk-field-label">Impact</dt>
+                          <dd className="mt-0.5 font-medium text-rk-ink">
+                            {recommendation.impact || '—'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="rk-field-label">Effort</dt>
+                          <dd className="mt-0.5 font-medium text-rk-ink">
+                            {recommendation.effort || '—'}
+                          </dd>
+                        </div>
+                      </dl>
                     )}
-                  </div>
-                )}
-              </section>
+                  />
+                </div>
+              </Panel>
+            </div>
 
-              {/* ACTIONS */}
-              <section className="rounded-none border border-[#e5e7eb] bg-white p-6 ">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <ListTodo
-                        size={18}
-                        className="text-[#111827]"
-                      />
-
-                      <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
-                        Actions
-                      </h2>
-                    </div>
-
-                    <p className="mt-1 text-xs text-[#6b7280]">
-                      Execute recommendations and
-                      track their status.
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
+            <div className="mt-6">
+              <Panel
+                eyebrow="Execution"
+                title="Actions"
+                description="Execute recommendations and track their status."
+                actions={
+                  <SecondaryButton
+                    size="sm"
                     onClick={() => {
                       void loadActions();
                     }}
                     disabled={!websiteId}
-                    className="flex items-center justify-center gap-2 rounded-none border border-[#e5e7eb] px-3 py-2 text-xs font-semibold text-[#374151] hover:bg-[#f7f8fb] disabled:opacity-50"
                   >
-                    <RefreshCw size={14} />
+                    <RefreshCw size={14} aria-hidden />
                     Refresh
-                  </button>
-                </div>
-
-                {websiteActions.length === 0 ? (
-                  <div className="mt-5 rounded-none bg-[#f7f8fb] p-6 text-center">
-                    <ListTodo
-                      size={28}
-                      className="mx-auto text-[#c4c8ce]"
-                    />
-
-                    <p className="mt-2 text-sm font-medium text-[#4b5563]">
-                      No actions created yet
-                    </p>
-
-                    <p className="mt-1 text-xs text-[#9ca3af]">
-                      Create an action from a
-                      recommendation above.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="mt-5 space-y-3">
-                    {websiteActions.map(
-                      (action) => (
-                        <div
-                          key={action.id}
-                          className="rounded-none border border-[#e5e7eb] p-4"
-                        >
-                          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-
-                                <span className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
-                                  {action.title}
-                                </span>
-
-                                <span
-                                  className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
-                                    action.status ===
-                                    'DONE'
-                                      ? 'bg-[#f3f4f6] text-[#374151]'
-                                      : action.status ===
-                                        'IN_PROGRESS'
-                                      ? 'bg-[#f3f4f6] text-[#374151]'
-                                      : action.status ===
-                                        'DISMISSED'
-                                      ? 'bg-[#fafafa] text-[#4b5563]'
-                                      : 'bg-slate-100 text-[#4b5563]'
-                                  }`}
-                                >
-                                  {action.status.replace(
-                                    '_',
-                                    ' ',
-                                  )}
-                                </span>
-
-                                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-[#6b7280]">
-                                  {action.priority}
-                                </span>
-                              </div>
-
-                              <p className="mt-2 text-xs leading-5 text-[#6b7280]">
-                                {action.description}
-                              </p>
-
-                              {action.completedAt && (
-                                <p className="mt-2 text-[10px] font-medium text-emerald-600">
-                                  Completed:{' '}
-                                  {new Date(
-                                    action.completedAt,
-                                  ).toLocaleString()}
-                                </p>
-                              )}
-                            </div>
-
-                            <div className="flex shrink-0 gap-2">
-
-                              {action.status ===
-                                'TODO' && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    void handleActionStatus(
-                                      action.id,
-                                      'IN_PROGRESS',
-                                    );
-                                  }}
-                                  disabled={
-                                    actionLoading ===
-                                    action.id
-                                  }
-                                  className="flex items-center gap-1.5 rounded-none bg-[#f3f4f6]0 px-3 py-2 text-xs font-bold text-white transition hover:bg-[#374151] disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  {actionLoading ===
-                                  action.id ? (
-                                    <RefreshCw
-                                      size={13}
-                                      className="animate-spin"
-                                    />
-                                  ) : (
-                                    <Play
-                                      size={13}
-                                    />
-                                  )}
-
-                                  Start
-                                </button>
-                              )}
-
-                              {action.status ===
-                                'IN_PROGRESS' && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    void handleActionStatus(
-                                      action.id,
-                                      'DONE',
-                                    );
-                                  }}
-                                  disabled={
-                                    actionLoading ===
-                                    action.id
-                                  }
-                                  className="flex items-center gap-1.5 rounded-none bg-[#111827] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#374151] disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  {actionLoading ===
-                                  action.id ? (
-                                    <RefreshCw
-                                      size={13}
-                                      className="animate-spin"
-                                    />
-                                  ) : (
-                                    <CheckCircle2
-                                      size={13}
-                                    />
-                                  )}
-
-                                  Complete
-                                </button>
-                              )}
-
-                              {action.status ===
-                                'DONE' && (
-                                <span className="flex items-center gap-1.5 rounded-none bg-[#f3f4f6] px-3 py-2 text-xs font-bold text-[#374151]">
-                                  <CheckCircle2
-                                    size={14}
-                                  />
-                                  Done
-                                </span>
-                              )}
-
-                              {action.status ===
-                                'DISMISSED' && (
-                                <span className="rounded-none bg-[#fafafa] px-3 py-2 text-xs font-bold text-[#4b5563]">
-                                  Dismissed
-                                </span>
-                              )}
-                            </div>
-
-                          </div>
+                  </SecondaryButton>
+                }
+                padded={false}
+              >
+                <div className="px-2 py-2 sm:px-3">
+                  <DataTable
+                    caption="Actions from recommendations"
+                    columns={actionColumns}
+                    rows={websiteActions}
+                    keyOf={(action) => action.id}
+                    loading={false}
+                    emptyTitle="No actions created yet"
+                    emptyDescription="Create an action from a recommendation above."
+                    pageSize={8}
+                    rowActions={(action) => {
+                      if (
+                        action.status === 'TODO'
+                      ) {
+                        return [
+                          {
+                            label:
+                              actionLoading ===
+                              action.id
+                                ? 'Starting…'
+                                : 'Start',
+                            onSelect: () =>
+                              void handleActionStatus(
+                                action.id,
+                                'IN_PROGRESS',
+                              ),
+                          },
+                        ];
+                      }
+                      if (
+                        action.status ===
+                        'IN_PROGRESS'
+                      ) {
+                        return [
+                          {
+                            label:
+                              actionLoading ===
+                              action.id
+                                ? 'Completing…'
+                                : 'Complete',
+                            onSelect: () =>
+                              void handleActionStatus(
+                                action.id,
+                                'DONE',
+                              ),
+                          },
+                        ];
+                      }
+                      return [];
+                    }}
+                    renderExpanded={(action) => (
+                      <dl className="grid gap-x-6 gap-y-2 text-[13px] sm:grid-cols-2">
+                        <div>
+                          <dt className="rk-field-label">Priority</dt>
+                          <dd className="mt-0.5 font-medium text-rk-ink">
+                            {String(action.priority || '—')}
+                          </dd>
                         </div>
-                      ),
+                        {action.completedAt ? (
+                          <div>
+                            <dt className="rk-field-label">
+                              Completed
+                            </dt>
+                            <dd className="mt-0.5 font-medium text-rk-ink">
+                              {new Date(
+                                action.completedAt,
+                              ).toLocaleString()}
+                            </dd>
+                          </div>
+                        ) : null}
+                        {action.description ? (
+                          <div className="sm:col-span-2">
+                            <dt className="rk-field-label">
+                              Description
+                            </dt>
+                            <dd className="mt-0.5 font-medium text-rk-ink">
+                              {action.description}
+                            </dd>
+                          </div>
+                        ) : null}
+                      </dl>
                     )}
-                  </div>
-                )}
-              </section>
-
-              {/* AI CONTEXT */}
-              <section className="rounded-none border border-[#e5e7eb] bg-[#fafafa] p-6">
-                <div className="flex items-start gap-3">
-                  <Sparkles
-                    size={20}
-                    className="mt-0.5 shrink-0 text-[#111827]"
                   />
-
-                  <div>
-                    <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
-                      AI Context
-                    </h2>
-
-                    <p className="mt-1 text-xs leading-5 text-[#374151]">
-                      This Business Brain becomes
-                      the context used by RENKOO's
-                      AI-powered SEO, content,
-                      visibility and growth workflows.
-                    </p>
-
-                    {brain?.aiSummary && (
-                      <div className="mt-4 rounded-none border border-[#d1d5db] bg-white/70 p-4 text-sm leading-6 text-[#111827]">
-                        {brain.aiSummary}
-                      </div>
-                    )}
-                  </div>
                 </div>
-              </section>
-
-              {/* WEBSITE INFO */}
-              {selectedWebsite && (
-                <section className="rounded-none border border-[#e5e7eb] bg-white p-5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#9ca3af]">
-                    Connected Website
-                  </p>
-
-                  <p className="mt-1 text-sm font-semibold text-[#111827]">
-                    {selectedWebsite.name}
-                  </p>
-
-                  <p className="mt-1 text-xs text-[#6b7280]">
-                    {selectedWebsite.url}
-                  </p>
-                </section>
-              )}
-
+              </Panel>
             </div>
-          )}
-        </div>
+
+            <div className="mt-6">
+              <Panel
+                eyebrow="AI context"
+                title="How RENKOO uses this"
+                description="This Business Brain becomes the context used by RENKOO's AI-powered SEO, content, visibility and growth workflows."
+              >
+                {brain?.aiSummary ? (
+                  <InsightBlock
+                    eyebrow="RENKOO AI summary"
+                    title="Business understanding"
+                    cause={brain.aiSummary}
+                  />
+                ) : (
+                  <p className="rk-metadata">
+                    No AI summary yet. Run analysis to
+                    generate one from real business
+                    context.
+                  </p>
+                )}
+              </Panel>
+            </div>
+
+            {selectedWebsite ? (
+              <div className="mt-6">
+                <Panel
+                  eyebrow="Connected website"
+                  title={selectedWebsite.name}
+                  description={selectedWebsite.url}
+                >
+                  <RecommendationCallout
+                    title="Execution, honestly"
+                    text="Business context sharpens prioritization across RENKOO. Review growth opportunities to act on it."
+                    actionLabel="Review opportunities"
+                    actionHref="/opportunities"
+                  />
+                </Panel>
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
     </AppShell>
   );
 }
@@ -1792,7 +1575,7 @@ function Field({
 }) {
   return (
     <div>
-      <label className="text-xs font-semibold text-[#4b5563]">
+      <label className="rk-field-label">
         {label}
       </label>
 
@@ -1801,7 +1584,7 @@ function Field({
         onChange={(e) =>
           onChange(e.target.value)
         }
-        className="mt-2 w-full rounded-none border border-[#e5e7eb] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#111827] focus:ring-2 focus:ring-[#f3f4f6]"
+        className="rk-input mt-1.5"
       />
     </div>
   );
@@ -1825,13 +1608,9 @@ function ArrayCard({
     safeValue.join(', ');
 
   return (
-    <section className="rounded-none border border-[#e5e7eb] bg-white p-5 ">
-      <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
+    <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+      <p className="rk-field-label">
         {title}
-      </h2>
-
-      <p className="mt-1 text-xs text-[#6b7280]">
-        Separate multiple items with commas.
       </p>
 
       <input
@@ -1839,29 +1618,29 @@ function ArrayCard({
         onChange={(e) =>
           onChange(e.target.value)
         }
-        className="mt-4 w-full rounded-none border border-[#e5e7eb] px-4 py-3 text-sm outline-none transition focus:border-[#111827] focus:ring-2 focus:ring-[#f3f4f6]"
+        className="rk-input mt-1.5"
         placeholder={`Add ${title.toLowerCase()}...`}
+        aria-label={title}
       />
 
       {safeValue.length > 0 ? (
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
           {safeValue.map(
             (item, index) => (
-              <span
+              <Badge
                 key={`${item}-${index}`}
-                className="rounded-none bg-slate-100 px-3 py-1.5 text-xs font-medium text-[#374151]"
-              >
-                {item}
-              </span>
+                label={item}
+                tone="neutral"
+              />
             ),
           )}
         </div>
       ) : (
-        <p className="mt-3 text-xs text-[#9ca3af]">
+        <p className="rk-metadata mt-2">
           No data available yet.
         </p>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -1974,25 +1753,22 @@ function UnderstandingPanel({
 }) {
   if (loading) {
     return (
-      <section className="rounded-none border border-[#e5e7eb] bg-white p-6">
-        <p className="text-sm text-[#6b7280]">
-          Loading business understanding...
-        </p>
-      </section>
+      <LoadingBlock title="Loading business understanding…" lines={3} />
     );
   }
 
   if (!context) {
     return (
-      <section className="rounded-none border border-[#e5e7eb] bg-white p-6">
-        <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
-          RENKOO Understanding
-        </h2>
-        <p className="mt-2 text-sm text-[#6b7280]">
-          Business context is unavailable right now. Configure
-          the profile below and run an analysis.
-        </p>
-      </section>
+      <Panel
+        eyebrow="RENKOO understanding"
+        title="Business context unavailable"
+        description="Configure the profile below and run an analysis."
+      >
+        <EmptyState
+          title="No business understanding yet"
+          description="Business context is unavailable right now. Configure the profile below and run an analysis."
+        />
+      </Panel>
     );
   }
 
@@ -2004,138 +1780,124 @@ function UnderstandingPanel({
   );
 
   return (
-    <div className="space-y-5">
-      <section className="rounded-none border border-[#111827] bg-[#111827] p-6 text-white">
-        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">
-          RENKOO Understanding · deterministic, no AI judgment
-        </div>
-        <ul className="mt-3 space-y-2">
+    <div className="space-y-6">
+      <Panel
+        eyebrow="RENKOO understanding · deterministic, no AI judgment"
+        title="What RENKOO knows"
+        description={`Context confidence ${context.contextConfidence}% · ${context.confidenceFormula}`}
+      >
+        <ul className="space-y-2">
           {buildUnderstanding(context).map((line, index) => (
             <li
               key={index}
-              className="text-sm leading-6 text-[#e5e7eb]"
+              className="text-sm leading-6 text-rk-ink"
             >
               {line}
             </li>
           ))}
         </ul>
-        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-[#374151] pt-4 text-xs text-[#9ca3af]">
-          <span>
-            Context confidence{' '}
-            <span className="font-bold text-white">
-              {context.contextConfidence}%
-            </span>
-          </span>
-          <span className="hidden sm:inline">·</span>
-          <span>{context.confidenceFormula}</span>
+        <div className="mt-4">
+          <SharedMetric
+            label="Context confidence"
+            value={`${context.contextConfidence}%`}
+            detail={context.confidenceFormula}
+          />
         </div>
-      </section>
+      </Panel>
 
-      <section className="rounded-none border border-[#e5e7eb] bg-white p-6">
-        <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
-          Data Coverage
-        </h2>
-        <p className="mt-1 text-xs text-[#6b7280]">
-          Only sources with real data are listed as connected.
-        </p>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
+      <Panel
+        eyebrow="Data coverage"
+        title="Connected sources"
+        description="Only sources with real data are listed as connected."
+      >
+        <div className="grid gap-4 md:grid-cols-2">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">
+            <p className="rk-field-label">
               Connected ({connected.length})
-            </div>
+            </p>
             {connected.length > 0 ? (
-              <ul className="mt-2 space-y-1.5">
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {connected.map((source) => (
-                  <li
+                  <Badge
                     key={source.key}
-                    className="text-sm text-[#374151]"
-                  >
-                    ✓ {source.label}
-                  </li>
+                    label={source.label}
+                    tone="positive"
+                  />
                 ))}
-              </ul>
+              </div>
             ) : (
-              <p className="mt-2 text-sm text-[#6b7280]">
+              <p className="rk-metadata mt-2">
                 No data sources connected yet.
               </p>
             )}
           </div>
           <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#9ca3af]">
+            <p className="rk-field-label">
               Not connected ({unavailable.length})
-            </div>
+            </p>
             {unavailable.length > 0 ? (
-              <ul className="mt-2 space-y-1.5">
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {unavailable.map((source) => (
-                  <li
+                  <Badge
                     key={source.key}
-                    className="text-sm text-[#9ca3af]"
-                  >
-                    — {source.label}: no data available
-                  </li>
+                    label={source.label}
+                    tone="neutral"
+                  />
                 ))}
-              </ul>
+              </div>
             ) : (
-              <p className="mt-2 text-sm text-[#6b7280]">
+              <p className="rk-metadata mt-2">
                 Every tracked source is connected.
               </p>
             )}
           </div>
         </div>
         {context.competitors.length > 0 && (
-          <div className="mt-4 border-t border-[#f0f1f3] pt-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#6b7280]">
+          <div className="mt-4 border-t border-rk-border pt-4">
+            <p className="rk-field-label">
               Competitive context ({context.competitors.length})
-            </div>
-            <div className="mt-2 flex flex-wrap gap-2">
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
               {context.competitors.map((competitor) => (
-                <span
+                <Badge
                   key={competitor.id}
-                  className="border border-[#e5e7eb] bg-[#fafafa] px-3 py-1.5 text-xs font-medium text-[#374151]"
-                >
-                  {competitor.name}
-                </span>
+                  label={competitor.name}
+                  tone="neutral"
+                />
               ))}
             </div>
           </div>
         )}
-      </section>
+      </Panel>
 
-      <section className="rounded-none border border-[#e5e7eb] bg-white p-6">
-        <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#111827]">
-          Priority Impact
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-[#6b7280]">
+      <Panel
+        eyebrow="Priority impact"
+        title="How goals shape prioritization"
+        description="Business relevance adds at most +5 to an opportunity score and is always recorded transparently. Evidence scoring decides everything else."
+      >
+        <p className="text-sm leading-6 text-rk-secondary">
           {goalHint(context.priorities.primaryGoal)}
         </p>
-        <p className="mt-2 text-xs leading-5 text-[#9ca3af]">
-          Business relevance adds at most +5 to an opportunity
-          score and is always recorded transparently. Evidence
-          scoring decides everything else.
-        </p>
-      </section>
+      </Panel>
 
       {context.missing.length > 0 && (
-        <section className="rounded-none border border-amber-200 bg-amber-50 p-6">
-          <h2 className="text-sm font-semibold tracking-[-0.01em] text-[#92400e]">
-            Missing Context ({context.missing.length})
-          </h2>
-          <ul className="mt-2 space-y-1.5">
+        <Panel
+          eyebrow={`Missing context (${context.missing.length})`}
+          title="Complete the picture"
+          description="These gaps reduce context confidence."
+        >
+          <ul className="space-y-1.5">
             {context.missing.map((item, index) => (
               <li
                 key={index}
-                className="text-sm leading-6 text-[#92400e]"
+                className="text-sm leading-6 text-rk-secondary"
               >
                 · {item}
               </li>
             ))}
           </ul>
-        </section>
+        </Panel>
       )}
     </div>
   );
 }
-
-
-
-

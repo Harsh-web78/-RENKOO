@@ -228,9 +228,9 @@ export default function WebsiteSelector() {
         }}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="rk-focusable flex min-w-0 max-w-[300px] items-center gap-2 rounded-rk-md border border-rk-border bg-rk-surface px-2.5 py-2 text-left hover:bg-rk-soft"
+        className="rk-focusable flex min-w-0 max-w-[300px] items-center gap-2.5 rounded-rk-md border border-rk-border bg-rk-surface py-[7px] pl-2 pr-2.5 text-left shadow-rk-sm transition-all hover:border-rk-strong hover:bg-white hover:shadow-rk-md"
       >
-        <span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-md border border-rk-border bg-rk-soft">
+        <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-[8px] border border-rk-border bg-rk-soft">
           {selectedWebsite ? (
             <img
               src={faviconUrl(selectedWebsite.url)}
@@ -247,16 +247,16 @@ export default function WebsiteSelector() {
         </span>
 
         <span className="min-w-0">
-          <span className="block truncate text-xs font-bold text-rk-ink">
+          <span className="block max-w-[150px] truncate text-[13px] font-bold leading-tight text-rk-ink sm:max-w-[180px]">
             {loading
-              ? "Loading websites..."
+              ? "Loading…"
               : selectedWebsite
                 ? selectedWebsite.name
                 : "Add your website"}
           </span>
 
           {selectedWebsite ? (
-            <span className="block truncate text-[10px] text-rk-secondary">
+            <span className="block max-w-[150px] truncate text-[11px] leading-tight text-rk-muted sm:max-w-[180px]">
               {domainLabel(selectedWebsite.url)}
             </span>
           ) : null}
@@ -273,7 +273,7 @@ export default function WebsiteSelector() {
         <div
           role="listbox"
           aria-label="Websites"
-          className="absolute left-0 top-[calc(100%+8px)] z-50 w-[330px] overflow-hidden rounded-rk-lg border border-rk-border bg-rk-surface shadow-xl"
+          className="rk-dropdown absolute left-0 top-[calc(100%+8px)] z-50 w-[min(330px,calc(100vw-2rem))] overflow-hidden rounded-rk-lg border border-rk-border bg-rk-surface shadow-rk-md"
         >
           <div className="border-b border-rk-border p-2.5">
             {websites.length > 5 ? (
@@ -378,12 +378,12 @@ export default function WebsiteSelector() {
       ) : null}
 
       {addOpen ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
+        <div className="rk-dialog-backdrop fixed inset-0 z-[60] flex items-center justify-center px-4">
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="add-website-title"
-            className="w-full max-w-md rounded-rk-lg border border-rk-border bg-rk-surface p-6 shadow-2xl"
+            className="rk-dialog w-full max-w-md rounded-rk-lg border border-rk-border bg-rk-surface p-6"
           >
             <div className="flex items-start justify-between gap-4">
               <div>

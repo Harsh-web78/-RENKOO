@@ -14,7 +14,9 @@ import {
   analyzeGoogleOpportunity,
   getGoogleConnectionStatus,
   getGoogleQueries,
+  getWebsites,
   type GoogleQueryRow,
+  type Website,
 } from '@/lib/api';
 import AppShell from '@/components/AppShell';
 import {
@@ -104,6 +106,8 @@ function ruleOpportunity(row: any): {
 
 export default function KeywordsPage() {
   const [navOpen, setNavOpen] = useState(false);
+  const [websites, setWebsites] = useState<Website[]>([]);
+  const [websiteId, setWebsiteId] = useState('');
   const [period, setPeriod] = useState('28');
   const [search, setSearch] = useState('');
   const [intentFilter, setIntentFilter] = useState('ALL');
@@ -158,6 +162,42 @@ export default function KeywordsPage() {
     setLoading(true);
     void load();
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getWebsites()
+      .then((sites) => {
+        if (cancelled) return;
+        const list = Array.isArray(sites) ? sites : [];
+        setWebsites(list);
+        const stored =
+          typeof window !== 'undefined'
+            ? localStorage.getItem('renkoo_website_id')
+            : null;
+        const valid =
+          stored && list.some((site) => site.id === stored)
+            ? stored
+            : list[0]?.id || '';
+        setWebsiteId(valid);
+      })
+      .catch(() => {
+        if (!cancelled) setWebsites([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function handleWebsiteChange(id: string) {
+    setWebsiteId(id);
+    if (typeof window !== 'undefined') {
+      if (id) localStorage.setItem('renkoo_website_id', id);
+      else localStorage.removeItem('renkoo_website_id');
+    }
+  }
+
+  const activeWebsite =
+    websites.find((site) => site.id === websiteId) || null;
 
   async function openDrawer(row: any) {
     setDrawerRow(row);
@@ -394,6 +434,11 @@ export default function KeywordsPage() {
               source="Google Search Console"
               connected={connected === true}
             />
+            {activeWebsite ? (
+              <span className="truncate">
+                {activeWebsite.name}
+              </span>
+            ) : null}
             {!loading && connected ? (
               <FreshnessBadge
                 label={`${startDate} → ${endDate}`}
@@ -431,14 +476,27 @@ export default function KeywordsPage() {
         <div className="mt-6 space-y-6">
           <Panel
             eyebrow="Context"
-            title="Period & filters"
-            description="Intent is a transparent text estimate; opportunity flags are deterministic rules over measured values."
+            title="Website, period & filters"
+            description="Queries are property-scoped to the connected Search Console property — the website selector keeps workspace context consistent. Intent is a transparent text estimate; opportunity flags are deterministic rules over measured values."
           >
             <FilterBar
               searchValue={search}
               searchPlaceholder="Search keywords…"
               onSearchChange={setSearch}
               selects={[
+                {
+                  key: 'website',
+                  label: 'Website',
+                  value: websiteId,
+                  options:
+                    websites.length > 0
+                      ? websites.map((site) => ({
+                          value: site.id,
+                          label: site.name,
+                        }))
+                      : [{ value: '', label: 'No websites' }],
+                  onChange: handleWebsiteChange,
+                },
                 {
                   key: 'period',
                   label: 'Period',

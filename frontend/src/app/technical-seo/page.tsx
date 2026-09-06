@@ -211,7 +211,7 @@ export default function TechnicalSeoPage() {
       );
 
       setRunMsg(
-        'Audit complete â€” results refreshed below.',
+        'Audit complete — results refreshed below.',
       );
     } catch (err: any) {
       if (isLimitError(err)) {

@@ -100,12 +100,12 @@ export default function PersonaHomeStrip({
   return (
     <section
       aria-label={`${meta.label} focus`}
-      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:p-6"
+      className="overflow-hidden rounded-rk-lg border border-rk-border bg-rk-surface p-5 shadow-rk-sm sm:p-6"
     >
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-rk-ink px-3 py-1 text-xs font-bold text-white">
               <Sparkles size={12} aria-hidden />
               {loading
                 ? 'Your focus'
@@ -113,18 +113,17 @@ export default function PersonaHomeStrip({
             </span>
 
             {!loading && source === 'default' && (
-              <span className="text-xs text-slate-400">
-                Suggested for your workspace
-                role
+              <span className="rk-metadata">
+                Suggested for your workspace role
               </span>
             )}
           </div>
 
-          <h2 className="mt-3 text-xl font-bold text-slate-900 lg:text-2xl">
+          <h2 className="mt-3 text-xl font-extrabold tracking-[-0.02em] text-rk-ink lg:text-[22px]">
             {meta.question}
           </h2>
 
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 max-w-xl text-sm leading-6 text-rk-secondary">
             {meta.tagline} Prioritized from
             your live workspace data below —
             nothing here is sampled or
@@ -132,7 +131,7 @@ export default function PersonaHomeStrip({
           </p>
 
           {goalMissing && (
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <div className="mt-4 rounded-rk-md border border-rk-warning/30 bg-rk-warningSoft px-4 py-3 text-sm text-rk-ink">
               <p className="font-semibold">
                 Your primary growth goal
                 isn&apos;t configured yet.
@@ -144,7 +143,7 @@ export default function PersonaHomeStrip({
               </p>
               <Link
                 href="/business-brain"
-                className="mt-2 inline-flex items-center gap-1 font-semibold text-amber-900 underline underline-offset-2"
+                className="rk-focusable mt-2 inline-flex items-center gap-1 font-bold text-rk-ink underline decoration-rk-border-strong underline-offset-4 hover:decoration-rk-ink"
               >
                 Open Business Brain
                 <ArrowRight
@@ -161,20 +160,20 @@ export default function PersonaHomeStrip({
             <Link
               key={action.label}
               href={action.href}
-              className="group flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3 transition hover:border-slate-900"
+              className="rk-focusable group flex items-center justify-between gap-3 rounded-rk-md border border-rk-border bg-white px-4 py-3 shadow-rk-sm transition-all hover:border-rk-strong hover:shadow-rk-md"
             >
-              <span>
-                <span className="block text-sm font-semibold text-slate-900">
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-bold text-rk-ink">
                   {action.label}
                 </span>
-                <span className="block text-xs text-slate-500">
+                <span className="block truncate text-xs text-rk-secondary">
                   {action.detail}
                 </span>
               </span>
               <ArrowRight
                 size={16}
                 aria-hidden
-                className="shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-slate-900"
+                className="shrink-0 text-rk-muted transition group-hover:translate-x-0.5 group-hover:text-rk-ink"
               />
             </Link>
           ))}
@@ -185,17 +184,17 @@ export default function PersonaHomeStrip({
         !persona &&
         source === 'default' &&
         !nudgeDismissed && (
-          <div className="mt-4 flex flex-col gap-2 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-4 flex flex-col gap-2 rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3 text-sm text-rk-secondary sm:flex-row sm:items-center sm:justify-between">
             <p>
               Showing the{' '}
-              <strong>{meta.label}</strong>{' '}
+              <strong className="text-rk-ink">{meta.label}</strong>{' '}
               view. Tell us your role for a
               sharper focus.
             </p>
             <div className="flex shrink-0 gap-2">
               <Link
                 href="/settings"
-                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
+                className="rk-focusable rounded-rk-sm bg-rk-ink px-3 py-1.5 text-xs font-bold text-white"
               >
                 Choose my role
               </Link>
@@ -203,7 +202,7 @@ export default function PersonaHomeStrip({
                 type="button"
                 onClick={dismissNudge}
                 aria-label="Dismiss role suggestion"
-                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600"
+                className="rk-focusable rounded-rk-sm border border-rk-border bg-rk-surface px-3 py-1.5 text-xs font-bold text-rk-ink hover:bg-white"
               >
                 Dismiss
               </button>

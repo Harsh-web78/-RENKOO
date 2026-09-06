@@ -1,19 +1,33 @@
 ﻿"use client";
 
+/*
+ * RENKOO — ROI (V2 design-system pass).
+ * UI ONLY: shared PageHeader / Panel / Metric / FilterBar /
+ * DataTable / buttons / states. FunnelStages logic, ROI
+ * calculations, spend CRUD, date filters, attribution logic
+ * and all API calls are unchanged.
+ */
+
 import { FormEvent, useEffect, useState } from "react";
 import {
-  ArrowUpRight,
-  BarChart3,
-  DollarSign,
+  Globe2,
   Plus,
   RefreshCw,
-  Trash2,
-  TrendingUp,
   Users,
-  Wallet,
 } from "lucide-react";
 
 import AppShell from "@/components/AppShell";
+import PageHeader from "@/components/ui/PageHeader";
+import Panel from "@/components/ui/Panel";
+import Metric from "@/components/ui/Metric";
+import FilterBar from "@/components/ui/FilterBar";
+import DataTable, {
+  type DataTableColumn,
+} from "@/components/ui/DataTable";
+import {
+  PrimaryButton,
+  SecondaryButton,
+} from "@/components/ui/buttons";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import {
   EmptyState,
@@ -35,6 +49,8 @@ import {
   Website,
 } from "@/lib/api";
 
+const STORAGE_KEY = "renkoo_website_id";
+
 function money(value: number, currency = "INR") {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -53,89 +69,6 @@ function ratio(value: number | null) {
   return value === null || !Number.isFinite(value)
     ? "—"
     : `${value.toFixed(2)}x`;
-}
-
-function Metric({
-  icon,
-  label,
-  value,
-  detail,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  detail?: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between">
-        <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
-          {label}
-        </div>
-        <div className="text-slate-400">{icon}</div>
-      </div>
-
-      <div className="mt-3 text-2xl font-semibold text-slate-900">
-        {value}
-      </div>
-
-      {detail && (
-        <div className="mt-1 text-sm text-slate-500">
-          {detail}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Insight({
-  title,
-  value,
-  detail,
-}: {
-  title: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
-        {title}
-      </div>
-
-      <div className="mt-3 truncate text-lg font-semibold text-slate-900">
-        {value}
-      </div>
-
-      <div className="mt-1 text-sm text-slate-500">
-        {detail}
-      </div>
-    </div>
-  );
-}
-
-function Impact({
-  title,
-  value,
-  detail,
-}: {
-  title: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
-        {title}
-      </div>
-      <div className="mt-2 text-lg font-semibold text-slate-900">
-        {value}
-      </div>
-      <div className="mt-1 text-xs text-slate-500">
-        {detail}
-      </div>
-    </div>
-  );
 }
 
 export default function RoiPage() {
@@ -222,7 +155,15 @@ export default function RoiPage() {
         setWebsites(list);
 
         if (list.length > 0) {
-          const firstWebsiteId = list[0].id;
+          const stored =
+            typeof window !== "undefined"
+              ? localStorage.getItem(STORAGE_KEY)
+              : null;
+          const valid =
+            stored && list.some((site) => site.id === stored)
+              ? stored
+              : list[0].id;
+          const firstWebsiteId = valid;
           setWebsiteId(firstWebsiteId);
 
           try {
@@ -274,6 +215,10 @@ export default function RoiPage() {
     setOutcome(null);
     setOutcomeError("");
     setPendingDeleteSpend(null);
+    if (typeof window !== "undefined") {
+      if (id) localStorage.setItem(STORAGE_KEY, id);
+      else localStorage.removeItem(STORAGE_KEY);
+    }
     await load(id);
   }
 
@@ -416,818 +361,720 @@ export default function RoiPage() {
       (a, b) => b.spend - a.spend,
     )[0] || null;
 
+  const activeWebsite =
+    websites.find((site) => site.id === websiteId) || null;
+
+  const spendColumns: DataTableColumn<MarketingSpend>[] = [
+    {
+      key: "date",
+      label: "Date",
+      priority: "high",
+      render: (spend) =>
+        new Date(spend.spendDate).toLocaleDateString("en-IN"),
+    },
+    {
+      key: "source",
+      label: "Source",
+      priority: "high",
+      render: (spend) => (
+        <span className="font-semibold">{spend.source}</span>
+      ),
+    },
+    {
+      key: "campaign",
+      label: "Campaign",
+      priority: "medium",
+      render: (spend) => spend.campaign || "—",
+    },
+    {
+      key: "amount",
+      label: "Amount",
+      align: "right",
+      priority: "high",
+      render: (spend) => (
+        <span className="font-bold">
+          {money(spend.amount, spend.currency)}
+        </span>
+      ),
+    },
+  ];
+
+  const sourceColumns: DataTableColumn<{
+    source: string;
+    revenue: number;
+    spend: number;
+    profit: number;
+    roi: number | null;
+    roas: number | null;
+  }>[] = [
+    {
+      key: "source",
+      label: "Source",
+      priority: "high",
+      render: (item) => (
+        <span className="font-semibold">{item.source}</span>
+      ),
+    },
+    {
+      key: "revenue",
+      label: "Revenue",
+      align: "right",
+      priority: "high",
+      render: (item) => money(item.revenue, currency),
+    },
+    {
+      key: "spend",
+      label: "Spend",
+      align: "right",
+      priority: "medium",
+      render: (item) => money(item.spend, currency),
+    },
+    {
+      key: "profit",
+      label: "Profit",
+      align: "right",
+      priority: "medium",
+      render: (item) => (
+        <span className="font-semibold">
+          {money(item.profit, currency)}
+        </span>
+      ),
+    },
+    {
+      key: "roi",
+      label: "ROI",
+      align: "right",
+      priority: "low",
+      render: (item) => (
+        <span className="font-semibold">{percent(item.roi)}</span>
+      ),
+    },
+    {
+      key: "roas",
+      label: "ROAS",
+      align: "right",
+      priority: "low",
+      render: (item) => (
+        <span className="font-semibold">{ratio(item.roas)}</span>
+      ),
+    },
+  ];
+
   return (
     <AppShell
       mobileOpen={mobileOpen}
       onClose={() => setMobileOpen(false)}
       onMenu={() => setMobileOpen(true)}
     >
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-
-          {/* HEADER */}
-          <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-start gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5 text-slate-500" />
-                  <span className="text-sm font-medium text-slate-500">
-                    Business Intelligence
+      <div className="rk-page">
+        <PageHeader
+          eyebrow="Business Intelligence"
+          title="Leads → Revenue → ROI"
+          description="Understand which marketing investment is producing business results."
+          meta={
+            <>
+              {activeWebsite ? (
+                <span className="truncate">{activeWebsite.name}</span>
+              ) : (
+                <span>No website selected</span>
+              )}
+              {fromDate || toDate ? (
+                <>
+                  <span aria-hidden>·</span>
+                  <span>
+                    {fromDate || "…"} → {toDate || "…"}
                   </span>
-                </div>
+                </>
+              ) : null}
+            </>
+          }
+          actions={
+            <SecondaryButton
+              onClick={() => websiteId && load(websiteId)}
+              disabled={loading || !websiteId}
+            >
+              <RefreshCw
+                size={14}
+                aria-hidden
+                className={loading ? "animate-spin" : ""}
+              />
+              Refresh
+            </SecondaryButton>
+          }
+        />
 
-                <h1 className="mt-1 text-2xl font-semibold text-slate-900">
-                  Leads → Revenue → ROI
-                </h1>
+        {/* Website context — preserved selection behavior */}
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <label
+            htmlFor="roi-website"
+            className="rk-field-label flex shrink-0 items-center gap-1.5"
+          >
+            <Globe2 size={13} aria-hidden className="text-rk-muted" />
+            Website
+          </label>
 
-                <p className="mt-1 text-sm text-slate-500">
-                  Understand which marketing investment is producing business results.
+          <select
+            id="roi-website"
+            value={websiteId}
+            onChange={(e) => handleWebsiteChange(e.target.value)}
+            className="rk-focusable h-10 w-full max-w-md rounded-rk-md border border-rk-border bg-rk-surface px-3 text-sm font-semibold text-rk-ink shadow-rk-sm outline-none transition-all hover:border-rk-strong sm:w-auto sm:min-w-[240px]"
+          >
+            {websites.length === 0 && (
+              <option value="">No websites</option>
+            )}
+
+            {websites.map((website) => (
+              <option key={website.id} value={website.id}>
+                {website.name || website.url}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Date range — shared FilterBar */}
+        <div className="mt-4">
+          <FilterBar
+            dateRange={{
+              from: fromDate,
+              to: toDate,
+              onChange: (range) => {
+                setFromDate(range.from);
+                setToDate(range.to);
+              },
+            }}
+            dateLabel="Range"
+            actions={
+              <>
+                <PrimaryButton size="sm" onClick={applyDateRange} disabled={loading || !websiteId}>
+                  Apply
+                </PrimaryButton>
+                <SecondaryButton size="sm" onClick={resetDateRange} disabled={loading}>
+                  Reset
+                </SecondaryButton>
+              </>
+            }
+            meta="Filter recognized revenue and marketing spend by date."
+          />
+        </div>
+
+        {error ? (
+          <div className="mt-4">
+            <ErrorState
+              title="Could not load ROI data"
+              description={error}
+              onRetry={() => websiteId && load(websiteId)}
+            />
+          </div>
+        ) : null}
+
+        {loading ? (
+          <div className="mt-4">
+            <LoadingBlock title="Loading ROI…" lines={4} />
+          </div>
+        ) : null}
+
+        {/* CONTENT */}
+        {!loading && data && (
+          <>
+            {/* PRIMARY — Spend → Revenue → ROI story */}
+            <section aria-label="Key metrics" className="mt-6">
+              <div className="mb-3 flex items-baseline justify-between gap-3">
+                <h2 className="text-[15px] font-extrabold tracking-[-0.015em] text-rk-ink">
+                  Spend → Revenue → ROI
+                </h2>
+                <p className="rk-metadata hidden sm:block">
+                  Primary business outcomes
                 </p>
               </div>
-            </div>
 
-            <div className="flex items-center gap-2">
-              <select
-                value={websiteId}
-                onChange={(e) =>
-                  handleWebsiteChange(e.target.value)
-                }
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm outline-none"
-              >
-                {websites.length === 0 && (
-                  <option value="">No websites</option>
-                )}
-
-                {websites.map((website) => (
-                  <option key={website.id} value={website.id}>
-                    {website.name || website.url}
-                  </option>
-                ))}
-              </select>
-
-              <button
-                type="button"
-                onClick={() =>
-                  websiteId && load(websiteId)
-                }
-                disabled={loading || !websiteId}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm disabled:opacity-50"
-              >
-                <RefreshCw
-                  className={`h-4 w-4 ${
-                    loading ? "animate-spin" : ""
-                  }`}
-                />
-                Refresh
-              </button>
-            </div>
-          </div>
-
-          {/* ERROR */}
-          {error && (
-            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-
-          {/* DATE RANGE */}
-          <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <div className="text-sm font-semibold text-slate-900">
-                  ROI date range
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+                  <Metric
+                    label="Revenue"
+                    value={money(data.totalRevenue, currency)}
+                    detail={`${data.revenueTransactions} recognized transactions`}
+                    tone="positive"
+                  />
                 </div>
-                <div className="mt-1 text-xs text-slate-500">
-                  Filter recognized revenue and marketing spend by date.
-                </div>
-              </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                <label className="text-xs font-medium text-slate-600">
-                  From
-                  <input
-                    type="date"
-                    value={fromDate}
-                    onChange={(e) =>
-                      setFromDate(e.target.value)
+                <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+                  <Metric
+                    label="Marketing spend"
+                    value={money(data.totalSpend, currency)}
+                    detail={`${data.spendTransactions} spend transactions`}
+                  />
+                </div>
+
+                <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+                  <Metric
+                    label="ROI"
+                    value={percent(data.roi)}
+                    detail={
+                      data.roi === null
+                        ? "No spend available"
+                        : "Return after marketing spend"
                     }
-                    className="mt-1 block rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400"
+                    tone={data.roi === null ? "neutral" : "positive"}
                   />
-                </label>
-
-                <label className="text-xs font-medium text-slate-600">
-                  To
-                  <input
-                    type="date"
-                    value={toDate}
-                    onChange={(e) =>
-                      setToDate(e.target.value)
-                    }
-                    className="mt-1 block rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400"
-                  />
-                </label>
-
-                <button
-                  type="button"
-                  onClick={applyDateRange}
-                  disabled={loading || !websiteId}
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                >
-                  Apply
-                </button>
-
-                <button
-                  type="button"
-                  onClick={resetDateRange}
-                  disabled={loading}
-                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50"
-                >
-                  Reset
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* LOADING */}
-          {loading && (
-            <div className="grid gap-4 md:grid-cols-4">
-              {[1, 2, 3, 4].map((item) => (
-                <div
-                  key={item}
-                  className="h-32 animate-pulse rounded-2xl border border-slate-200 bg-white"
-                />
-              ))}
-            </div>
-          )}
-
-          {/* CONTENT */}
-          {!loading && data && (
-            <>
-              {/* KPI CARDS */}
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <Metric
-                  icon={<DollarSign className="h-4 w-4" />}
-                  label="Revenue"
-                  value={money(data.totalRevenue, currency)}
-                  detail={`${data.revenueTransactions} recognized transactions`}
-                />
-
-                <Metric
-                  icon={<Wallet className="h-4 w-4" />}
-                  label="Marketing spend"
-                  value={money(data.totalSpend, currency)}
-                  detail={`${data.spendTransactions} spend transactions`}
-                />
-
-                <Metric
-                  icon={<TrendingUp className="h-4 w-4" />}
-                  label="ROI"
-                  value={percent(data.roi)}
-                  detail={
-                    data.roi === null
-                      ? "No spend available"
-                      : "Return after marketing spend"
-                  }
-                />
-
-                <Metric
-                  icon={<ArrowUpRight className="h-4 w-4" />}
-                  label="ROAS"
-                  value={ratio(data.roas)}
-                  detail="Revenue generated per spend"
-                />
-              </div>
-
-              {/* BUSINESS IMPACT */}
-              <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-base font-semibold text-slate-900">
-                      Business impact
-                    </h2>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Actual revenue and acquisition economics.
-                    </p>
-                  </div>
                 </div>
 
-                <div className="mt-5 grid gap-4 md:grid-cols-3">
-                  <Impact
-                    title="Profit after marketing"
-                    value={money(data.profit, currency)}
-                    detail="Revenue minus recorded marketing spend"
-                  />
-
-                  <Impact
-                    title="Converted leads"
-                    value={data.convertedLeads.toLocaleString("en-IN")}
-                    detail="Leads marked as converted"
-                  />
-
-                  <Impact
-                    title="Revenue / spend"
+                <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+                  <Metric
+                    label="ROAS"
                     value={ratio(data.roas)}
-                    detail="ROAS based on recognized revenue"
+                    detail="Revenue generated per spend"
                   />
                 </div>
               </div>
+            </section>
 
-              {/* ATTRIBUTION INSIGHTS */}
-              <div className="mt-6 grid gap-4 md:grid-cols-3">
-                <Insight
-                  title="Best ROI source"
-                  value={
-                    bestRoiSource
-                      ? bestRoiSource.source
-                      : "—"
-                  }
-                  detail={
-                    bestRoiSource
-                      ? percent(bestRoiSource.roi)
-                      : "No attributed ROI yet"
-                  }
-                />
+            {/* SECONDARY — business impact */}
+            <div className="mt-6">
+              <Panel
+                eyebrow="Secondary"
+                title="Business impact"
+                description="Actual revenue and acquisition economics."
+              >
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                    <Metric
+                      label="Profit after marketing"
+                      value={money(data.profit, currency)}
+                      detail="Revenue minus recorded marketing spend"
+                    />
+                  </div>
 
-                <Insight
-                  title="Highest spend"
-                  value={
-                    highestSpendSource
-                      ? highestSpendSource.source
-                      : "—"
-                  }
-                  detail={
-                    highestSpendSource
-                      ? money(
-                          highestSpendSource.spend,
-                          currency,
-                        )
-                      : "No spend recorded"
-                  }
-                />
+                  <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                    <Metric
+                      label="Converted leads"
+                      value={data.convertedLeads.toLocaleString("en-IN")}
+                      detail="Leads marked as converted"
+                    />
+                  </div>
 
-                <Insight
-                  title="Unattributed"
-                  value={money(
-                    unattributedRevenue +
-                      unattributedSpend,
-                    currency,
-                  )}
-                  detail={`Revenue ${money(
-                    unattributedRevenue,
-                    currency,
-                  )} · Spend ${money(
-                    unattributedSpend,
-                    currency,
-                  )}`}
-                />
-              </div>
-
-              {/* ATTRIBUTION & OUTCOME */}
-              <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h2 className="text-base font-semibold text-slate-900">
-                      Attribution &amp; outcome
-                    </h2>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Lead-to-revenue funnel and attributed ROI for the
-                      selected website and date range.
-                    </p>
+                  <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                    <Metric
+                      label="Revenue / spend"
+                      value={ratio(data.roas)}
+                      detail="ROAS based on recognized revenue"
+                    />
                   </div>
                 </div>
+              </Panel>
+            </div>
 
-                <div className="mt-5">
-                  {outcomeLoading ? (
-                    <LoadingBlock title="Loading attribution and outcome…" />
-                  ) : outcomeError && !outcome ? (
-                    <ErrorState
-                      title="Attribution and outcome unavailable"
-                      description={outcomeError}
-                      onRetry={() =>
-                        websiteId && load(websiteId)
+            {/* Attribution insights */}
+            <div className="mt-6">
+              <Panel
+                eyebrow="Attribution"
+                title="Attribution insights"
+                description="Where attributed performance concentrates — and what stays unattributed."
+              >
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-rk-md border border-rk-border bg-rk-surface px-4 py-3.5 shadow-rk-sm">
+                    <Metric
+                      label="Best ROI source"
+                      value={bestRoiSource ? bestRoiSource.source : "—"}
+                      detail={
+                        bestRoiSource
+                          ? percent(bestRoiSource.roi)
+                          : "No attributed ROI yet"
                       }
                     />
-                  ) : !outcome ? (
-                    <EmptyState
-                      title="No attribution data yet"
-                      description="Record leads, revenue, and marketing spend to measure attribution and outcome."
-                    />
-                  ) : (
-                    <>
-                      <FunnelStages
-                        state="ready"
-                        stages={[
-                          ...(outcome.funnel.visitors !== null
-                            ? [
-                                {
-                                  label: "Visitors",
-                                  value:
-                                    outcome.funnel.visitors,
-                                },
-                              ]
-                            : []),
-                          {
-                            label: "Leads",
-                            value: outcome.funnel.leads,
-                          },
-                          {
-                            label: "Qualified",
-                            value: outcome.funnel.qualified,
-                          },
-                          {
-                            label: "Conversions",
-                            value:
-                              outcome.funnel.conversions,
-                          },
-                        ]}
-                        summary={`Leads ${outcome.funnel.leads}, qualified ${outcome.funnel.qualified}, conversions ${outcome.funnel.conversions}`}
-                        emptyTitle="No funnel data yet"
-                        emptyDescription="No leads recorded in range."
-                      />
-
-                      <div className="mt-4 grid gap-4 md:grid-cols-3">
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                          <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                            Attribution coverage
-                          </div>
-                          <div className="mt-2 text-lg font-semibold text-slate-900">
-                            {outcome.attribution.coverage !==
-                            null
-                              ? `${outcome.attribution.coverage.toFixed(1)}%`
-                              : "— (no recognized revenue)"}
-                          </div>
-                          <div className="mt-1 text-xs text-slate-500">
-                            {money(
-                              outcome.attribution
-                                .attributedRevenue,
-                              outcome.currency ||
-                                currency,
-                            )}{" "}
-                            of{" "}
-                            {money(
-                              outcome.attribution
-                                .totalRevenue,
-                              outcome.currency ||
-                                currency,
-                            )}{" "}
-                            recognized revenue attributed
-                          </div>
-                        </div>
-
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                          <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                            Attributed ROI
-                          </div>
-                          {outcome.roi.measurable &&
-                          outcome.roi.attributedRoi !==
-                            null &&
-                          outcome.roi.attributedRevenue >
-                            0 ? (
-                            <>
-                              <div className="mt-2 text-lg font-semibold text-slate-900">
-                                {`${outcome.roi.attributedRoi.toFixed(1)}%`}
-                              </div>
-                              <div className="mt-1 text-xs text-slate-500">
-                                {money(
-                                  outcome.roi
-                                    .attributedRevenue,
-                                  outcome.currency ||
-                                    currency,
-                                )}{" "}
-                                attributed revenue against{" "}
-                                {money(
-                                  outcome.roi.spend,
-                                  outcome.currency ||
-                                    currency,
-                                )}{" "}
-                                spend
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="mt-2 text-lg font-semibold text-slate-900">
-                                ROI not measurable — no
-                                attributed revenue
-                              </div>
-                              <div className="mt-1 text-xs text-slate-500">
-                                {outcome.roi.spend <= 0
-                                  ? "No marketing spend is recorded in range."
-                                  : "No attributed revenue is recorded in range."}
-                              </div>
-                            </>
-                          )}
-                        </div>
-
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                          <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                            Conversion rate
-                          </div>
-                          <div className="mt-2 text-lg font-semibold text-slate-900">
-                            {outcome.funnel
-                              .conversionRate !== null
-                              ? `${outcome.funnel.conversionRate.toFixed(1)}%`
-                              : "Not measurable — no leads recorded"}
-                          </div>
-                          <div className="mt-1 text-xs text-slate-500">
-                            Conversions against recorded
-                            leads in range
-                          </div>
-                        </div>
-                      </div>
-
-                      {outcome.conversionGaps.length >
-                        0 && (
-                        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-4">
-                          <div className="text-xs font-bold uppercase tracking-wide text-amber-800">
-                            Conversion gaps
-                          </div>
-                          <ul className="mt-2 space-y-2">
-                            {outcome.conversionGaps.map(
-                              (gap) => (
-                                <li
-                                  key={gap.id}
-                                  className="text-sm text-slate-700"
-                                >
-                                  <span className="font-semibold text-slate-900">
-                                    {gap.title}
-                                  </span>
-                                  <span className="text-slate-500">
-                                    {" "}
-                                    — {gap.description}
-                                  </span>
-                                </li>
-                              ),
-                            )}
-                          </ul>
-                          <Link
-                            href="/opportunities"
-                            className="mt-3 inline-flex text-sm font-semibold text-blue-700 hover:underline"
-                          >
-                            Review in Opportunities
-                          </Link>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* MARKETING SPEND */}
-              <div
-                id="roi-spend"
-                className="mt-6 scroll-mt-24 rounded-2xl border border-slate-200 bg-white shadow-sm"
-              >
-                <div className="flex flex-col gap-3 border-b border-slate-100 p-6 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h2 className="text-base font-semibold text-slate-900">
-                      Marketing investment
-                    </h2>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Record real campaign costs so ROI can be measured.
-                    </p>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setShowSpendForm((value) => !value)
-                    }
-                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Add spend
-                  </button>
-                </div>
+                  <div className="rounded-rk-md border border-rk-border bg-rk-surface px-4 py-3.5 shadow-rk-sm">
+                    <Metric
+                      label="Highest spend"
+                      value={highestSpendSource ? highestSpendSource.source : "—"}
+                      detail={
+                        highestSpendSource
+                          ? money(highestSpendSource.spend, currency)
+                          : "No spend recorded"
+                      }
+                    />
+                  </div>
 
+                  <div className="rounded-rk-md border border-rk-border bg-rk-surface px-4 py-3.5 shadow-rk-sm">
+                    <Metric
+                      label="Unattributed"
+                      value={money(
+                        unattributedRevenue + unattributedSpend,
+                        currency,
+                      )}
+                      detail={`Revenue ${money(unattributedRevenue, currency)} · Spend ${money(unattributedSpend, currency)}`}
+                      tone="warning"
+                    />
+                  </div>
+                </div>
+              </Panel>
+            </div>
+
+            {/* ATTRIBUTION & OUTCOME — FunnelStages preserved */}
+            <div className="mt-6">
+              <Panel
+                eyebrow="Funnel"
+                title="Attribution & outcome"
+                description="Lead-to-revenue funnel and attributed ROI for the selected website and date range."
+              >
+                {outcomeLoading ? (
+                  <LoadingBlock title="Loading attribution and outcome…" />
+                ) : outcomeError && !outcome ? (
+                  <ErrorState
+                    title="Attribution and outcome unavailable"
+                    description={outcomeError}
+                    onRetry={() => websiteId && load(websiteId)}
+                  />
+                ) : !outcome ? (
+                  <EmptyState
+                    title="No attribution data yet"
+                    description="Record leads, revenue, and marketing spend to measure attribution and outcome."
+                  />
+                ) : (
+                  <>
+                    <FunnelStages
+                      state="ready"
+                      stages={[
+                        ...(outcome.funnel.visitors !== null
+                          ? [
+                              {
+                                label: "Visitors",
+                                value: outcome.funnel.visitors,
+                              },
+                            ]
+                          : []),
+                        {
+                          label: "Leads",
+                          value: outcome.funnel.leads,
+                        },
+                        {
+                          label: "Qualified",
+                          value: outcome.funnel.qualified,
+                        },
+                        {
+                          label: "Conversions",
+                          value: outcome.funnel.conversions,
+                        },
+                      ]}
+                      summary={`Leads ${outcome.funnel.leads}, qualified ${outcome.funnel.qualified}, conversions ${outcome.funnel.conversions}`}
+                      emptyTitle="No funnel data yet"
+                      emptyDescription="No leads recorded in range."
+                    />
+
+                    <div className="mt-4 grid gap-3 md:grid-cols-3">
+                      <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                        <Metric
+                          label="Attribution coverage"
+                          value={
+                            outcome.attribution.coverage !== null
+                              ? `${outcome.attribution.coverage.toFixed(1)}%`
+                              : "—"
+                          }
+                          detail={
+                            outcome.attribution.coverage !== null
+                              ? `${money(outcome.attribution.attributedRevenue, outcome.currency || currency)} of ${money(outcome.attribution.totalRevenue, outcome.currency || currency)} recognized revenue attributed`
+                              : "No recognized revenue"
+                          }
+                        />
+                      </div>
+
+                      <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                        <Metric
+                          label="Attributed ROI"
+                          value={
+                            outcome.roi.measurable &&
+                            outcome.roi.attributedRoi !== null &&
+                            outcome.roi.attributedRevenue > 0
+                              ? `${outcome.roi.attributedRoi.toFixed(1)}%`
+                              : "—"
+                          }
+                          detail={
+                            outcome.roi.measurable &&
+                            outcome.roi.attributedRoi !== null &&
+                            outcome.roi.attributedRevenue > 0
+                              ? `${money(outcome.roi.attributedRevenue, outcome.currency || currency)} attributed revenue against ${money(outcome.roi.spend, outcome.currency || currency)} spend`
+                              : outcome.roi.spend <= 0
+                                ? "No marketing spend is recorded in range."
+                                : "No attributed revenue is recorded in range."
+                          }
+                        />
+                      </div>
+
+                      <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                        <Metric
+                          label="Conversion rate"
+                          value={
+                            outcome.funnel.conversionRate !== null
+                              ? `${outcome.funnel.conversionRate.toFixed(1)}%`
+                              : "—"
+                          }
+                          detail={
+                            outcome.funnel.conversionRate !== null
+                              ? "Conversions against recorded leads in range"
+                              : "Not measurable — no leads recorded"
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    {outcome.conversionGaps.length > 0 && (
+                      <div className="mt-4 rounded-rk-md border border-rk-warning/30 bg-rk-warningSoft px-4 py-3.5">
+                        <p className="rk-label">Conversion gaps</p>
+                        <ul className="mt-2 space-y-2">
+                          {outcome.conversionGaps.map((gap) => (
+                            <li
+                              key={gap.id}
+                              className="text-sm leading-5 text-rk-secondary"
+                            >
+                              <span className="font-bold text-rk-ink">
+                                {gap.title}
+                              </span>{" "}
+                              — {gap.description}
+                            </li>
+                          ))}
+                        </ul>
+                        <Link
+                          href="/opportunities"
+                          className="rk-focusable mt-3 inline-flex text-sm font-bold text-rk-ink underline decoration-rk-border-strong underline-offset-4 hover:decoration-rk-ink"
+                        >
+                          Review in Opportunities
+                        </Link>
+                      </div>
+                    )}
+                  </>
+                )}
+              </Panel>
+            </div>
+
+            {/* MARKETING SPEND */}
+            <div id="roi-spend" className="mt-6 scroll-mt-24">
+              <Panel
+                eyebrow="Investment"
+                title="Marketing investment"
+                description="Record real campaign costs so ROI can be measured."
+                actions={
+                  <SecondaryButton
+                    size="sm"
+                    onClick={() => setShowSpendForm((value) => !value)}
+                  >
+                    <Plus size={14} aria-hidden />
+                    {showSpendForm ? "Hide form" : "Add spend"}
+                  </SecondaryButton>
+                }
+                padded={false}
+              >
                 {showSpendForm && (
                   <form
                     onSubmit={saveSpend}
-                    className="border-b border-slate-100 bg-slate-50 p-6"
+                    className="border-b border-rk-border bg-rk-soft/60 px-4 py-4 sm:px-5"
                   >
-                    <div className="grid gap-4 md:grid-cols-4">
-                      <label className="text-xs font-medium text-slate-600">
-                        Amount
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <label className="block">
+                        <span className="rk-field-label">Amount</span>
                         <input
                           type="number"
                           min="0.01"
                           step="0.01"
                           value={spendAmount}
-                          onChange={(e) =>
-                            setSpendAmount(e.target.value)
-                          }
+                          onChange={(e) => setSpendAmount(e.target.value)}
                           placeholder="10000"
-                          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+                          className="rk-input mt-1.5"
                         />
                       </label>
 
-                      <label className="text-xs font-medium text-slate-600">
-                        Source
+                      <label className="block">
+                        <span className="rk-field-label">Source</span>
                         <input
                           value={spendSource}
-                          onChange={(e) =>
-                            setSpendSource(e.target.value)
-                          }
+                          onChange={(e) => setSpendSource(e.target.value)}
                           placeholder="Google Ads"
-                          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+                          className="rk-input mt-1.5"
                         />
                       </label>
 
-                      <label className="text-xs font-medium text-slate-600">
-                        Campaign
+                      <label className="block">
+                        <span className="rk-field-label">Campaign</span>
                         <input
                           value={spendCampaign}
-                          onChange={(e) =>
-                            setSpendCampaign(e.target.value)
-                          }
+                          onChange={(e) => setSpendCampaign(e.target.value)}
                           placeholder="Summer campaign"
-                          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+                          className="rk-input mt-1.5"
                         />
                       </label>
 
-                      <label className="text-xs font-medium text-slate-600">
-                        Spend date
+                      <label className="block">
+                        <span className="rk-field-label">Spend date</span>
                         <input
                           type="date"
                           value={spendDate}
-                          onChange={(e) =>
-                            setSpendDate(e.target.value)
-                          }
-                          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+                          onChange={(e) => setSpendDate(e.target.value)}
+                          className="rk-input mt-1.5"
                         />
                       </label>
                     </div>
 
                     <div className="mt-4 flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setShowSpendForm(false)
-                        }
-                        className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700"
+                      <SecondaryButton
+                        size="sm"
+                        onClick={() => setShowSpendForm(false)}
                       >
                         Cancel
-                      </button>
+                      </SecondaryButton>
 
-                      <button
-                        type="submit"
-                        disabled={savingSpend}
-                        className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                      >
-                        {savingSpend
-                          ? "Saving..."
-                          : "Save spend"}
-                      </button>
+                      <PrimaryButton size="sm" type="submit" disabled={savingSpend}>
+                        {savingSpend ? "Saving…" : "Save spend"}
+                      </PrimaryButton>
                     </div>
                   </form>
                 )}
 
-                {spends.length === 0 ? (
-                  <div className="p-8 text-center">
-                    <Wallet className="mx-auto h-8 w-8 text-slate-300" />
-                    <p className="mt-3 text-sm font-medium text-slate-700">
-                      No marketing spend recorded
-                    </p>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Add real campaign spend to make ROI meaningful.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead>
-                        <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400">
-                          <th className="px-6 py-3 font-medium">
-                            Date
-                          </th>
-                          <th className="px-6 py-3 font-medium">
-                            Source
-                          </th>
-                          <th className="px-6 py-3 font-medium">
-                            Campaign
-                          </th>
-                          <th className="px-6 py-3 text-right font-medium">
-                            Amount
-                          </th>
-                          <th className="px-6 py-3 text-right font-medium">
-                            Action
-                          </th>
-                        </tr>
-                      </thead>
+                <div className="px-2 py-2 sm:px-3">
+                  <DataTable
+                    caption="Marketing spend"
+                    columns={spendColumns}
+                    rows={spends}
+                    keyOf={(spend) => spend.id}
+                    loading={false}
+                    emptyTitle="No marketing spend recorded"
+                    emptyDescription="Add real campaign spend to make ROI meaningful."
+                    rowActions={(spend) => [
+                      {
+                        label:
+                          deletingSpend === spend.id
+                            ? "Deleting…"
+                            : "Delete",
+                        onSelect: () => removeSpend(spend.id),
+                      },
+                    ]}
+                    renderExpanded={(spend) => (
+                      <div className="grid gap-2 text-sm sm:grid-cols-2">
+                        <div>
+                          <p className="rk-field-label">Campaign</p>
+                          <p className="mt-0.5 font-medium text-rk-ink">
+                            {spend.campaign || "—"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="rk-field-label">Amount</p>
+                          <p className="rk-number mt-0.5 font-bold text-rk-ink">
+                            {money(spend.amount, spend.currency)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    density="compact"
+                  />
+                </div>
+              </Panel>
+            </div>
 
-                      <tbody>
-                        {spends.map((spend) => (
-                          <tr
-                            key={spend.id}
-                            className="border-b border-slate-50 last:border-0"
-                          >
-                            <td className="px-6 py-4 text-slate-600">
-                              {new Date(
-                                spend.spendDate,
-                              ).toLocaleDateString("en-IN")}
-                            </td>
+            {/* SOURCE PERFORMANCE */}
+            <div className="mt-6">
+              <Panel
+                eyebrow="Attribution"
+                title="Performance by source"
+                description="Compare actual recognized revenue against recorded marketing investment."
+                footer={
+                  unattributedRevenue > 0 || unattributedSpend > 0 ? (
+                    <span>
+                      <strong className="text-rk-ink">Attribution gap:</strong>{" "}
+                      {unattributedRevenue > 0 &&
+                        `${money(unattributedRevenue, currency)} revenue is not mapped to a source. `}
+                      {unattributedSpend > 0 &&
+                        `${money(unattributedSpend, currency)} spend is not mapped to a revenue source.`}
+                    </span>
+                  ) : undefined
+                }
+              >
+                <DataTable
+                  caption="Performance by source"
+                  columns={sourceColumns}
+                  rows={data.bySource}
+                  keyOf={(item) => item.source}
+                  loading={false}
+                  emptyTitle="No source attribution data available yet"
+                  emptyDescription="Recognized revenue and spend will appear here once recorded with sources."
+                  renderExpanded={(item) => (
+                    <div className="grid gap-2 text-sm sm:grid-cols-3">
+                      <div>
+                        <p className="rk-field-label">Spend</p>
+                        <p className="mt-0.5 font-semibold text-rk-ink">
+                          {money(item.spend, currency)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="rk-field-label">ROI</p>
+                        <p className="mt-0.5 font-semibold text-rk-ink">
+                          {percent(item.roi)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="rk-field-label">ROAS</p>
+                        <p className="mt-0.5 font-semibold text-rk-ink">
+                          {ratio(item.roas)}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  density="compact"
+                />
+              </Panel>
+            </div>
 
-                            <td className="px-6 py-4 font-medium text-slate-900">
-                              {spend.source}
-                            </td>
-
-                            <td className="px-6 py-4 text-slate-600">
-                              {spend.campaign || "—"}
-                            </td>
-
-                            <td className="px-6 py-4 text-right font-medium text-slate-900">
-                              {money(
-                                spend.amount,
-                                spend.currency,
-                              )}
-                            </td>
-
-                            <td className="px-6 py-4 text-right">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  removeSpend(spend.id)
-                                }
-                                disabled={
-                                  deletingSpend === spend.id
-                                }
-                                className="inline-flex rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                                title="Delete spend"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              {/* SOURCE PERFORMANCE */}
-              <div className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="border-b border-slate-100 p-6">
-                  <h2 className="text-base font-semibold text-slate-900">
-                    Performance by source
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Compare actual recognized revenue against recorded marketing investment.
+            {/* ATTRIBUTION QUALITY */}
+            <div className="mt-6">
+              <Panel
+                eyebrow="Methodology"
+                title="Attribution quality"
+                description="ROI is calculated from recognized revenue and recorded marketing spend. Source-level performance depends on the source values attached to those records. Unattributed amounts are kept separate instead of being assigned artificially."
+              >
+                <div className="flex items-start gap-2.5">
+                  <Users
+                    size={16}
+                    aria-hidden
+                    className="mt-0.5 shrink-0 text-rk-muted"
+                  />
+                  <p className="text-[13px] leading-5 text-rk-secondary">
+                    Only recorded transactions feed this page — nothing
+                    is estimated. Connect leads, revenue and spend to
+                    sharpen attribution.
                   </p>
                 </div>
-
-                {data.bySource.length === 0 ? (
-                  <div className="p-8 text-center text-sm text-slate-500">
-                    No source attribution data available yet.
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead>
-                        <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400">
-                          <th className="px-6 py-3 font-medium">
-                            Source
-                          </th>
-                          <th className="px-6 py-3 text-right font-medium">
-                            Revenue
-                          </th>
-                          <th className="px-6 py-3 text-right font-medium">
-                            Spend
-                          </th>
-                          <th className="px-6 py-3 text-right font-medium">
-                            Profit
-                          </th>
-                          <th className="px-6 py-3 text-right font-medium">
-                            ROI
-                          </th>
-                          <th className="px-6 py-3 text-right font-medium">
-                            ROAS
-                          </th>
-                        </tr>
-                      </thead>
-
-                      <tbody>
-                        {data.bySource.map((item) => (
-                          <tr
-                            key={item.source}
-                            className="border-b border-slate-50 last:border-0"
-                          >
-                            <td className="px-6 py-4 font-medium text-slate-900">
-                              {item.source}
-                            </td>
-
-                            <td className="px-6 py-4 text-right text-slate-700">
-                              {money(
-                                item.revenue,
-                                currency,
-                              )}
-                            </td>
-
-                            <td className="px-6 py-4 text-right text-slate-700">
-                              {money(
-                                item.spend,
-                                currency,
-                              )}
-                            </td>
-
-                            <td className="px-6 py-4 text-right font-medium text-slate-900">
-                              {money(
-                                item.profit,
-                                currency,
-                              )}
-                            </td>
-
-                            <td className="px-6 py-4 text-right font-medium text-slate-900">
-                              {percent(item.roi)}
-                            </td>
-
-                            <td className="px-6 py-4 text-right font-medium text-slate-900">
-                              {ratio(item.roas)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {(unattributedRevenue > 0 ||
-                  unattributedSpend > 0) && (
-                  <div className="border-t border-amber-100 bg-amber-50 px-6 py-4 text-sm text-amber-800">
-                    <span className="font-medium">
-                      Attribution gap:
-                    </span>{" "}
-                    {unattributedRevenue > 0 &&
-                      `${money(
-                        unattributedRevenue,
-                        currency,
-                      )} revenue is not mapped to a source. `}
-                    {unattributedSpend > 0 &&
-                      `${money(
-                        unattributedSpend,
-                        currency,
-                      )} spend is not mapped to a revenue source.`}
-                  </div>
-                )}
-              </div>
-
-              {/* CONVERSION NOTE */}
-              <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="flex items-start gap-3">
-                  <Users className="mt-0.5 h-5 w-5 text-slate-400" />
-
-                  <div>
-                    <h2 className="text-sm font-semibold text-slate-900">
-                      Attribution quality
-                    </h2>
-
-                    <p className="mt-1 text-sm leading-6 text-slate-500">
-                      ROI is calculated from recognized revenue and recorded marketing spend.
-                      Source-level performance depends on the source values attached to those records.
-                      Unattributed amounts are kept separate instead of being assigned artificially.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* EMPTY */}
-          {!loading && !data && !error && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm">
-              <BarChart3 className="mx-auto h-10 w-10 text-slate-300" />
-              <h2 className="mt-4 text-lg font-semibold text-slate-900">
-                ROI data is not available yet
-              </h2>
-              <p className="mt-2 text-sm text-slate-500">
-                Connect revenue and marketing spend data to measure business ROI.
-              </p>
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-                <Link
-                  href="/leads"
-                  className="inline-flex rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white"
-                >
-                  Record leads & revenue
-                </Link>
-                <a
-                  href="#roi-spend"
-                  className="inline-flex rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700"
-                >
-                  Add marketing spend
-                </a>
-              </div>
+              </Panel>
             </div>
-          )}
-        </div>
+          </>
+        )}
 
-        <ConfirmDialog
-          open={pendingDeleteSpend !== null}
-          title="Delete marketing spend?"
-          description={`Delete ${pendingDeleteSpend ? money(pendingDeleteSpend.amount, pendingDeleteSpend.currency) : "this spend"} for "${pendingDeleteSpend?.source || "unknown source"}"? This cannot be undone.`}
-          confirmLabel="Delete spend"
-          confirming={deletingSpend !== null}
-          onConfirm={confirmRemoveSpend}
-          onCancel={() => setPendingDeleteSpend(null)}
-        />
+        {/* EMPTY */}
+        {!loading && !data && !error && (
+          <div className="mt-6">
+            <EmptyState
+              title="ROI data is not available yet"
+              description="Connect revenue and marketing spend data to measure business ROI."
+              actionLabel="Record leads & revenue"
+              actionHref="/leads"
+            />
+            <p className="mt-3 text-center text-sm">
+              <a
+                href="#roi-spend"
+                className="rk-focusable font-bold text-rk-ink underline decoration-rk-border-strong underline-offset-4 hover:decoration-rk-ink"
+              >
+                Add marketing spend
+              </a>
+            </p>
+          </div>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={pendingDeleteSpend !== null}
+        title="Delete marketing spend?"
+        description={`Delete ${pendingDeleteSpend ? money(pendingDeleteSpend.amount, pendingDeleteSpend.currency) : "this spend"} for "${pendingDeleteSpend?.source || "unknown source"}"? This cannot be undone.`}
+        confirmLabel="Delete spend"
+        confirming={deletingSpend !== null}
+        onConfirm={confirmRemoveSpend}
+        onCancel={() => setPendingDeleteSpend(null)}
+      />
     </AppShell>
   );
 }
-

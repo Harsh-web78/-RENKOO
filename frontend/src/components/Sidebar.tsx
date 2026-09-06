@@ -123,19 +123,19 @@ export default function Sidebar({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-[270px] border-r border-slate-100 bg-white p-5 transition-transform lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 w-[270px] border-r border-rk-border bg-rk-surface p-5 transition-transform lg:translate-x-0 ${
           mobileOpen
             ? 'translate-x-0'
             : '-translate-x-full'
         }`}
       >
         <div className="flex items-center gap-2">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-blue-600 to-violet-600 text-xl font-black text-white">
+          <div className="grid h-10 w-10 place-items-center rounded-xl bg-rk-ink text-xl font-black text-white">
             R
           </div>
 
           <b className="text-2xl tracking-tight">
-            RENKO
+            RENKOO
           </b>
 
           <button

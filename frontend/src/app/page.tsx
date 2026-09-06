@@ -1358,7 +1358,7 @@ export default function Home() {
 
             <Link
               href="/opportunities"
-              className="rk-focusable inline-flex items-center gap-1.5 rounded-rk-md bg-rk-ink px-4 py-2 text-xs font-bold text-white"
+              className="rk-focusable inline-flex h-9 items-center gap-1.5 rounded-rk-md bg-rk-ink px-4 text-[13px] font-bold text-white shadow-rk-sm transition-all hover:opacity-90 hover:shadow-rk-md"
             >
               Review opportunities
               <ArrowRight size={14} aria-hidden />
@@ -1447,12 +1447,20 @@ export default function Home() {
           2. GROWTH PULSE
       ================================================= */}
 
-      <section aria-labelledby="gcc-pulse" className="mt-6">
-        <h2 id="gcc-pulse" className="rk-label mb-2">
-          Growth pulse
-        </h2>
+      <section aria-labelledby="gcc-pulse" className="mt-8">
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          <h2
+            id="gcc-pulse"
+            className="text-[15px] font-extrabold tracking-[-0.015em] text-rk-ink"
+          >
+            Growth pulse
+          </h2>
+          <p className="rk-metadata hidden sm:block">
+            Live signals from connected sources
+          </p>
+        </div>
 
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           <PulseSignal
             label="Search visibility"
             value={
@@ -3072,22 +3080,38 @@ function PulseSignal({
   spark?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm">
-      <div className="flex items-center justify-between gap-2">
-        <p className="rk-label">{label}</p>
+    <div className="rk-surface-interactive group rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm">
+      <div className="flex items-center gap-2">
+        <span
+          aria-hidden
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${connected ? 'bg-rk-success' : 'bg-rk-border-strong'}`}
+        />
+        <p className="rk-label min-w-0 flex-1 truncate">
+          {label}
+        </p>
+      </div>
+
+      <p className="rk-number mt-2.5 truncate text-[26px] font-extrabold leading-none tracking-[-0.03em] text-rk-ink">
+        {value}
+      </p>
+
+      <p className="rk-metadata mt-1.5 min-h-[2rem] leading-[1.5]">
+        {detail}
+      </p>
+
+      <div className="mt-2 flex items-end justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          {spark ? (
+            <div aria-hidden>{spark}</div>
+          ) : (
+            <span className="rk-metadata">—</span>
+          )}
+        </div>
         <DataSourceBadge
           source={source}
           connected={connected}
         />
       </div>
-
-      <p className="rk-number mt-2 truncate text-2xl font-bold tracking-tight text-rk-ink">
-        {value}
-      </p>
-
-      <p className="rk-metadata mt-1 min-h-[2rem]">{detail}</p>
-
-      {spark ? <div className="mt-2">{spark}</div> : null}
     </div>
   );
 }

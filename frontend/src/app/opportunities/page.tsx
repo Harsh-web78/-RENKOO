@@ -1,8 +1,35 @@
 ﻿'use client';
 
+/*
+ * RENKOO — Opportunity Engine (V2 design-system pass).
+ * UI ONLY: shared PageHeader / Panel / Metric / FilterBar /
+ * badges / states. All data, filters, sorting, grouping,
+ * persona re-ranking, evidence, action creation, website
+ * behavior and business logic are unchanged.
+ */
+
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ArrowRight, Globe2, RefreshCw } from 'lucide-react';
 import AppShell from '@/components/AppShell';
+import PageHeader from '@/components/ui/PageHeader';
+import Panel from '@/components/ui/Panel';
+import Metric from '@/components/ui/Metric';
+import FilterBar from '@/components/ui/FilterBar';
+import {
+  Badge,
+  DataSourceBadge,
+  StatusBadge,
+} from '@/components/ui/badge';
+import {
+  PrimaryButton,
+  SecondaryButton,
+} from '@/components/ui/buttons';
+import {
+  EmptyState,
+  ErrorState,
+  LoadingBlock,
+} from '@/components/ui/states';
 import {
   getUnifiedOpportunities,
   getWebsites,
@@ -299,8 +326,24 @@ export default function OpportunitiesPage() {
     }
   }
 
+  function clearFilters() {
+    setSourceFilter('ALL');
+    setPriorityFilter('ALL');
+    setStatusFilter('ALL');
+    setSortMode('MY_ROLE');
+    setSearch('');
+  }
+
   if (loading || websitesLoading) {
-    return <LoadingState />;
+    return (
+      <AppShell
+        mobileOpen={navOpen}
+        onClose={() => setNavOpen(false)}
+        onMenu={() => setNavOpen(true)}
+      >
+        <LoadingBlock title="Loading opportunities…" lines={5} />
+      </AppShell>
+    );
   }
 
   if (error && !data) {
@@ -310,34 +353,30 @@ export default function OpportunitiesPage() {
         onClose={() => setNavOpen(false)}
         onMenu={() => setNavOpen(true)}
       >
-        <div className="mx-auto max-w-[1400px]">
-          <PageHeader
-            eyebrow="Growth intelligence"
-            title="Opportunity Engine"
-            description="One prioritized growth queue across RENKOO."
-          />
+        <PageHeader
+          eyebrow="Growth intelligence"
+          title="Opportunity Engine"
+          description="One prioritized growth queue across RENKOO."
+        />
 
-          <div className="mt-8 border border-red-200 bg-white p-6">
-            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-red-500">
-              Connection error
-            </div>
-            <div className="mt-2 text-sm text-red-700">{error}</div>
-            {websiteId && (
-              <button
-                type="button"
-                onClick={() => loadQueue(websiteId)}
-                className="mt-4 border border-red-300 px-4 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
-              >
-                Retry
-              </button>
-            )}
-          </div>
+        <div className="mt-6">
+          <ErrorState
+            title="Could not load opportunities"
+            description={error}
+            onRetry={
+              websiteId
+                ? () => loadQueue(websiteId)
+                : undefined
+            }
+          />
         </div>
       </AppShell>
     );
   }
 
   const summary = data?.summary;
+  const activeWebsite =
+    websites.find((site) => site.id === websiteId) || null;
 
   return (
     <AppShell
@@ -345,22 +384,70 @@ export default function OpportunitiesPage() {
       onClose={() => setNavOpen(false)}
       onMenu={() => setNavOpen(true)}
     >
-      <div className="mx-auto max-w-[1440px]">
+      <div className="rk-page">
         <PageHeader
           eyebrow="Growth intelligence"
           title="Opportunity Engine"
           description="One prioritized growth queue across RENKOO, built only from measured workspace data."
-          count={data?.total || 0}
+          meta={
+            <>
+              <span>
+                {filtered.length} of {opportunities.length} shown
+              </span>
+              <span aria-hidden>·</span>
+              <span>
+                {PERSONA_META[effectivePersona].label} view
+              </span>
+              {activeWebsite ? (
+                <>
+                  <span aria-hidden>·</span>
+                  <span className="truncate">
+                    {activeWebsite.name}
+                  </span>
+                </>
+              ) : null}
+            </>
+          }
+          actions={
+            <>
+              <SecondaryButton
+                onClick={() => websiteId && loadQueue(websiteId)}
+                disabled={!websiteId || loading}
+              >
+                <RefreshCw
+                  size={14}
+                  aria-hidden
+                  className={loading ? 'animate-spin' : ''}
+                />
+                Refresh
+              </SecondaryButton>
+
+              <Link
+                href="/actions"
+                className="rk-focusable inline-flex h-9 items-center gap-1.5 rounded-rk-md bg-rk-ink px-4 text-[13px] font-bold text-white shadow-rk-sm transition-all hover:opacity-90 hover:shadow-rk-md"
+              >
+                Open Actions
+                <ArrowRight size={14} aria-hidden />
+              </Link>
+            </>
+          }
         />
 
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#6b7280]">
+        {/* Website context — preserved selector behavior */}
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <label
+            htmlFor="opp-website"
+            className="rk-field-label flex shrink-0 items-center gap-1.5"
+          >
+            <Globe2 size={13} aria-hidden className="text-rk-muted" />
             Website
           </label>
+
           <select
+            id="opp-website"
             value={websiteId}
             onChange={(e) => handleWebsiteChange(e.target.value)}
-            className="max-w-md border border-[#e5e7eb] bg-white px-3 py-2 text-sm outline-none"
+            className="rk-focusable h-10 w-full max-w-md rounded-rk-md border border-rk-border bg-rk-surface px-3 text-sm font-semibold text-rk-ink shadow-rk-sm outline-none transition-all hover:border-rk-strong sm:w-auto sm:min-w-[240px]"
           >
             {websites.map((site) => (
               <option key={site.id} value={site.id}>
@@ -368,308 +455,224 @@ export default function OpportunitiesPage() {
               </option>
             ))}
           </select>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search opportunities, pages, types..."
-            className="w-full max-w-md border border-[#e5e7eb] bg-white px-3 py-2 text-sm outline-none sm:ml-auto"
-          />
         </div>
 
-        <section className="mt-6 grid grid-cols-2 gap-px overflow-hidden border border-[#e5e7eb] bg-[#e5e7eb] md:grid-cols-4">
-          <SummaryCard
-            label="Total opportunities"
-            value={data?.total || 0}
-            description="Persisted open and in-progress items only"
-          />
-
-          <SummaryCard
-            label="High priority"
-            value={summary?.high || 0}
-            description="Requires attention first"
-            emphasis="high"
-          />
-
-          <SummaryCard
-            label="Medium"
-            value={summary?.medium || 0}
-            description="Meaningful growth potential"
-          />
-
-          <SummaryCard
-            label="Low"
-            value={summary?.low || 0}
-            description="Useful optimization queue"
-          />
-        </section>
-
-        <section className="mt-8 border border-[#e5e7eb] bg-white">
-          <div className="flex flex-col gap-5 border-b border-[#e5e7eb] px-5 py-5 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#6b7280]">
-                Priority queue
-              </div>
-              <h2 className="mt-1 text-lg font-semibold tracking-[-0.02em]">
-                Growth opportunities
-              </h2>
-            </div>
-
-            <div className="text-sm text-[#6b7280]">
-              Showing{' '}
-              <span className="font-semibold text-[#111827]">
-                {filtered.length}
-              </span>{' '}
-              of {opportunities.length}
-            </div>
+        {/* Summary — shared Metric cards */}
+        <section
+          aria-label="Opportunity summary"
+          className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4"
+        >
+          <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+            <Metric
+              label="Total opportunities"
+              value={String(data?.total || 0)}
+              detail="Open and in-progress items only"
+            />
           </div>
 
-          <div className="space-y-4 border-b border-[#e5e7eb] px-5 py-4">
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {SOURCE_FILTERS.map((item) => (
-                <button
-                  key={item.value}
-                  onClick={() => setSourceFilter(item.value)}
-                  className={`whitespace-nowrap border px-3.5 py-2 text-xs font-semibold transition ${
-                    sourceFilter === item.value
-                      ? 'border-[#111827] bg-[#111827] text-white'
-                      : 'border-[#e5e7eb] bg-white text-[#4b5563] hover:border-[#9ca3af] hover:text-[#111827]'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
+          <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+            <Metric
+              label="High priority"
+              value={String(summary?.high || 0)}
+              detail="Requires attention first"
+              tone="negative"
+            />
+          </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <FilterSelect
-                label="Priority"
-                value={priorityFilter}
-                options={['ALL', 'HIGH', 'MEDIUM', 'LOW']}
-                onChange={(value) =>
-                  setPriorityFilter(value as PriorityFilter)
-                }
-              />
-              <FilterSelect
-                label="Status"
-                value={statusFilter}
-                options={['ALL', 'OPEN', 'IN_PROGRESS', 'COMPLETED']}
-                onChange={(value) =>
-                  setStatusFilter(value as StatusFilter)
-                }
-              />
-              <FilterSelect
-                label="Sort"
-                value={sortMode}
-                options={[
-                  'MY_ROLE',
-                  'PRIORITY',
-                  'SCORE',
-                  'RECENT',
+          <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+            <Metric
+              label="Medium"
+              value={String(summary?.medium || 0)}
+              detail="Meaningful growth potential"
+              tone="warning"
+            />
+          </div>
+
+          <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+            <Metric
+              label="Low"
+              value={String(summary?.low || 0)}
+              detail="Useful optimization queue"
+            />
+          </div>
+        </section>
+
+        {/* Queue */}
+        <div className="mt-6">
+          <Panel
+            eyebrow="Priority queue"
+            title="Growth opportunities"
+            description={
+              sortMode === 'MY_ROLE'
+                ? `Prioritized for ${PERSONA_META[effectivePersona].label} — engine scores and evidence are unchanged. Switch sort to see the raw engine order.`
+                : undefined
+            }
+            padded={false}
+          >
+            <div className="px-4 pt-4 sm:px-5">
+              <FilterBar
+                searchValue={search}
+                searchPlaceholder="Search opportunities, pages, types…"
+                onSearchChange={setSearch}
+                selects={[
+                  {
+                    key: 'source',
+                    label: 'Source',
+                    value: sourceFilter,
+                    options: SOURCE_FILTERS.map((item) => ({
+                      value: item.value,
+                      label: item.label,
+                    })),
+                    onChange: (value) =>
+                      setSourceFilter(value as SourceFilter),
+                  },
+                  {
+                    key: 'priority',
+                    label: 'Priority',
+                    value: priorityFilter,
+                    options: ['ALL', 'HIGH', 'MEDIUM', 'LOW'].map(
+                      (value) => ({
+                        value,
+                        label: formatLabel(value),
+                      }),
+                    ),
+                    onChange: (value) =>
+                      setPriorityFilter(value as PriorityFilter),
+                  },
+                  {
+                    key: 'status',
+                    label: 'Status',
+                    value: statusFilter,
+                    options: [
+                      'ALL',
+                      'OPEN',
+                      'IN_PROGRESS',
+                      'COMPLETED',
+                    ].map((value) => ({
+                      value,
+                      label: formatLabel(value),
+                    })),
+                    onChange: (value) =>
+                      setStatusFilter(value as StatusFilter),
+                  },
+                  {
+                    key: 'sort',
+                    label: 'Sort',
+                    value: sortMode,
+                    options: (['MY_ROLE', 'PRIORITY', 'SCORE', 'RECENT'] as SortMode[]).map(
+                      (value) => ({
+                        value,
+                        label: formatLabel(value),
+                      }),
+                    ),
+                    onChange: (value) =>
+                      setSortMode(value as SortMode),
+                  },
                 ]}
-                onChange={(value) => setSortMode(value as SortMode)}
+                onClearAll={clearFilters}
+                meta={`Showing ${filtered.length} of ${opportunities.length} opportunities`}
               />
             </div>
 
-            {sortMode === 'MY_ROLE' && (
-              <p className="mt-2 text-[11px] text-slate-500">
-                Prioritized for{' '}
-                {
-                  PERSONA_META[effectivePersona]
-                    .label
-                }{' '}
-                — engine scores and evidence
-                are unchanged. Switch sort to
-                see the raw engine order.
-              </p>
-            )}
-
-            {actionError && (
-              <div className="border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
-                {actionError}
-              </div>
-            )}
-          </div>
-
-          {filtered.length === 0 ? (
-            <EmptyState filter={sourceFilter} />
-          ) : (
-            <div>
-              {grouped.map((group) => (
-                <div key={group.priority}>
-                  <div className="border-b border-[#e5e7eb] bg-[#fafafa] px-5 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-[#6b7280] md:px-6">
-                    {formatLabel(group.priority)} priority —{' '}
-                    {group.items.length}
-                  </div>
-                  {group.items.map((opportunity, index) => (
-                    <OpportunityCard
-                      key={opportunity.id}
-                      opportunity={opportunity}
-                      index={index}
-                      expanded={Boolean(expandedMap[opportunity.id])}
-                      actionLoading={Boolean(
-                        actionLoadingMap[opportunity.id],
-                      )}
-                      actionSuccess={Boolean(
-                        actionSuccessMap[opportunity.id],
-                      )}
-                      onToggleEvidence={() =>
-                        setExpandedMap((prev) => ({
-                          ...prev,
-                          [opportunity.id]: !prev[opportunity.id],
-                        }))
-                      }
-                      onCreateAction={() =>
-                        handleCreateAction(opportunity)
-                      }
-                    />
-                  ))}
+            {actionError ? (
+              <div className="px-4 pt-4 sm:px-5">
+                <div
+                  role="alert"
+                  className="rounded-rk-md border border-rk-danger/30 bg-rk-dangerSoft px-3.5 py-3 text-sm font-medium leading-5 text-rk-danger"
+                >
+                  {actionError}
                 </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="mt-6 border border-[#1f2937] bg-[#111827] text-white">
-          <div className="grid gap-8 p-6 md:grid-cols-[1fr_auto] md:p-8">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-white" />
-                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[#d1d5db]">
-                  RENKOO Intelligence
-                </span>
               </div>
+            ) : null}
 
-              <h2 className="mt-4 max-w-2xl text-2xl font-semibold tracking-[-0.03em]">
+            {filtered.length === 0 ? (
+              <div className="px-4 py-4 sm:px-5">
+                <EmptyState
+                  title="No opportunities found"
+                  description={`No persisted opportunities match ${(
+                    SOURCE_FILTERS.find(
+                      (item) => item.value === sourceFilter,
+                    )?.label || 'these filters'
+                  ).toLowerCase()} right now. Run audits, crawls, and intelligence scans to generate real evidence-backed items.`}
+                  actionLabel="Clear filters"
+                  onAction={clearFilters}
+                />
+              </div>
+            ) : (
+              <div className="mt-4 divide-y divide-rk-border border-t border-rk-border">
+                {grouped.map((group) => (
+                  <div key={group.priority}>
+                    <p className="rk-label bg-rk-soft/60 px-4 py-2.5 sm:px-5">
+                      {formatLabel(group.priority)} priority —{' '}
+                      {group.items.length}
+                    </p>
+
+                    <div className="divide-y divide-rk-border">
+                      {group.items.map((opportunity, index) => (
+                        <OpportunityCard
+                          key={opportunity.id}
+                          opportunity={opportunity}
+                          index={index}
+                          expanded={Boolean(
+                            expandedMap[opportunity.id],
+                          )}
+                          actionLoading={Boolean(
+                            actionLoadingMap[opportunity.id],
+                          )}
+                          actionSuccess={Boolean(
+                            actionSuccessMap[opportunity.id],
+                          )}
+                          onToggleEvidence={() =>
+                            setExpandedMap((prev) => ({
+                              ...prev,
+                              [opportunity.id]:
+                                !prev[opportunity.id],
+                            }))
+                          }
+                          onCreateAction={() =>
+                            handleCreateAction(opportunity)
+                          }
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+        </div>
+
+        {/* Intelligence footer — existing copy, rk tokens */}
+        <section className="mt-6 overflow-hidden rounded-rk-lg border border-rk-ink bg-rk-ink text-white shadow-rk-sm">
+          <div className="grid gap-6 p-5 sm:p-6 md:grid-cols-[1fr_auto] md:items-center">
+            <div className="min-w-0">
+              <p className="rk-label !text-white/60">
+                RENKOO Intelligence
+              </p>
+
+              <h2 className="mt-2 max-w-2xl text-xl font-extrabold tracking-[-0.02em]">
                 Turn opportunities into measurable growth.
               </h2>
 
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-[#9ca3af]">
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70">
                 Persisted SEO, competitor, backlink, GEO, AEO and
                 Business Brain signals in one queue. Completed and
                 dismissed items stay out of the active queue.
               </p>
             </div>
 
-            <div className="flex items-end">
-              <div className="border border-[#374151] px-4 py-3 text-right">
-                <div className="text-[11px] uppercase tracking-[0.14em] text-[#9ca3af]">
-                  Active queue
-                </div>
-                <div className="mt-1 text-2xl font-semibold">
-                  {filtered.length}
-                </div>
-              </div>
+            <div className="shrink-0 rounded-rk-md border border-white/15 bg-white/5 px-5 py-4 text-right">
+              <p className="rk-label !text-white/60">
+                Active queue
+              </p>
+              <p className="rk-number mt-1 text-2xl font-extrabold text-white">
+                {filtered.length}
+              </p>
             </div>
           </div>
         </section>
       </div>
     </AppShell>
-  );
-}
-
-function FilterSelect({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: string[];
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="flex items-center gap-2 text-xs text-[#6b7280]">
-      <span className="font-semibold uppercase tracking-[0.12em]">
-        {label}
-      </span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="border border-[#e5e7eb] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#111827] outline-none"
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {formatLabel(option)}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function PageHeader({
-  eyebrow,
-  title,
-  description,
-  count,
-}: {
-  eyebrow: string;
-  title: string;
-  description: string;
-  count?: number;
-}) {
-  return (
-    <header className="flex flex-col gap-5 border-b border-[#e5e7eb] pb-7 md:flex-row md:items-end md:justify-between">
-      <div>
-        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7280]">
-          {eyebrow}
-        </div>
-
-        <h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-[#111827] md:text-[36px]">
-          {title}
-        </h1>
-
-        <p className="mt-2 max-w-xl text-sm leading-6 text-[#6b7280]">
-          {description}
-        </p>
-      </div>
-
-      {typeof count === 'number' && (
-        <div className="border border-[#e5e7eb] bg-white px-4 py-3">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#9ca3af]">
-            Opportunities
-          </div>
-          <div className="mt-1 text-xl font-semibold text-[#111827]">
-            {count}
-          </div>
-        </div>
-      )}
-    </header>
-  );
-}
-
-function SummaryCard({
-  label,
-  value,
-  description,
-  emphasis,
-}: {
-  label: string;
-  value: number;
-  description: string;
-  emphasis?: 'high';
-}) {
-  return (
-    <div className="bg-white p-5 md:p-6">
-      <div className="flex items-start justify-between gap-3">
-        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#6b7280]">
-          {label}
-        </div>
-
-        {emphasis === 'high' && (
-          <span className="h-2 w-2 rounded-full bg-[#111827]" />
-        )}
-      </div>
-
-      <div className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-[#111827]">
-        {value}
-      </div>
-
-      <div className="mt-2 text-xs leading-5 text-[#9ca3af]">
-        {description}
-      </div>
-    </div>
   );
 }
 
@@ -691,144 +694,149 @@ function OpportunityCard({
   onCreateAction: () => void;
 }) {
   const priority = String(opportunity.priority || '').toUpperCase();
+  const priorityTone =
+    priority === 'HIGH'
+      ? ('danger' as const)
+      : priority === 'MEDIUM'
+        ? ('warning' as const)
+        : ('neutral' as const);
 
   return (
-    <article className="group border-b border-[#e5e7eb] px-5 py-5 last:border-b-0 md:px-6 md:py-6">
-      <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:gap-8">
-        <div className="min-w-0">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
+    <article className="rk-table-row px-4 py-5 sm:px-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
+        <div className="min-w-0 flex-1">
+          {/* What is it + how important */}
+          <div className="flex flex-wrap items-center gap-1.5">
             {sourceHref(opportunity.source) ? (
               <Link
-                href={
-                  sourceHref(opportunity.source) as string
-                }
-                className="border border-[#dfe2e6] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#111827] underline hover:border-[#9ca3af]"
+                href={sourceHref(opportunity.source) as string}
+                className="rk-focusable inline-flex items-center gap-1 rounded-rk-sm border border-rk-border bg-rk-soft px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rk-secondary underline decoration-rk-border-strong underline-offset-2 hover:text-rk-ink"
               >
                 {formatLabel(opportunity.source)}
               </Link>
             ) : (
-              <SourceBadge source={opportunity.source} />
+              <DataSourceBadge source={formatLabel(opportunity.source)} />
             )}
 
-            <PriorityBadge priority={priority} />
+            <Badge label={formatLabel(priority)} tone={priorityTone} />
 
-            {opportunity.businessRelevance && (
-              <span
-                title={
-                  opportunity.businessReason ||
-                  'Aligned with business priority'
-                }
-                className="border border-[#111827] bg-[#eef2ff] px-2.5 py-1 text-[11px] font-semibold text-[#111827]"
-              >
-                Business priority: {formatLabel(opportunity.businessRelevance)}
-              </span>
-            )}
+            {opportunity.businessRelevance ? (
+              <Badge
+                label={`Business priority: ${formatLabel(opportunity.businessRelevance)}`}
+                tone="info"
+              />
+            ) : null}
 
-            <span className="border border-[#e5e7eb] bg-[#fafafa] px-2.5 py-1 text-[11px] font-medium text-[#6b7280]">
-              Score {opportunity.score}
-            </span>
-
-            {opportunity.impact && (
-              <span className="border border-[#e5e7eb] bg-white px-2.5 py-1 text-[11px] font-medium text-[#6b7280]">
-                Impact {formatLabel(opportunity.impact)}
-              </span>
-            )}
-
-            {opportunity.effort && (
-              <span className="border border-[#e5e7eb] bg-white px-2.5 py-1 text-[11px] font-medium text-[#6b7280]">
-                Effort {formatLabel(opportunity.effort)}
-              </span>
-            )}
+            <StatusBadge status={String(opportunity.status || 'OPEN')} />
           </div>
 
-          <div className="flex gap-4">
-            <div className="hidden pt-1 text-xs font-medium tabular-nums text-[#c4c8ce] md:block">
+          <div className="mt-3 flex gap-3">
+            <span
+              aria-hidden
+              className="hidden pt-1 text-xs font-bold tabular-nums text-rk-muted md:block"
+            >
               {String(index + 1).padStart(2, '0')}
-            </div>
+            </span>
 
-            <div className="min-w-0">
-              <h2 className="text-[17px] font-semibold leading-6 tracking-[-0.015em] text-[#111827]">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-[16px] font-bold leading-6 tracking-[-0.015em] text-rk-ink">
                 {opportunity.title}
               </h2>
 
-              <p className="mt-2 max-w-4xl text-sm leading-6 text-[#6b7280]">
+              <p className="mt-1.5 max-w-4xl text-sm leading-6 text-rk-secondary">
                 {opportunity.description}
               </p>
 
-              {opportunity.recommendation && (
-                <div className="mt-5 border-l-2 border-[#111827] bg-[#fafafa] px-4 py-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6b7280]">
-                    Recommended action
-                  </div>
+              {/* Why it matters — score / impact / effort evidence */}
+              <p className="rk-metadata mt-2">
+                Score {opportunity.score}
+                {opportunity.impact
+                  ? ` · Impact ${formatLabel(opportunity.impact)}`
+                  : ''}
+                {opportunity.effort
+                  ? ` · Effort ${formatLabel(opportunity.effort)}`
+                  : ''}
+                {opportunity.pageUrl
+                  ? ` · ${opportunity.pageUrl}`
+                  : ''}
+              </p>
 
-                  <div className="mt-1.5 text-sm font-medium leading-6 text-[#374151]">
+              {/* What to do next */}
+              {opportunity.recommendation ? (
+                <div className="mt-3 rounded-rk-md border-l-2 border-rk-ink bg-rk-soft px-4 py-3">
+                  <p className="rk-label">Recommended action</p>
+
+                  <p className="mt-1.5 text-sm font-medium leading-6 text-rk-ink">
                     {opportunity.recommendation}
-                  </div>
+                  </p>
                 </div>
-              )}
+              ) : null}
 
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
+              <div className="mt-3.5 flex flex-wrap items-center gap-2">
+                <SecondaryButton
+                  size="sm"
                   onClick={onToggleEvidence}
-                  className="border border-[#e5e7eb] bg-white px-3 py-1.5 text-xs font-semibold text-[#374151] hover:border-[#9ca3af]"
+                  aria-expanded={expanded}
                 >
                   {expanded ? 'Hide evidence' : 'View evidence'}
-                </button>
-                <button
-                  type="button"
-                  onClick={onCreateAction}
-                  disabled={actionLoading || actionSuccess}
-                  className={`px-3 py-1.5 text-xs font-semibold transition ${
-                    actionSuccess
-                      ? 'cursor-default bg-green-700 text-white'
-                      : 'bg-[#111827] text-white hover:bg-black disabled:opacity-60'
-                  }`}
-                >
-                  {actionLoading
-                    ? 'Creating...'
-                    : actionSuccess
-                      ? 'Action created'
+                </SecondaryButton>
+
+                {actionSuccess ? (
+                  <>
+                    <span className="inline-flex h-8 items-center gap-1.5 rounded-rk-md bg-rk-success px-3 text-xs font-bold text-white">
+                      Action created
+                    </span>
+                    <Link
+                      href="/actions"
+                      className="rk-focusable inline-flex h-8 items-center rounded-rk-md border border-rk-border bg-rk-surface px-3 text-xs font-bold text-rk-ink hover:bg-rk-soft"
+                    >
+                      Open in Actions
+                    </Link>
+                  </>
+                ) : (
+                  <PrimaryButton
+                    size="sm"
+                    onClick={onCreateAction}
+                    disabled={actionLoading}
+                  >
+                    {actionLoading
+                      ? 'Creating…'
                       : isPersistedRecommendation(opportunity)
                         ? 'Create action from recommendation'
                         : 'Create action'}
-                </button>
-                {actionSuccess && (
-                  <Link
-                    href="/actions"
-                    className="border border-[#e5e7eb] bg-white px-3 py-1.5 text-xs font-semibold text-[#111827] hover:border-[#9ca3af]"
-                  >
-                    Open in Actions
-                  </Link>
+                  </PrimaryButton>
                 )}
               </div>
 
-              {expanded && (
+              {opportunity.businessReason ? (
+                <p className="rk-metadata mt-2.5">
+                  Business relevance: {opportunity.businessReason}
+                </p>
+              ) : null}
+
+              {expanded ? (
                 <EvidencePanel opportunity={opportunity} />
-              )}
+              ) : null}
             </div>
           </div>
         </div>
 
-        <div className="flex items-start justify-between gap-6 border-t border-[#f0f1f3] pt-4 lg:min-w-[180px] lg:flex-col lg:items-end lg:border-t-0 lg:pt-0">
-          <div className="text-left lg:text-right">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">
-              Status
-            </div>
-
-            <div className="mt-1.5 text-xs font-semibold text-[#374151]">
-              {formatLabel(opportunity.status)}
+        {/* Status rail — same data, shared badge */}
+        <div className="flex shrink-0 items-center gap-6 border-t border-rk-border pt-3 sm:gap-8 lg:min-w-[150px] lg:flex-col lg:items-end lg:justify-start lg:gap-4 lg:border-t-0 lg:pt-0">
+          <div className="lg:text-right">
+            <p className="rk-label">Status</p>
+            <div className="mt-1.5">
+              <StatusBadge
+                status={String(opportunity.status || 'OPEN')}
+              />
             </div>
           </div>
 
-          <div className="text-right">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">
-              Priority
-            </div>
-
-            <div className="mt-1.5 text-xs font-semibold text-[#111827]">
+          <div className="lg:text-right">
+            <p className="rk-label">Priority</p>
+            <p className="mt-1.5 text-xs font-bold text-rk-ink">
               {formatLabel(opportunity.priority)}
-            </div>
+            </p>
           </div>
         </div>
       </div>
@@ -845,43 +853,41 @@ function EvidencePanel({
   const entries = Object.entries(metadata).slice(0, 12);
 
   return (
-    <div className="mt-4 border border-[#e5e7eb] bg-white px-4 py-3">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">
-        Evidence
-      </div>
-      <dl className="mt-2 grid gap-2 text-xs text-[#4b5563] sm:grid-cols-2">
+    <div className="rk-animate-fade mt-4 rounded-rk-md border border-rk-border bg-rk-surface px-4 py-3.5 shadow-rk-sm">
+      <p className="rk-label">Evidence</p>
+      <dl className="mt-2.5 grid gap-x-6 gap-y-2.5 text-xs sm:grid-cols-2">
         <div>
-          <dt className="font-semibold text-[#9ca3af]">Source</dt>
-          <dd className="mt-0.5 text-[#111827]">
+          <dt className="font-semibold text-rk-muted">Source</dt>
+          <dd className="mt-0.5 font-medium text-rk-ink">
             {formatLabel(opportunity.source)}
           </dd>
         </div>
         <div>
-          <dt className="font-semibold text-[#9ca3af]">Type</dt>
-          <dd className="mt-0.5 text-[#111827]">
+          <dt className="font-semibold text-rk-muted">Type</dt>
+          <dd className="mt-0.5 font-medium text-rk-ink">
             {formatLabel(opportunity.type)}
           </dd>
         </div>
         {opportunity.pageUrl && (
           <div className="sm:col-span-2">
-            <dt className="font-semibold text-[#9ca3af]">
+            <dt className="font-semibold text-rk-muted">
               Affected page
             </dt>
-            <dd className="mt-0.5 break-all text-[#111827]">
+            <dd className="rk-technical-value mt-0.5 !text-rk-ink">
               {opportunity.pageUrl}
             </dd>
           </div>
         )}
         <div>
-          <dt className="font-semibold text-[#9ca3af]">Source ID</dt>
-          <dd className="mt-0.5 break-all text-[#111827]">
+          <dt className="font-semibold text-rk-muted">Source ID</dt>
+          <dd className="rk-technical-value mt-0.5 break-all !text-rk-ink">
             {opportunity.sourceId}
           </dd>
         </div>
         {(opportunity.updatedAt || opportunity.createdAt) && (
           <div>
-            <dt className="font-semibold text-[#9ca3af]">Updated</dt>
-            <dd className="mt-0.5 text-[#111827]">
+            <dt className="font-semibold text-rk-muted">Updated</dt>
+            <dd className="mt-0.5 font-medium text-rk-ink">
               {formatDateTime(
                 opportunity.updatedAt || opportunity.createdAt,
               )}
@@ -890,99 +896,20 @@ function EvidencePanel({
         )}
         {entries.map(([key, value]) => (
           <div key={key}>
-            <dt className="font-semibold text-[#9ca3af]">
+            <dt className="font-semibold text-rk-muted">
               {formatLabel(key)}
             </dt>
-            <dd className="mt-0.5 break-words text-[#111827]">
+            <dd className="mt-0.5 break-words font-medium text-rk-ink">
               {formatMetadataValue(value)}
             </dd>
           </div>
         ))}
       </dl>
-      <p className="mt-3 text-[11px] leading-5 text-[#9ca3af]">
+      <p className="rk-metadata mt-3 border-t border-rk-border pt-2.5">
         Ownership is not tracked on opportunities yet; actions carry
         execution ownership once created.
       </p>
     </div>
-  );
-}
-
-function SourceBadge({ source }: { source: string }) {
-  return (
-    <span className="border border-[#dfe2e6] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#4b5563]">
-      {formatLabel(source)}
-    </span>
-  );
-}
-
-function PriorityBadge({ priority }: { priority: string }) {
-  const isHigh = priority === 'HIGH';
-  const isMedium = priority === 'MEDIUM';
-
-  return (
-    <span
-      className={`px-2.5 py-1 text-[11px] font-semibold ${
-        isHigh
-          ? 'bg-[#111827] text-white'
-          : isMedium
-            ? 'border border-[#d1d5db] bg-[#f3f4f6] text-[#374151]'
-            : 'border border-[#e5e7eb] bg-white text-[#6b7280]'
-      }`}
-    >
-      {formatLabel(priority)}
-    </span>
-  );
-}
-
-function EmptyState({ filter }: { filter: SourceFilter }) {
-  const label =
-    SOURCE_FILTERS.find((item) => item.value === filter)?.label ||
-    'these filters';
-
-  return (
-    <div className="px-6 py-16 text-center">
-      <div className="mx-auto flex h-10 w-10 items-center justify-center border border-[#e5e7eb] bg-[#fafafa] text-sm font-semibold text-[#6b7280]">
-        —
-      </div>
-
-      <h2 className="mt-4 text-sm font-semibold text-[#111827]">
-        No opportunities found
-      </h2>
-
-      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#6b7280]">
-        No persisted opportunities match {label.toLowerCase()} right
-        now. Run audits, crawls, and intelligence scans to generate
-        real evidence-backed items.
-      </p>
-    </div>
-  );
-}
-
-function LoadingState() {
-  return (
-    <AppShell
-      mobileOpen={false}
-      onClose={() => undefined}
-    >
-      <div className="mx-auto max-w-[1440px] animate-pulse">
-        <div className="h-3 w-28 bg-[#e5e7eb]" />
-        <div className="mt-4 h-10 w-72 bg-[#e5e7eb]" />
-        <div className="mt-3 h-4 w-96 max-w-full bg-[#e5e7eb]" />
-
-        <div className="mt-8 grid grid-cols-2 gap-px bg-[#e5e7eb] md:grid-cols-4">
-          {[1, 2, 3, 4].map((item) => (
-            <div key={item} className="h-36 bg-white" />
-          ))}
-        </div>
-
-        <div className="mt-8 h-24 bg-white" />
-        <div className="mt-1 space-y-px bg-[#e5e7eb]">
-          {[1, 2, 3].map((item) => (
-            <div key={item} className="h-44 bg-white" />
-          ))}
-        </div>
-      </div>
-    </AppShell>
   );
 }
 

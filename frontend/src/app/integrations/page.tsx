@@ -1,6 +1,17 @@
 ﻿'use client';
 
+/*
+ * RENKOO — Integrations (V2 design-system pass).
+ * UI ONLY: shared PageHeader / Panel / badges / buttons /
+ * states / ConfirmDialog with rk-* tokens. Google OAuth,
+ * GSC/GA4 connection, property selection, disconnect,
+ * refresh behavior, API calls, permissions and all
+ * business logic are unchanged. No connection state is
+ * invented — every badge reflects a real API response.
+ */
+
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 
 import {
   CheckCircle2,
@@ -8,13 +19,28 @@ import {
   Globe2,
   Loader2,
   RefreshCw,
+  X,
+  AlertTriangle,
 } from 'lucide-react';
 
 import AppShell from '../../components/AppShell';
 
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import PageHeader from '../../components/ui/PageHeader';
 import Panel from '../../components/ui/Panel';
-import { StatusBadge } from '../../components/ui/badge';
+import {
+  PrimaryButton,
+  SecondaryButton,
+  DangerButton,
+} from '../../components/ui/buttons';
+import {
+  Badge,
+  StatusBadge,
+} from '../../components/ui/badge';
+import {
+  EmptyState,
+  LoadingBlock,
+} from '../../components/ui/states';
 
 import {
   connectGoogle,
@@ -495,6 +521,7 @@ export default function IntegrationsPage() {
     return () => {
       mounted = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /*
@@ -509,152 +536,187 @@ export default function IntegrationsPage() {
       onClose={() => setOpen(false)}
       onMenu={() => setOpen(true)}
     >
-      <section className="mx-auto max-w-[1100px] p-5 lg:p-8">
+      <div className="rk-page">
+        <PageHeader
+          eyebrow="Connections"
+          title="Integrations"
+          description="Connect your marketing and search platforms to power RENKOO with real business data."
+          meta={
+            <>
+              {loadingConnection ? (
+                <span>Checking connection…</span>
+              ) : connected ? (
+                <>
+                  <Badge label="Google connected" tone="positive" />
+                  {selectedProperty ? (
+                    <>
+                      <span aria-hidden>·</span>
+                      <span className="rk-technical-value truncate !text-rk-muted">
+                        {selectedProperty}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span aria-hidden>·</span>
+                      <span>No property selected</span>
+                    </>
+                  )}
+                </>
+              ) : (
+                <Badge label="Not connected" tone="neutral" />
+              )}
+            </>
+          }
+          actions={
+            <SecondaryButton
+              onClick={() => void loadConnection()}
+              disabled={loadingConnection}
+            >
+              <RefreshCw
+                size={14}
+                aria-hidden
+                className={loadingConnection ? 'animate-spin' : ''}
+              />
+              Refresh
+            </SecondaryButton>
+          }
+        />
 
-          {/* PAGE HEADER */}
-
-          <div>
-            <h1 className="text-3xl font-bold">
-              Integrations
-            </h1>
-
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              Connect your marketing and search
-              platforms to power RENKOO with real
-              business data.
-            </p>
+        {error ? (
+          <div className="mt-4">
+            <div
+              role="alert"
+              className="flex items-start gap-2.5 rounded-rk-md border border-rk-danger/30 bg-rk-dangerSoft px-3.5 py-3 text-sm font-medium leading-5 text-rk-danger"
+            >
+              <AlertTriangle
+                size={16}
+                aria-hidden
+                className="mt-0.5 shrink-0"
+              />
+              <span className="min-w-0 flex-1">{error}</span>
+              <button
+                type="button"
+                onClick={() => setError('')}
+                aria-label="Dismiss error"
+                className="rk-focusable grid h-7 w-7 shrink-0 place-items-center rounded-rk-sm hover:bg-rk-danger/10"
+              >
+                <X size={15} aria-hidden />
+              </button>
+            </div>
           </div>
+        ) : null}
 
-          {/* ERROR */}
-
-          {error && (
-            <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-              <div className="font-semibold">
-                Something went wrong
-              </div>
-
-              <div className="mt-1">
-                {error}
-              </div>
+        {success ? (
+          <div className="mt-4">
+            <div
+              role="status"
+              className="flex items-start gap-2.5 rounded-rk-md border border-rk-success/30 bg-rk-successSoft px-3.5 py-3 text-sm font-medium leading-5 text-rk-success"
+            >
+              <CheckCircle2
+                size={16}
+                aria-hidden
+                className="mt-0.5 shrink-0"
+              />
+              <span className="min-w-0 flex-1">{success}</span>
+              <button
+                type="button"
+                onClick={() => setSuccess('')}
+                aria-label="Dismiss message"
+                className="rk-focusable grid h-7 w-7 shrink-0 place-items-center rounded-rk-sm hover:bg-rk-success/10"
+              >
+                <X size={15} aria-hidden />
+              </button>
             </div>
-          )}
+          </div>
+        ) : null}
 
-          {/* SUCCESS */}
-
-          {success && (
-            <div className="mt-6 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-700">
-              <CheckCircle2 size={17} />
-
-              {success}
-            </div>
-          )}
-
-          {/* =================================================
-              SEARCH (GSC + GA4)
-              ================================================= */}
-
-        <Panel
-          eyebrow="SEARCH"
-          title="Search (GSC + GA4)"
-          description="Google Search Console and Analytics data, powered by the existing Google connection. Provider: Google."
-        >
-          {/* =================================================
-              GOOGLE ACCOUNT
-              ================================================= */}
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-
-              {/* ICON */}
-
-              <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
-                <Globe2 size={26} />
+        <div className="mt-6">
+          <Panel
+            eyebrow="Search"
+            title="Search (GSC + GA4)"
+            description="Google Search Console and Analytics data, powered by the existing Google connection. Provider: Google."
+            footer={
+              <span>
+                <strong className="text-rk-ink">
+                  Workspace context:
+                </strong>{' '}
+                the selected properties apply workspace-wide
+                to every website here. Website ownership is
+                managed in Clients — this page never invents
+                per-website mapping.
+              </span>
+            }
+          >
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-rk-md bg-rk-soft text-rk-secondary">
+                <Globe2 size={22} aria-hidden />
               </div>
 
-              {/* CONTENT */}
-
-              <div className="flex-1">
-
-                <div className="flex flex-wrap items-center gap-3">
-
-                  <h2 className="text-lg font-bold">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-[15px] font-extrabold tracking-[-0.015em] text-rk-ink">
                     Google Search Console
-                  </h2>
+                  </h3>
 
-                  {loadingConnection && (
-                    <div className="flex items-center gap-1.5 text-xs font-medium text-slate-400">
+                  {loadingConnection ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-rk-muted">
                       <Loader2
                         size={14}
+                        aria-hidden
                         className="animate-spin"
                       />
-
-                      Checking connection...
-                    </div>
+                      Checking connection…
+                    </span>
+                  ) : connected ? (
+                    <Badge label="Connected" tone="positive" />
+                  ) : (
+                    <Badge label="Not connected" tone="neutral" />
                   )}
-
                 </div>
 
-                <p className="mt-1 text-sm leading-6 text-slate-500">
+                <p className="mt-1 text-sm leading-6 text-rk-secondary">
                   Connect Search Console to bring real
                   impressions, clicks, CTR, rankings and
                   search queries into RENKOO.
                 </p>
 
-                {connected && (
-                  <div className="mt-3 flex items-center gap-2 text-sm font-semibold text-emerald-600">
-                    <CheckCircle2 size={17} />
-
-                    Connected
-                  </div>
-                )}
-
-                {!connected &&
-                  !loadingConnection && (
-                    <div className="mt-3 text-xs font-medium text-slate-400">
-                      Not connected
-                    </div>
-                  )}
-
                 {connected && health && (
-                  <div className="mt-4 flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold text-slate-400">
-                      GSC:
+                  <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="rk-field-label">GSC</span>
+                      <StatusBadge
+                        status={
+                          health.gsc?.status ??
+                          'UNKNOWN'
+                        }
+                      />
                     </span>
 
-                    <StatusBadge
-                      status={
-                        health.gsc?.status ??
-                        'UNKNOWN'
-                      }
-                    />
-
-                    <span className="ml-2 text-xs font-semibold text-slate-400">
-                      GA4:
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="rk-field-label">GA4</span>
+                      <StatusBadge
+                        status={
+                          health.ga4?.status ??
+                          'UNKNOWN'
+                        }
+                      />
                     </span>
 
-                    <StatusBadge
-                      status={
-                        health.ga4?.status ??
-                        'UNKNOWN'
-                      }
-                    />
-
-                    <span className="ml-2 text-xs font-semibold text-slate-400">
-                      GBP:
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="rk-field-label">GBP</span>
+                      <StatusBadge
+                        status={
+                          health.gbp?.status ??
+                          'UNKNOWN'
+                        }
+                      />
                     </span>
-
-                    <StatusBadge
-                      status={
-                        health.gbp?.status ??
-                        'UNKNOWN'
-                      }
-                    />
                   </div>
                 )}
 
                 {connected && (
-                  <div className="mt-3 space-y-1 text-xs text-slate-500">
-                    <div>
+                  <div className="rk-metadata mt-2 space-y-1">
+                    <p>
                       Provider:{' '}
                       {health?.provider ??
                         'Google'}{' '}
@@ -676,36 +738,36 @@ export default function IntegrationsPage() {
                           ? 'Yes'
                           : 'No'
                         : 'Unknown'}
-                    </div>
+                    </p>
 
                     {health?.lastSuccessfulRequestAt ? (
-                      <div>
+                      <p>
                         Last synced{' '}
                         {formatSyncDate(
                           health.lastSuccessfulRequestAt,
                         )}
-                      </div>
+                      </p>
                     ) : (
-                      <div>
+                      <p>
                         Sync status unavailable —
                         connection state only
-                      </div>
+                      </p>
                     )}
 
                     {health?.lastErrorCode && (
-                      <div>
+                      <p>
                         Last error{' '}
                         {health.lastErrorCode}
                         {health?.lastErrorAt
                           ? ` at ${formatSyncDate(health.lastErrorAt)}`
                           : ''}
-                      </div>
+                      </p>
                     )}
 
                     {(health?.limitation ||
                       health?.gsc?.limitation ||
                       health?.ga4?.limitation) && (
-                      <div>
+                      <p>
                         {[
                           health?.limitation,
                           health?.gsc?.limitation,
@@ -713,7 +775,7 @@ export default function IntegrationsPage() {
                         ]
                           .filter(Boolean)
                           .join(' · ')}
-                      </div>
+                      </p>
                     )}
                   </div>
                 )}
@@ -721,16 +783,16 @@ export default function IntegrationsPage() {
                 {connected &&
                   health?.status ===
                     'RECONNECT_REQUIRED' && (
-                    <div className="mt-3 text-xs font-semibold text-red-600">
+                    <p className="mt-2 text-xs font-bold text-rk-danger">
                       Google authorization needs
                       attention. Reconnect your
                       account to restore data.
-                    </div>
+                    </p>
                   )}
 
                 {connected && (
-                  <div className="mt-3 text-xs text-slate-500">
-                    <span className="font-semibold text-slate-700">
+                  <p className="mt-2 text-xs leading-5 text-rk-secondary">
+                    <span className="font-bold text-rk-ink">
                       Next action:{' '}
                     </span>
 
@@ -742,100 +804,90 @@ export default function IntegrationsPage() {
                         : !selectedAnalyticsProperty
                           ? 'Select a GA4 property below to start importing traffic data.'
                           : 'You are set — RENKOO pulls real data automatically.'}
-                  </div>
+                  </p>
                 )}
-
               </div>
 
-              {/* ACTION */}
-
               <div className="shrink-0">
-
                 {!connected ? (
-                  <button
-                    type="button"
-                    onClick={
-                      handleConnectGoogle
+                  <PrimaryButton
+                    onClick={() =>
+                      void handleConnectGoogle()
                     }
                     disabled={
                       connecting ||
                       loadingConnection
                     }
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                    className="w-full sm:w-auto"
                   >
-
                     {connecting ? (
                       <>
                         <Loader2
-                          size={17}
+                          size={15}
+                          aria-hidden
                           className="animate-spin"
                         />
-
-                        Connecting...
+                        Connecting…
                       </>
                     ) : (
                       <>
                         Connect Google
-
                         <ExternalLink
-                          size={16}
+                          size={14}
+                          aria-hidden
                         />
                       </>
                     )}
-
-                  </button>
+                  </PrimaryButton>
                 ) : (
                   <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                     {health?.status ===
                       'RECONNECT_REQUIRED' && (
-                      <button
-                        type="button"
-                        onClick={
-                          handleConnectGoogle
+                      <PrimaryButton
+                        onClick={() =>
+                          void handleConnectGoogle()
                         }
                         disabled={
                           connecting ||
                           loadingConnection
                         }
-                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                        className="w-full sm:w-auto"
                       >
                         {connecting ? (
                           <>
                             <Loader2
-                              size={17}
+                              size={15}
+                              aria-hidden
                               className="animate-spin"
                             />
-
-                            Reconnecting...
+                            Reconnecting…
                           </>
                         ) : (
                           <>
                             Reconnect Google
-
                             <ExternalLink
-                              size={16}
+                              size={14}
+                              aria-hidden
                             />
                           </>
                         )}
-
-                      </button>
+                      </PrimaryButton>
                     )}
 
-                    <button
-                      type="button"
+                    <SecondaryButton
                       onClick={() => {
-                        loadProperties();
-                        loadAnalyticsProperties();
+                        void loadProperties();
+                        void loadAnalyticsProperties();
                       }}
                       disabled={
                         loadingProperties ||
                         loadingAnalyticsProperties
                       }
-                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                      className="w-full sm:w-auto"
                     >
-
                       <RefreshCw
-                        size={16}
+                        size={14}
+                        aria-hidden
                         className={
                           loadingProperties ||
                           loadingAnalyticsProperties
@@ -843,539 +895,331 @@ export default function IntegrationsPage() {
                             : ''
                         }
                       />
-
                       Refresh
+                    </SecondaryButton>
 
-                    </button>
-
-                    <button
-                      type="button"
+                    <DangerButton
                       onClick={() =>
                         setDisconnectOpen(true)
                       }
-                      disabled={
-                        disconnecting
-                      }
-                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-5 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                      disabled={disconnecting}
+                      className="w-full sm:w-auto"
                     >
-
                       {disconnecting
-                        ? 'Disconnecting...'
+                        ? 'Disconnecting…'
                         : 'Disconnect'}
-
-                    </button>
+                    </DangerButton>
                   </div>
                 )}
-
               </div>
-
             </div>
-          </div>
 
-          {/* =================================================
-              SEARCH CONSOLE PROPERTIES
-              ================================================= */}
+            {connected && (
+              <div className="mt-6 border-t border-rk-border pt-5">
+                <h3 className="text-[15px] font-extrabold tracking-[-0.015em] text-rk-ink">
+                  Search Console properties
+                </h3>
 
-          {connected && (
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-
-              <div>
-                <h2 className="text-lg font-bold">
-                  Search Console Properties
-                </h2>
-
-                <p className="mt-1 text-sm leading-6 text-slate-500">
+                <p className="mt-1 text-[13px] leading-6 text-rk-secondary">
                   Select the Google Search Console
                   property you want RENKOO to analyze.
                 </p>
-              </div>
 
-              {loadingProperties ? (
-
-                <div className="mt-6 flex items-center gap-2 text-sm text-slate-500">
-                  <Loader2
-                    size={17}
-                    className="animate-spin"
-                  />
-
-                  Loading properties...
-                </div>
-
-              ) : properties.length === 0 ? (
-
-                <div className="mt-6 rounded-xl bg-slate-50 p-5">
-
-                  <div className="text-sm font-semibold text-slate-700">
-                    No Search Console properties found
+                {loadingProperties ? (
+                  <div className="mt-4">
+                    <LoadingBlock title="Loading properties…" lines={3} />
                   </div>
-
-                  <div className="mt-1 text-xs leading-5 text-slate-500">
-                    Make sure this Google account has
-                    access to at least one Search Console
-                    property.
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={
-                      loadProperties
-                    }
-                    className="mt-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-
-                    <RefreshCw size={14} />
-
-                    Try again
-
-                  </button>
-
-                </div>
-
-              ) : (
-
-                <div className="mt-5 space-y-3">
-
-                  {properties.map(
-                    (property) => {
-
-                      const isSelected =
-                        selectedProperty ===
-                        property.siteUrl;
-
-                      const isSelecting =
-                        selectingProperty ===
-                        property.siteUrl;
-
-                      const anotherPropertySelecting =
-                        selectingProperty !== null &&
-                        !isSelecting;
-
-                      return (
-                        <button
-                          key={
-                            property.siteUrl
-                          }
-                          type="button"
-                          onClick={() =>
-                            handleSelectProperty(
-                              property.siteUrl,
-                            )
-                          }
-                          disabled={
-                            anotherPropertySelecting ||
-                            isSelecting
-                          }
-                          className={`flex w-full items-center gap-4 rounded-xl border p-4 text-left transition ${
-                            isSelected
-                              ? 'border-blue-300 bg-blue-50'
-                              : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50'
-                          } ${
-                            anotherPropertySelecting
-                              ? 'cursor-not-allowed opacity-50'
-                              : ''
-                          }`}
-                        >
-
-                          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white">
-
-                            {isSelecting ? (
-                              <Loader2
-                                size={19}
-                                className="animate-spin text-blue-600"
-                              />
-                            ) : (
-                              <Globe2
-                                size={19}
-                                className="text-blue-600"
-                              />
-                            )}
-
-                          </div>
-
-                          <div className="min-w-0 flex-1">
-
-                            <div className="truncate text-sm font-semibold text-slate-800">
-                              {
-                                property.siteUrl
-                              }
-                            </div>
-
-                            <div className="mt-1 text-xs text-slate-500">
-                              Permission:{' '}
-                              {property.permissionLevel ??
-                                'Unknown'}
-                            </div>
-
-                          </div>
-
-                          {isSelected && (
-                            <div className="flex shrink-0 items-center gap-1.5 text-xs font-bold text-blue-600">
-
-                              <CheckCircle2
-                                size={18}
-                              />
-
-                              Selected
-
-                            </div>
-                          )}
-
-                        </button>
-                      );
-                    },
-                  )}
-
-                </div>
-
-              )}
-
-            </div>
-          )}
-
-          {/* =================================================
-              ACTIVE SEARCH CONSOLE PROPERTY
-              ================================================= */}
-
-          {selectedProperty && (
-            <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 p-6">
-
-              <div className="text-xs font-bold uppercase tracking-wide text-blue-600">
-                Active Search Console Property
-              </div>
-
-              <div className="mt-2 break-all text-lg font-bold text-slate-900">
-                {selectedProperty}
-              </div>
-
-              <div className="mt-3 flex items-start gap-2 text-sm leading-6 text-slate-600">
-
-                <CheckCircle2
-                  size={17}
-                  className="mt-0.5 shrink-0 text-emerald-600"
-                />
-
-                <p>
-                  RENKOO is ready to pull real Google
-                  Search Console performance data for
-                  this property.
-                </p>
-
-              </div>
-
-            </div>
-          )}
-
-          {/* =================================================
-              GOOGLE ANALYTICS 4
-              ================================================= */}
-
-          {connected && (
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-
-              <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-
-                <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-purple-50 text-purple-600">
-                  <span className="text-sm font-black">
-                    GA4
-                  </span>
-                </div>
-
-                <div className="flex-1">
-
-                  <div className="flex flex-wrap items-center gap-3">
-                    <h2 className="text-lg font-bold">
-                      Google Analytics 4
-                    </h2>
-
-                    <StatusBadge
-                      status={
-                        health?.ga4?.status ??
-                        'UNKNOWN'
-                      }
+                ) : properties.length === 0 ? (
+                  <div className="mt-4">
+                    <EmptyState
+                      title="No Search Console properties found"
+                      description="Make sure this Google account has access to at least one Search Console property."
+                      actionLabel="Try again"
+                      onAction={() => void loadProperties()}
                     />
                   </div>
+                ) : (
+                  <div className="mt-4 space-y-2">
+                    {properties.map(
+                      (property) => {
+                        const isSelected =
+                          selectedProperty ===
+                          property.siteUrl;
 
-                  <p className="mt-1 text-sm leading-6 text-slate-500">
-                    Connect GA4 to bring users, sessions,
-                    engagement, page views and conversions
-                    into RENKOO.
-                  </p>
+                        const isSelecting =
+                          selectingProperty ===
+                          property.siteUrl;
 
-                  {selectedAnalyticsProperty && (
-                    <div className="mt-3 flex items-center gap-2 text-sm font-semibold text-emerald-600">
+                        const anotherPropertySelecting =
+                          selectingProperty !== null &&
+                          !isSelecting;
 
-                      <CheckCircle2 size={17} />
+                        return (
+                          <PropertyOption
+                            key={
+                              property.siteUrl
+                            }
+                            icon={
+                              isSelecting ? (
+                                <Loader2
+                                  size={17}
+                                  aria-hidden
+                                  className="animate-spin text-rk-info"
+                                />
+                              ) : (
+                                <Globe2
+                                  size={17}
+                                  aria-hidden
+                                  className="text-rk-secondary"
+                                />
+                              )
+                            }
+                            title={
+                              property.siteUrl
+                            }
+                            subtitle={`Permission: ${property.permissionLevel ?? 'Unknown'}`}
+                            selected={isSelected}
+                            selectedLabel="Selected"
+                            disabled={
+                              anotherPropertySelecting ||
+                              isSelecting
+                            }
+                            onSelect={() =>
+                              void handleSelectProperty(
+                                property.siteUrl,
+                              )
+                            }
+                          />
+                        );
+                      },
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
-                      GA4 Connected
+            {selectedProperty && (
+              <div className="mt-4 rounded-rk-md border border-rk-info/30 bg-rk-infoSoft/50 px-4 py-3.5">
+                <p className="rk-field-label">
+                  Active Search Console property
+                </p>
 
+                <p className="rk-technical-value mt-1 break-all !text-rk-ink">
+                  {selectedProperty}
+                </p>
+
+                <p className="mt-2 flex items-start gap-2 text-sm leading-6 text-rk-secondary">
+                  <CheckCircle2
+                    size={15}
+                    aria-hidden
+                    className="mt-1 shrink-0 text-rk-success"
+                  />
+                  <span>
+                    RENKOO is ready to pull real Google
+                    Search Console performance data for
+                    this property.
+                  </span>
+                </p>
+              </div>
+            )}
+
+            {connected && (
+              <div className="mt-6 border-t border-rk-border pt-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-rk-md bg-rk-soft text-rk-secondary">
+                      <span className="text-[11px] font-black">
+                        GA4
+                      </span>
                     </div>
-                  )}
 
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-[15px] font-extrabold tracking-[-0.015em] text-rk-ink">
+                          Google Analytics 4
+                        </h3>
+
+                        <StatusBadge
+                          status={
+                            health?.ga4?.status ??
+                            'UNKNOWN'
+                          }
+                        />
+                      </div>
+
+                      <p className="mt-0.5 text-[13px] leading-6 text-rk-secondary">
+                        Users, sessions, engagement, page
+                        views and conversions.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {selectedAnalyticsProperty && (
+                      <Badge label="GA4 connected" tone="positive" />
+                    )}
+                    <SecondaryButton
+                      size="sm"
+                      onClick={() =>
+                        void loadAnalyticsProperties()
+                      }
+                      disabled={
+                        loadingAnalyticsProperties
+                      }
+                    >
+                      <RefreshCw
+                        size={14}
+                        aria-hidden
+                        className={
+                          loadingAnalyticsProperties
+                            ? 'animate-spin'
+                            : ''
+                        }
+                      />
+                      Refresh
+                    </SecondaryButton>
+                  </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={
-                    loadAnalyticsProperties
-                  }
-                  disabled={
-                    loadingAnalyticsProperties
-                  }
-                  className="flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-
-                  <RefreshCw
-                    size={16}
-                    className={
-                      loadingAnalyticsProperties
-                        ? 'animate-spin'
-                        : ''
-                    }
-                  />
-
-                  Refresh
-
-                </button>
-
-              </div>
-
-            </div>
-          )}
-
-          {/* =================================================
-              GA4 PROPERTIES
-              ================================================= */}
-
-          {connected && (
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-
-              <div>
-                <h2 className="text-lg font-bold">
-                  Google Analytics 4 Properties
-                </h2>
-
-                <p className="mt-1 text-sm leading-6 text-slate-500">
+                <p className="mt-1 text-[13px] leading-6 text-rk-secondary">
                   Select the GA4 property you want RENKOO
                   to analyze.
                 </p>
-              </div>
 
-              {loadingAnalyticsProperties ? (
-
-                <div className="mt-6 flex items-center gap-2 text-sm text-slate-500">
-
-                  <Loader2
-                    size={17}
-                    className="animate-spin"
-                  />
-
-                  Loading GA4 properties...
-
-                </div>
-
-              ) : analyticsProperties.length === 0 ? (
-
-                <div className="mt-6 rounded-xl bg-slate-50 p-5">
-
-                  <div className="text-sm font-semibold text-slate-700">
-                    No Google Analytics properties found
+                {loadingAnalyticsProperties ? (
+                  <div className="mt-4">
+                    <LoadingBlock title="Loading GA4 properties…" lines={3} />
                   </div>
-
-                  <div className="mt-1 text-xs leading-5 text-slate-500">
-                    Make sure this Google account has
-                    access to at least one GA4 property.
+                ) : analyticsProperties.length === 0 ? (
+                  <div className="mt-4">
+                    <EmptyState
+                      title="No Google Analytics properties found"
+                      description="Make sure this Google account has access to at least one GA4 property."
+                      actionLabel="Try again"
+                      onAction={() =>
+                        void loadAnalyticsProperties()
+                      }
+                    />
                   </div>
+                ) : (
+                  <div className="mt-4 space-y-2">
+                    {analyticsProperties.map(
+                      (property) => {
+                        const isSelected =
+                          selectedAnalyticsProperty ===
+                          property.propertyId;
 
-                  <button
-                    type="button"
-                    onClick={
-                      loadAnalyticsProperties
-                    }
-                    className="mt-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                  >
+                        const isSelecting =
+                          selectingAnalyticsProperty ===
+                          property.propertyId;
 
-                    <RefreshCw size={14} />
+                        const anotherPropertySelecting =
+                          selectingAnalyticsProperty !== null &&
+                          !isSelecting;
 
-                    Try again
+                        const meta = [
+                          `Property ID: ${property.propertyId}`,
+                          [
+                            property.currencyCode
+                              ? `Currency: ${property.currencyCode}`
+                              : '',
+                            property.timeZone
+                              ? property.timeZone
+                              : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' · '),
+                        ]
+                          .filter(Boolean)
+                          .join(' · ');
 
-                  </button>
-
-                </div>
-
-              ) : (
-
-                <div className="mt-5 space-y-3">
-
-                  {analyticsProperties.map(
-                    (property) => {
-
-                      const isSelected =
-                        selectedAnalyticsProperty ===
-                        property.propertyId;
-
-                      const isSelecting =
-                        selectingAnalyticsProperty ===
-                        property.propertyId;
-
-                      const anotherPropertySelecting =
-                        selectingAnalyticsProperty !== null &&
-                        !isSelecting;
-
-                      return (
-                        <button
-                          key={
-                            property.propertyId
-                          }
-                          type="button"
-                          onClick={() =>
-                            handleSelectAnalyticsProperty(
-                              property.propertyId ?? '',
-                            )
-                          }
-                          disabled={
-                            anotherPropertySelecting ||
-                            isSelecting
-                          }
-                          className={`flex w-full items-center gap-4 rounded-xl border p-4 text-left transition ${
-                            isSelected
-                              ? 'border-purple-300 bg-purple-50'
-                              : 'border-slate-200 bg-white hover:border-purple-200 hover:bg-slate-50'
-                          } ${
-                            anotherPropertySelecting
-                              ? 'cursor-not-allowed opacity-50'
-                              : ''
-                          }`}
-                        >
-
-                          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white">
-
-                            {isSelecting ? (
-                              <Loader2
-                                size={19}
-                                className="animate-spin text-purple-600"
-                              />
-                            ) : (
-                              <span className="text-xs font-black text-purple-600">
-                                GA4
-                              </span>
-                            )}
-
-                          </div>
-
-                          <div className="min-w-0 flex-1">
-
-                            <div className="truncate text-sm font-semibold text-slate-800">
-                              {property.displayName ||
-                                property.propertyId}
-                            </div>
-
-                            <div className="mt-1 text-xs text-slate-500">
-                              Property ID:{' '}
-                              {property.propertyId}
-                            </div>
-
-                            {(property.currencyCode ||
-                              property.timeZone) && (
-                              <div className="mt-1 text-xs text-slate-400">
-
-                                {property.currencyCode
-                                  ? `Currency: ${property.currencyCode}`
-                                  : ''}
-
-                                {property.currencyCode &&
-                                property.timeZone
-                                  ? ' â€¢ '
-                                  : ''}
-
-                                {property.timeZone
-                                  ? property.timeZone
-                                  : ''}
-
-                              </div>
-                            )}
-
-                          </div>
-
-                          {isSelected && (
-                            <div className="flex shrink-0 items-center gap-1.5 text-xs font-bold text-purple-600">
-
-                              <CheckCircle2
-                                size={18}
-                              />
-
-                              Selected
-
-                            </div>
-                          )}
-
-                        </button>
-                      );
-                    },
-                  )}
-
-                </div>
-
-              )}
-
-            </div>
-          )}
-
-          {/* =================================================
-              ACTIVE GA4 PROPERTY
-              ================================================= */}
-
-          {selectedAnalyticsProperty && (
-            <div className="mt-6 rounded-2xl border border-purple-100 bg-purple-50 p-6">
-
-              <div className="text-xs font-bold uppercase tracking-wide text-purple-600">
-                Active Google Analytics 4 Property
+                        return (
+                          <PropertyOption
+                            key={
+                              property.propertyId
+                            }
+                            icon={
+                              isSelecting ? (
+                                <Loader2
+                                  size={17}
+                                  aria-hidden
+                                  className="animate-spin text-rk-info"
+                                />
+                              ) : (
+                                <span className="text-[11px] font-black text-rk-secondary">
+                                  GA4
+                                </span>
+                              )
+                            }
+                            title={
+                              property.displayName ||
+                              property.propertyId ||
+                              'Unnamed property'
+                            }
+                            subtitle={meta}
+                            selected={isSelected}
+                            selectedLabel="Selected"
+                            disabled={
+                              anotherPropertySelecting ||
+                              isSelecting
+                            }
+                            onSelect={() =>
+                              void handleSelectAnalyticsProperty(
+                                property.propertyId ?? '',
+                              )
+                            }
+                          />
+                        );
+                      },
+                    )}
+                  </div>
+                )}
               </div>
+            )}
 
-              <div className="mt-2 break-all text-lg font-bold text-slate-900">
-                {selectedAnalyticsProperty}
-              </div>
-
-              <div className="mt-3 flex items-start gap-2 text-sm leading-6 text-slate-600">
-
-                <CheckCircle2
-                  size={17}
-                  className="mt-0.5 shrink-0 text-emerald-600"
-                />
-
-                <p>
-                  RENKOO is ready to pull Google Analytics
-                  4 traffic and engagement data for this
-                  property.
+            {selectedAnalyticsProperty && (
+              <div className="mt-4 rounded-rk-md border border-rk-info/30 bg-rk-infoSoft/50 px-4 py-3.5">
+                <p className="rk-field-label">
+                  Active Google Analytics 4 property
                 </p>
 
+                <p className="rk-technical-value mt-1 break-all !text-rk-ink">
+                  {selectedAnalyticsProperty}
+                </p>
+
+                <p className="mt-2 flex items-start gap-2 text-sm leading-6 text-rk-secondary">
+                  <CheckCircle2
+                    size={15}
+                    aria-hidden
+                    className="mt-1 shrink-0 text-rk-success"
+                  />
+                  <span>
+                    RENKOO is ready to pull Google Analytics
+                    4 traffic and engagement data for this
+                    property.
+                  </span>
+                </p>
+              </div>
+            )}
+          </Panel>
+        </div>
+
+        <div className="mt-6">
+          <Panel
+            eyebrow="Local"
+            title="Local (Google Business Profile)"
+            description="Read-only business profile status from the existing Google connection. GBP management stays in Google."
+          >
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-rk-md bg-rk-successSoft text-rk-success">
+                <Globe2 size={22} aria-hidden />
               </div>
 
-            </div>
-          )}
-
-        </Panel>
-
-          {/* =================================================
-              LOCAL (GBP, READ-ONLY)
-              ================================================= */}
-
-        <Panel
-          eyebrow="LOCAL"
-          title="Local (Google Business Profile)"
-          description="Read-only business profile status from the existing Google connection. GBP management stays in Google."
-        >
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-
-              <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
-                <Globe2 size={26} />
-              </div>
-
-              <div className="flex-1">
-                <div className="flex flex-wrap items-center gap-3">
-                  <h2 className="text-lg font-bold">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-[15px] font-extrabold tracking-[-0.015em] text-rk-ink">
                     Google Business Profile
-                  </h2>
+                  </h3>
 
                   <StatusBadge
                     status={
@@ -1386,13 +1230,13 @@ export default function IntegrationsPage() {
                   />
                 </div>
 
-                <p className="mt-1 text-sm leading-6 text-slate-500">
+                <p className="mt-1 text-sm leading-6 text-rk-secondary">
                   {gbpStatus?.limitation ??
                     health?.gbp?.limitation ??
                     'Google Business Profile is not connected.'}
                 </p>
 
-                <div className="mt-2 text-xs text-slate-500">
+                <p className="rk-metadata mt-1.5">
                   Provider: Google · Data
                   available:{' '}
                   {typeof (
@@ -1405,112 +1249,89 @@ export default function IntegrationsPage() {
                       )
                       ? 'Yes'
                       : 'No'
-                    : 'Unknown'}
-                </div>
-
-                <div className="mt-1 text-xs text-slate-400">
-                  Read-only view — manage your
-                  profile in Google. No
-                  connection action here; use
+                    : 'Unknown'}{' '}
+                  · Read-only — manage your profile in
+                  Google. No connection action here; use
                   the Google connection above.
-                </div>
-              </div>
-
-            </div>
-          </div>
-        </Panel>
-
-          {/* =================================================
-              OTHER PROVIDERS (HONEST PLACEHOLDERS)
-              ================================================= */}
-
-        <Panel
-          eyebrow="MORE"
-          title="Other integrations"
-          description="Honest status for providers that are not connected through this page. Only real API data is shown."
-        >
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-slate-800">
-                  AI provider
-                </div>
-
-                <StatusBadge status="NOT_AVAILABLE" />
-              </div>
-
-              <div className="mt-1 text-xs leading-5 text-slate-500">
-                Provider: none connected here ·
-                Data available: No
-              </div>
-
-              <div className="mt-1 text-xs leading-5 text-slate-500">
-                AI provider status is managed in
-                AI Visibility.
+                </p>
               </div>
             </div>
+          </Panel>
+        </div>
 
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-slate-800">
-                  Email delivery
+        <div className="mt-6">
+          <Panel
+            eyebrow="More"
+            title="Other integrations"
+            description="Honest status for providers that are not connected through this page. Only real API data is shown."
+          >
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-bold text-rk-ink">
+                    AI provider
+                  </p>
+
+                  <StatusBadge status="NOT_AVAILABLE" />
                 </div>
 
-                <StatusBadge status="NOT_AVAILABLE" />
+                <p className="rk-metadata mt-1.5">
+                  Provider: none connected here · Data
+                  available: No · AI provider status is
+                  managed in AI Visibility.
+                </p>
               </div>
 
-              <div className="mt-1 text-xs leading-5 text-slate-500">
-                Provider: none connected here ·
-                Data available: No
-              </div>
+              <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-bold text-rk-ink">
+                    Email delivery
+                  </p>
 
-              <div className="mt-1 text-xs leading-5 text-slate-500">
-                Scheduled delivery unavailable.
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-slate-800">
-                  Payments
+                  <StatusBadge status="NOT_AVAILABLE" />
                 </div>
 
-                <StatusBadge status="NOT_AVAILABLE" />
+                <p className="rk-metadata mt-1.5">
+                  Provider: none connected here · Data
+                  available: No · Scheduled delivery
+                  unavailable.
+                </p>
               </div>
 
-              <div className="mt-1 text-xs leading-5 text-slate-500">
-                Provider: none connected here ·
-                Data available: No
-              </div>
+              <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-bold text-rk-ink">
+                    Payments
+                  </p>
 
-              <div className="mt-1 text-xs leading-5 text-slate-500">
-                Payments: see{' '}
-                <a
-                  href="/billing"
-                  className="font-bold text-blue-700 hover:underline"
-                >
-                  /billing
-                </a>
-                .
+                  <StatusBadge status="NOT_AVAILABLE" />
+                </div>
+
+                <p className="rk-metadata mt-1.5">
+                  Provider: none connected here · Data
+                  available: No · Payments: see{' '}
+                  <a
+                    href="/billing"
+                    className="rk-focusable font-bold text-rk-info hover:underline"
+                  >
+                    /billing
+                  </a>
+                  .
+                </p>
               </div>
             </div>
-          </div>
-        </Panel>
+          </Panel>
+        </div>
 
-          {/* =================================================
-              SETUP GUIDE
-              ================================================= */}
-
-          {!loadingConnection &&
-            !connected && (
-              <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-
-                <h2 className="text-sm font-bold text-slate-900">
-                  Why connect Google?
-                </h2>
-
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-
+        {!loadingConnection &&
+          !connected && (
+            <div className="mt-6">
+              <Panel
+                eyebrow="Guide"
+                title="Why connect Google?"
+                description="Real platform data powers every RENKOO workflow."
+              >
+                <div className="grid gap-3 sm:grid-cols-3">
                   <InfoCard
                     title="Search performance"
                     description="Clicks and impressions from real Google Search Console data."
@@ -1525,31 +1346,90 @@ export default function IntegrationsPage() {
                     title="SEO decisions"
                     description="Combine search visibility, traffic and technical SEO data."
                   />
-
                 </div>
+              </Panel>
+            </div>
+          )}
 
-              </div>
-            )}
-
-          <ConfirmDialog
-            open={disconnectOpen}
-            title="Disconnect Google?"
-            description="Disconnect Google from this workspace? Search Console and Analytics data will become unavailable in RENKOO until you reconnect."
-            confirmLabel="Disconnect"
-            cancelLabel="Keep connected"
-            confirming={disconnecting}
-            onConfirm={() =>
-              void handleDisconnectGoogle()
+        <ConfirmDialog
+          open={disconnectOpen}
+          title="Disconnect Google?"
+          description="Disconnect Google from this workspace? Search Console and Analytics data will become unavailable in RENKOO until you reconnect."
+          confirmLabel="Disconnect"
+          cancelLabel="Keep connected"
+          confirming={disconnecting}
+          onConfirm={() =>
+            void handleDisconnectGoogle()
+          }
+          onCancel={() => {
+            if (!disconnecting) {
+              setDisconnectOpen(false);
             }
-            onCancel={() => {
-              if (!disconnecting) {
-                setDisconnectOpen(false);
-              }
-            }}
-          />
-
-        </section>
+          }}
+        />
+      </div>
     </AppShell>
+  );
+}
+
+/*
+ * =========================================================
+ * SHARED PROPERTY OPTION (GSC + GA4 use one pattern)
+ * =========================================================
+ */
+
+function PropertyOption({
+  icon,
+  title,
+  subtitle,
+  selected,
+  selectedLabel = 'Selected',
+  disabled,
+  onSelect,
+}: {
+  icon: ReactNode;
+  title: string;
+  subtitle?: string;
+  selected: boolean;
+  selectedLabel?: string;
+  disabled?: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      disabled={disabled}
+      aria-pressed={selected}
+      className={`rk-focusable flex w-full items-center gap-3 rounded-rk-md border px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+        selected
+          ? 'border-rk-info/40 bg-rk-infoSoft/50'
+          : 'border-rk-border bg-rk-surface hover:border-rk-strong hover:bg-rk-soft/60'
+      }`}
+    >
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-rk-md bg-rk-surface">
+        {icon}
+      </span>
+
+      <span className="min-w-0 flex-1">
+        <span className="rk-technical-value block truncate !text-rk-ink">
+          {title}
+        </span>
+
+        {subtitle ? (
+          <span className="rk-metadata mt-0.5 block truncate">
+            {subtitle}
+          </span>
+        ) : null}
+      </span>
+
+      {selected && (
+        <span className="flex shrink-0 items-center gap-1.5 text-xs font-bold text-rk-info">
+          <CheckCircle2 size={16} aria-hidden />
+          {selectedLabel}
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -1567,16 +1447,14 @@ function InfoCard({
   description: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-
-      <div className="text-sm font-semibold text-slate-800">
+    <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+      <p className="text-sm font-bold text-rk-ink">
         {title}
-      </div>
+      </p>
 
-      <div className="mt-1 text-xs leading-5 text-slate-500">
+      <p className="rk-metadata mt-1">
         {description}
-      </div>
-
+      </p>
     </div>
   );
 }

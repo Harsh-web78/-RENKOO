@@ -14,16 +14,18 @@ type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type Size = 'sm' | 'md';
 
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-rk-ink text-white hover:opacity-90',
+  primary:
+    'bg-rk-ink text-white shadow-rk-sm hover:opacity-90 hover:shadow-rk-md active:shadow-rk-sm',
   secondary:
-    'border border-rk-strong bg-rk-surface text-rk-ink hover:bg-rk-soft',
+    'border border-rk-border bg-rk-surface text-rk-ink shadow-rk-sm hover:border-rk-strong hover:bg-white hover:shadow-rk-md active:shadow-rk-sm',
   ghost: 'text-rk-secondary hover:bg-rk-soft hover:text-rk-ink',
-  danger: 'bg-rk-danger text-white hover:opacity-90',
+  danger:
+    'bg-rk-danger text-white shadow-rk-sm hover:opacity-90 hover:shadow-rk-md',
 };
 
 const SIZES: Record<Size, string> = {
-  sm: 'px-3 py-1.5 text-xs',
-  md: 'px-4 py-2 text-xs',
+  sm: 'h-8 px-3 text-xs',
+  md: 'h-9 px-4 text-[13px]',
 };
 
 export function Button({
@@ -41,7 +43,7 @@ export function Button({
     <button
       type={rest.type ?? 'button'}
       {...rest}
-      className={`rk-focusable inline-flex shrink-0 items-center justify-center gap-1.5 rounded-rk-md font-bold disabled:cursor-not-allowed disabled:opacity-50 ${VARIANTS[variant]} ${SIZES[size]} ${className}`}
+      className={`rk-focusable inline-flex shrink-0 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-rk-md font-bold transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none ${VARIANTS[variant]} ${SIZES[size]} ${className}`}
     >
       {children}
     </button>

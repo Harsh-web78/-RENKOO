@@ -1,5 +1,13 @@
 'use client';
 
+/*
+ * RENKOO — Content Workspace (V2 design-system pass).
+ * UI ONLY: shared Panel / Metric / DataTable / Drawer /
+ * badges / buttons / states. All API calls, brief/draft
+ * generation logic, publishing confirmations, status
+ * transitions, filters and business logic are unchanged.
+ */
+
 import {
   useCallback,
   useEffect,
@@ -7,15 +15,32 @@ import {
 } from 'react';
 
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import Panel from '../../components/ui/Panel';
+import Metric from '../../components/ui/Metric';
+import DataTable from '../../components/ui/DataTable';
+import Drawer, {
+  DrawerSection,
+} from '../../components/ui/Drawer';
+import {
+  PrimaryButton,
+  SecondaryButton,
+} from '../../components/ui/buttons';
+import {
+  Badge,
+  DataSourceBadge,
+} from '../../components/ui/badge';
+import {
+  EmptyState,
+  ErrorState,
+  LoadingBlock,
+} from '../../components/ui/states';
 
 import {
   AlertTriangle,
   Check,
   CheckCircle2,
   Clipboard,
-  Loader2,
   RefreshCw,
-  XCircle,
 } from 'lucide-react';
 
 import {
@@ -51,57 +76,23 @@ const PROVIDERS = [
   'OPENAI',
 ] as const;
 
-function Badge({
-  tone,
-  children,
-}: {
-  tone: 'green' | 'amber' | 'slate' | 'red' | 'blue';
-  children: React.ReactNode;
-}) {
-  const tones: Record<string, string> = {
-    green:
-      'border-emerald-200 bg-emerald-50 text-emerald-700',
-    amber:
-      'border-amber-200 bg-amber-50 text-amber-700',
-    slate:
-      'border-slate-200 bg-slate-50 text-slate-500',
-    red: 'border-red-200 bg-red-50 text-red-700',
-    blue: 'border-blue-200 bg-blue-50 text-blue-700',
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${tones[tone]}`}
-    >
-      {children}
-    </span>
-  );
+function itemStatusTone(
+  status: string,
+): 'neutral' | 'info' | 'positive' | 'warning' | 'danger' {
+  const key = String(status || '').toUpperCase();
+  if (key === 'PUBLISHED' || key === 'READY') return 'positive';
+  if (key === 'REVIEW') return 'warning';
+  if (key === 'DRAFT' || key === 'BRIEF') return 'info';
+  return 'neutral';
 }
 
-function Section({
-  title,
-  hint,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="mt-6 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-      <h2 className="text-lg font-bold text-slate-900">
-        {title}
-      </h2>
-
-      {hint && (
-        <p className="mt-1 text-sm text-slate-500">
-          {hint}
-        </p>
-      )}
-
-      <div className="mt-4">{children}</div>
-    </section>
-  );
+function checkTone(
+  state: string,
+): 'neutral' | 'info' | 'positive' | 'warning' | 'danger' {
+  const key = String(state || '').toUpperCase();
+  if (key === 'GOOD') return 'positive';
+  if (key === 'ATTENTION') return 'warning';
+  return 'neutral';
 }
 
 export default function ContentWorkspace({
@@ -190,6 +181,8 @@ export default function ContentWorkspace({
   const [publishTarget, setPublishTarget] =
     useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] =
+    useState<string | null>(null);
+  const [briefDeleteTarget, setBriefDeleteTarget] =
     useState<string | null>(null);
   const [confirming, setConfirming] =
     useState(false);
@@ -353,6 +346,27 @@ export default function ContentWorkspace({
     }
   }
 
+  async function handleBriefDeleteConfirm() {
+    const id = briefDeleteTarget;
+    if (!id || confirming) return;
+
+    try {
+      setConfirming(true);
+      setNotice('');
+      await deleteContentBrief(id);
+      setBriefDeleteTarget(null);
+      await load();
+    } catch (err) {
+      setNotice(
+        err instanceof Error
+          ? err.message
+          : 'Failed to delete brief.',
+      );
+    } finally {
+      setConfirming(false);
+    }
+  }
+
   async function handleBrief() {
     if (!briefQuery.trim() || briefing)
       return;
@@ -510,420 +524,580 @@ export default function ContentWorkspace({
 
   if (loading) {
     return (
-      <div className="mt-6 rounded-2xl border border-slate-100 bg-white p-12 text-center shadow-sm">
-        <Loader2
-          size={28}
-          className="mx-auto animate-spin text-blue-600"
-        />
-      </div>
+      <LoadingBlock title="Loading content workspace…" lines={4} />
     );
   }
 
-  return (
-    <div>
-      {error && (
-        <div className="mt-6 flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          <XCircle size={18} />
-          {error}
-        </div>
-      )}
+  const refreshRows: any[] = Array.isArray(
+    (refresh as any)?.refresh,
+  )
+    ? (refresh as any).refresh
+    : [];
 
-      {notice && (
-        <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+  return (
+    <div className="space-y-6">
+      {error ? (
+        <ErrorState
+          title="Workspace failed to load"
+          description={error}
+          onRetry={() => void load()}
+        />
+      ) : null}
+
+      {notice ? (
+        <div
+          role="status"
+          className="rounded-rk-md border border-rk-info/30 bg-rk-infoSoft/50 px-4 py-3 text-sm leading-6 text-rk-ink"
+        >
           {notice}
         </div>
-      )}
+      ) : null}
 
-      <Section
-        title="Publishing"
-        hint="No publishing integration is connected. Copy, export, or confirm manually."
+      <Panel
+        eyebrow="Publishing"
+        title="Publishing status"
+        description="No publishing integration is connected. Copy, export, or confirm manually."
       >
         <div className="flex flex-wrap items-center gap-2">
-          <Badge
-            tone={
-              publishing?.connected
-                ? 'green'
-                : 'slate'
-            }
-          >
-            {publishing?.status ??
-              'NOT_CONNECTED'}
-          </Badge>
-
-          <span className="text-xs text-slate-500">
-            {(publishing?.supported ?? []).join(
-              ' · ',
+          <DataSourceBadge
+            source="Publishing"
+            connected={Boolean(
+              (publishing as any)?.connected,
             )}
-          </span>
+          />
+          <Badge
+            label={String(
+              (publishing as any)?.status ??
+                'NOT_CONNECTED',
+            )}
+            tone={
+              (publishing as any)?.connected
+                ? 'positive'
+                : 'neutral'
+            }
+          />
+          {(publishing as any)?.supported &&
+          Array.isArray(
+            (publishing as any).supported,
+          ) &&
+          (publishing as any).supported.length >
+            0 ? (
+            <span className="rk-metadata">
+              {(
+                (publishing as any).supported as string[]
+              ).join(' · ')}
+            </span>
+          ) : null}
         </div>
 
-        {publishing?.limitation && (
-          <p className="mt-2 text-xs leading-5 text-slate-500">
-            {publishing.limitation}
+        {(publishing as any)?.limitation ? (
+          <p className="rk-metadata mt-2">
+            {String(
+              (publishing as any).limitation,
+            )}
           </p>
-        )}
-      </Section>
+        ) : null}
+      </Panel>
 
-      <Section
-        title="Content Items"
-        hint="Ideas move IDEA → BRIEF → DRAFT → REVIEW → READY → PUBLISHED by your confirmation only."
+      <Panel
+        eyebrow="Content items"
+        title="Ideas to published"
+        description="Ideas move IDEA → BRIEF → DRAFT → REVIEW → READY → PUBLISHED by your confirmation only."
+        actions={
+          <SecondaryButton
+            size="sm"
+            onClick={() => void load()}
+          >
+            <RefreshCw size={14} aria-hidden />
+            Refresh
+          </SecondaryButton>
+        }
       >
         <div className="grid gap-2 md:grid-cols-3">
-          <input
-            value={itemTitle}
-            onChange={(e) =>
-              setItemTitle(e.target.value)
-            }
-            placeholder="Item title *"
-            className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none"
-          />
+          <label className="block md:col-span-1">
+            <span className="rk-field-label">
+              Item title
+            </span>
+            <input
+              value={itemTitle}
+              onChange={(e) =>
+                setItemTitle(e.target.value)
+              }
+              placeholder="Item title *"
+              className="rk-input mt-1.5"
+            />
+          </label>
 
-          <input
-            value={itemQuery}
-            onChange={(e) =>
-              setItemQuery(e.target.value)
-            }
-            placeholder="Target query (optional)"
-            className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none"
-          />
+          <label className="block md:col-span-1">
+            <span className="rk-field-label">
+              Target query
+            </span>
+            <input
+              value={itemQuery}
+              onChange={(e) =>
+                setItemQuery(e.target.value)
+              }
+              placeholder="Target query (optional)"
+              className="rk-input mt-1.5"
+            />
+          </label>
 
-          <button
-            onClick={handleCreateItem}
-            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700"
-          >
-            Add item
-          </button>
+          <div className="flex items-end">
+            <PrimaryButton
+              onClick={handleCreateItem}
+              className="w-full md:w-auto"
+            >
+              Add item
+            </PrimaryButton>
+          </div>
         </div>
 
-        <div className="mt-4 space-y-2">
-          {items.length === 0 && (
-            <p className="text-sm text-slate-500">
-              No content items yet.
-            </p>
-          )}
-
-          {items.map((item) => (
-            <div
-              key={item.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-3"
-            >
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold">
-                  {item.title}
-                </div>
-
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                  <Badge tone="blue">
-                    {item.status}
-                  </Badge>
-
-                  {item.targetQuery && (
-                    <span>
-                      {item.targetQuery}
+        <div className="mt-4">
+          <DataTable
+            caption="Content items"
+            columns={[
+              {
+                key: 'item',
+                label: 'Item',
+                priority: 'high',
+                render: (item: any) => (
+                  <span className="block min-w-0">
+                    <span className="block truncate font-bold text-rk-ink">
+                      {String(
+                        item.title || 'Untitled',
+                      )}
                     </span>
-                  )}
-
-                  <span>
+                    {item.targetQuery ? (
+                      <span className="rk-metadata mt-0.5 block truncate">
+                        {String(item.targetQuery)}
+                      </span>
+                    ) : null}
+                  </span>
+                ),
+              },
+              {
+                key: 'status',
+                label: 'Status',
+                priority: 'high',
+                render: (item: any) => (
+                  <Badge
+                    label={String(
+                      item.status || 'IDEA',
+                    )}
+                    tone={itemStatusTone(
+                      String(item.status || ''),
+                    )}
+                  />
+                ),
+              },
+              {
+                key: 'progress',
+                label: 'Progress',
+                priority: 'medium',
+                render: (item: any) => (
+                  <span className="rk-metadata">
                     {(item.briefs ?? []).length}{' '}
                     briefs ·{' '}
-                    {
-                      (item.drafts ?? [])
-                        .length
-                    }{' '}
+                    {(item.drafts ?? []).length}{' '}
                     drafts
                   </span>
-                </div>
-              </div>
-
+                ),
+              },
+            ]}
+            rows={items}
+            keyOf={(item: any) => String(item.id)}
+            emptyTitle="No content items yet"
+            emptyDescription="Add your first item to start the brief → draft → published flow."
+            pageSize={8}
+            rowActions={(item: any) => {
+              const actions: Array<{
+                label: string;
+                onSelect: () => void;
+              }> = [];
+              if (
+                item.status !== 'READY' &&
+                item.status !== 'PUBLISHED'
+              ) {
+                actions.push({
+                  label: 'Mark ready',
+                  onSelect: () =>
+                    void handleReady(item.id),
+                });
+              }
+              if (item.status !== 'PUBLISHED') {
+                actions.push({
+                  label: 'Confirm published',
+                  onSelect: () =>
+                    void handlePublish(item.id),
+                });
+              }
+              actions.push({
+                label: 'Delete',
+                onSelect: () =>
+                  void handleDeleteItem(item.id),
+              });
+              return actions;
+            }}
+            renderExpanded={(item: any) => (
               <div className="flex flex-wrap gap-2">
-                {item.status !==
-                  'READY' &&
-                  item.status !==
-                    'PUBLISHED' && (
-                    <button
-                      onClick={() =>
-                        handleReady(item.id)
-                      }
-                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold hover:bg-slate-100"
-                    >
-                      Mark ready
-                    </button>
-                  )}
-
-                {item.status !==
-                  'PUBLISHED' && (
-                  <button
-                    onClick={() =>
-                      handlePublish(item.id)
-                    }
-                    className="rounded-lg bg-emerald-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-emerald-700"
-                  >
-                    Confirm published
-                  </button>
-                )}
-
-                <button
+                <SecondaryButton
+                  size="sm"
                   onClick={() =>
-                    handleDeleteItem(item.id)
+                    void handleStatus(
+                      item.id,
+                      'REVIEW',
+                    )
                   }
-                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-red-600 hover:bg-red-50"
                 >
-                  Delete
-                </button>
+                  Move to review
+                </SecondaryButton>
+                <SecondaryButton
+                  size="sm"
+                  onClick={() =>
+                    void handleStatus(
+                      item.id,
+                      'DRAFT',
+                    )
+                  }
+                >
+                  Move to draft
+                </SecondaryButton>
               </div>
-            </div>
-          ))}
+            )}
+          />
         </div>
-      </Section>
+      </Panel>
 
-      <Section
-        title="Evidence Briefs"
-        hint="Deterministic briefs from Business Brain, GSC, competitors and existing pages. No SERP data is claimed."
+      <Panel
+        eyebrow="Evidence briefs"
+        title="Deterministic briefs"
+        description="Briefs from Business Brain, GSC, competitors and existing pages. No SERP data is claimed."
       >
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <input
             value={briefQuery}
             onChange={(e) =>
               setBriefQuery(e.target.value)
             }
             placeholder="Target query, e.g. best CRM for agencies"
-            className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none"
+            className="rk-input flex-1"
+            aria-label="Target query for brief"
           />
 
-          <button
+          <PrimaryButton
             onClick={handleBrief}
             disabled={briefing}
-            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-60"
           >
             {briefing
-              ? 'Building...'
+              ? 'Building…'
               : 'Build brief'}
-          </button>
+          </PrimaryButton>
         </div>
 
-        {serpNote && (
-          <p className="mt-2 flex items-start gap-2 text-xs leading-5 text-amber-700">
+        {serpNote ? (
+          <p className="mt-2 flex items-start gap-2 text-xs leading-5 text-rk-warning">
             <AlertTriangle
               size={14}
+              aria-hidden
               className="mt-0.5 shrink-0"
             />
-            {serpNote}
+            <span>{serpNote}</span>
           </p>
-        )}
+        ) : null}
 
-        <div className="mt-4 space-y-2">
-          {briefs.length === 0 && (
-            <p className="text-sm text-slate-500">
-              No briefs yet.
-            </p>
-          )}
-
-          {briefs.map((brief: any) => (
-            <button
-              key={brief.id}
-              onClick={() =>
-                setOpenBrief(brief)
-              }
-              className="flex w-full items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 text-left hover:bg-slate-100"
-            >
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold">
-                  {brief.targetQuery}
-                </div>
-
-                <div className="mt-1 text-xs text-slate-500">
-                  {brief.intent ?? '—'} ·{' '}
-                  {brief.createdAt
-                    ? new Date(
-                        brief.createdAt,
-                      ).toLocaleDateString()
-                    : ''}
-                </div>
-              </div>
-
-              <Badge tone="blue">BRIEF</Badge>
-            </button>
-          ))}
+        <div className="mt-4">
+          <DataTable
+            caption="Evidence briefs"
+            columns={[
+              {
+                key: 'query',
+                label: 'Target query',
+                priority: 'high',
+                render: (brief: any) => (
+                  <span className="block min-w-0">
+                    <span className="block truncate font-bold text-rk-ink">
+                      {String(
+                        brief.targetQuery || '—',
+                      )}
+                    </span>
+                    <span className="rk-metadata mt-0.5 block">
+                      {String(brief.intent ?? '—')}
+                      {brief.createdAt
+                        ? ` · ${new Date(
+                            brief.createdAt,
+                          ).toLocaleDateString()}`
+                        : ''}
+                    </span>
+                  </span>
+                ),
+              },
+              {
+                key: 'type',
+                label: 'Type',
+                priority: 'medium',
+                render: () => (
+                  <Badge
+                    label="BRIEF"
+                    tone="info"
+                  />
+                ),
+              },
+            ]}
+            rows={briefs}
+            keyOf={(brief: any) =>
+              String(brief.id)
+            }
+            onRowClick={(brief: any) =>
+              setOpenBrief(brief)
+            }
+            emptyTitle="No briefs yet"
+            emptyDescription="Build a brief from a measured target query."
+            pageSize={8}
+            rowActions={(brief: any) => [
+              {
+                label: 'Open',
+                onSelect: () =>
+                  setOpenBrief(brief),
+              },
+              {
+                label: 'Delete',
+                onSelect: () =>
+                  setBriefDeleteTarget(
+                    String(brief.id),
+                  ),
+              },
+            ]}
+          />
         </div>
-      </Section>
+      </Panel>
 
-      <Section
-        title="AI Drafts"
-        hint="Metered generation via the connected provider. Every draft is labeled with provider and model."
+      <Panel
+        eyebrow="AI drafts"
+        title="Metered generation"
+        description="Every draft is labeled with provider and model."
       >
         <div className="grid gap-2 md:grid-cols-3">
-          <select
-            value={genItemId}
-            onChange={(e) =>
-              setGenItemId(e.target.value)
-            }
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
-          >
-            <option value="">
-              No linked item
-            </option>
-
-            {items.map((item) => (
-              <option
-                key={item.id}
-                value={item.id}
-              >
-                {item.title.slice(0, 60)}
+          <label className="block">
+            <span className="rk-field-label">
+              Linked item
+            </span>
+            <select
+              value={genItemId}
+              onChange={(e) =>
+                setGenItemId(e.target.value)
+              }
+              className="rk-input mt-1.5"
+            >
+              <option value="">
+                No linked item
               </option>
-            ))}
-          </select>
 
-          <select
-            value={genBriefId}
-            onChange={(e) =>
-              setGenBriefId(e.target.value)
-            }
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
-          >
-            <option value="">
-              No linked brief
-            </option>
+              {items.map((item) => (
+                <option
+                  key={item.id}
+                  value={item.id}
+                >
+                  {item.title.slice(0, 60)}
+                </option>
+              ))}
+            </select>
+          </label>
 
-            {briefs.map((brief: any) => (
-              <option
-                key={brief.id}
-                value={brief.id}
-              >
-                {(brief.targetQuery ?? '').slice(
-                  0,
-                  60,
-                )}
+          <label className="block">
+            <span className="rk-field-label">
+              Linked brief
+            </span>
+            <select
+              value={genBriefId}
+              onChange={(e) =>
+                setGenBriefId(e.target.value)
+              }
+              className="rk-input mt-1.5"
+            >
+              <option value="">
+                No linked brief
               </option>
-            ))}
-          </select>
+
+              {briefs.map((brief: any) => (
+                <option
+                  key={brief.id}
+                  value={brief.id}
+                >
+                  {(brief.targetQuery ?? '').slice(
+                    0,
+                    60,
+                  )}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <div className="flex gap-2">
-            <select
-              value={genMode}
-              onChange={(e) =>
-                setGenMode(
-                  e.target.value as (typeof GENERATE_MODES)[number],
-                )
-              }
-              className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
-            >
-              {GENERATE_MODES.map((mode) => (
-                <option
-                  key={mode}
-                  value={mode}
-                >
-                  {mode}
-                </option>
-              ))}
-            </select>
+            <label className="block flex-1">
+              <span className="rk-field-label">
+                Mode
+              </span>
+              <select
+                value={genMode}
+                onChange={(e) =>
+                  setGenMode(
+                    e.target.value as (typeof GENERATE_MODES)[number],
+                  )
+                }
+                className="rk-input mt-1.5"
+              >
+                {GENERATE_MODES.map((mode) => (
+                  <option
+                    key={mode}
+                    value={mode}
+                  >
+                    {mode}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-            <select
-              value={genProvider}
-              onChange={(e) =>
-                setGenProvider(
-                  e.target.value as (typeof PROVIDERS)[number],
-                )
-              }
-              className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
-            >
-              {PROVIDERS.map((provider) => (
-                <option
-                  key={provider}
-                  value={provider}
-                >
-                  {provider}
-                </option>
-              ))}
-            </select>
+            <label className="block flex-1">
+              <span className="rk-field-label">
+                Provider
+              </span>
+              <select
+                value={genProvider}
+                onChange={(e) =>
+                  setGenProvider(
+                    e.target.value as (typeof PROVIDERS)[number],
+                  )
+                }
+                className="rk-input mt-1.5"
+              >
+                {PROVIDERS.map((provider) => (
+                  <option
+                    key={provider}
+                    value={provider}
+                  >
+                    {provider}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
-          <input
-            value={genTopic}
-            onChange={(e) =>
-              setGenTopic(e.target.value)
-            }
-            placeholder="Topic (outline/section/faq)"
-            className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none md:col-span-2"
-          />
+          <label className="block md:col-span-2">
+            <span className="rk-field-label">
+              Topic
+            </span>
+            <input
+              value={genTopic}
+              onChange={(e) =>
+                setGenTopic(e.target.value)
+              }
+              placeholder="Topic (outline/section/faq)"
+              className="rk-input mt-1.5"
+            />
+          </label>
 
-          <button
-            onClick={handleGenerate}
-            disabled={generating}
-            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-60"
-          >
-            {generating
-              ? 'Generating...'
-              : 'Generate'}
-          </button>
+          <div className="flex items-end">
+            <PrimaryButton
+              onClick={handleGenerate}
+              disabled={generating}
+              className="w-full md:w-auto"
+            >
+              {generating
+                ? 'Generating…'
+                : 'Generate'}
+            </PrimaryButton>
+          </div>
 
           {(genMode === 'SECTION' ||
             genMode === 'REWRITE') && (
-            <textarea
-              value={genInput}
-              onChange={(e) =>
-                setGenInput(e.target.value)
-              }
-              placeholder={
-                genMode === 'REWRITE'
-                  ? 'Paste text to rewrite (facts are preserved)'
-                  : 'Section context (optional)'
-              }
-              rows={3}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none md:col-span-3"
-            />
-          )}
-        </div>
-
-        <div className="mt-4 space-y-2">
-          {drafts.length === 0 && (
-            <p className="text-sm text-slate-500">
-              No drafts yet.
-            </p>
-          )}
-
-          {drafts.map((draft: any) => (
-            <button
-              key={draft.id}
-              onClick={() =>
-                setOpenDraft(draft)
-              }
-              className="flex w-full items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 text-left hover:bg-slate-100"
-            >
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold">
-                  {draft.title ??
-                    draft.mode ??
-                    'Draft'}
-                </div>
-
-                <div className="mt-1 text-xs text-slate-500">
-                  {draft.mode} ·{' '}
-                  {draft.humanCreated
-                    ? 'human'
-                    : `${draft.provider ?? 'AI'}${draft.model ? ` ${draft.model}` : ''}`}{' '}
-                  · v{draft.version}
-                </div>
-              </div>
-
-              <Badge
-                tone={
-                  draft.humanCreated
-                    ? 'slate'
-                    : 'green'
+            <label className="block md:col-span-3">
+              <span className="rk-field-label">
+                {genMode === 'REWRITE'
+                  ? 'Text to rewrite'
+                  : 'Section context'}
+              </span>
+              <textarea
+                value={genInput}
+                onChange={(e) =>
+                  setGenInput(e.target.value)
                 }
-              >
-                {draft.humanCreated
-                  ? 'HUMAN'
-                  : 'LIVE_PROVIDER_RESULT'}
-              </Badge>
-            </button>
-          ))}
+                placeholder={
+                  genMode === 'REWRITE'
+                    ? 'Paste text to rewrite (facts are preserved)'
+                    : 'Section context (optional)'
+                }
+                rows={3}
+                className="rk-input mt-1.5 resize-y"
+              />
+            </label>
+          )}
         </div>
-      </Section>
 
-      <Section
-        title="Optimize a Page"
-        hint="Deterministic checks over the latest crawl with disclosed thresholds. No invented SEO score."
+        <div className="mt-4">
+          <DataTable
+            caption="AI drafts"
+            columns={[
+              {
+                key: 'draft',
+                label: 'Draft',
+                priority: 'high',
+                render: (draft: any) => (
+                  <span className="block min-w-0">
+                    <span className="block truncate font-bold text-rk-ink">
+                      {String(
+                        draft.title ??
+                          draft.mode ??
+                          'Draft',
+                      )}
+                    </span>
+                    <span className="rk-metadata mt-0.5 block">
+                      {String(draft.mode ?? '—')} ·{' '}
+                      {draft.humanCreated
+                        ? 'human'
+                        : `${draft.provider ?? 'AI'}${draft.model ? ` ${draft.model}` : ''}`}{' '}
+                      · v{String(draft.version ?? '—')}
+                    </span>
+                  </span>
+                ),
+              },
+              {
+                key: 'origin',
+                label: 'Origin',
+                priority: 'medium',
+                render: (draft: any) => (
+                  <Badge
+                    label={
+                      draft.humanCreated
+                        ? 'HUMAN'
+                        : 'LIVE_PROVIDER_RESULT'
+                    }
+                    tone={
+                      draft.humanCreated
+                        ? 'neutral'
+                        : 'positive'
+                    }
+                  />
+                ),
+              },
+            ]}
+            rows={drafts}
+            keyOf={(draft: any) =>
+              String(draft.id)
+            }
+            onRowClick={(draft: any) =>
+              setOpenDraft(draft)
+            }
+            emptyTitle="No drafts yet"
+            emptyDescription="Generate a draft from a brief or item."
+            pageSize={8}
+          />
+        </div>
+      </Panel>
+
+      <Panel
+        eyebrow="Optimize"
+        title="Optimize a page"
+        description="Deterministic checks over the latest crawl with disclosed thresholds. No invented SEO score."
       >
         <div className="flex flex-col gap-2 md:flex-row">
           <input
@@ -932,7 +1106,8 @@ export default function ContentWorkspace({
               setOptUrl(e.target.value)
             }
             placeholder="Page URL *"
-            className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none"
+            className="rk-input flex-1"
+            aria-label="Page URL to analyze"
           />
 
           <input
@@ -941,284 +1116,329 @@ export default function ContentWorkspace({
               setOptQuery(e.target.value)
             }
             placeholder="Target query (optional)"
-            className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none"
+            className="rk-input flex-1"
+            aria-label="Target query (optional)"
           />
 
-          <button
+          <PrimaryButton
             onClick={handleOptimize}
             disabled={optimizing}
-            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-60"
           >
             {optimizing
-              ? 'Analyzing...'
+              ? 'Analyzing…'
               : 'Analyze'}
-          </button>
+          </PrimaryButton>
         </div>
 
-        {optResult && (
-          <div className="mt-4 rounded-xl border border-slate-100 p-4">
-            <div className="text-sm font-bold">
-              {optResult.passing}/
-              {optResult.total} checks
-              passing
-            </div>
-
-            <p className="mt-1 text-xs text-slate-500">
-              {optResult.methodology}
+        {optResult ? (
+          <div className="mt-4">
+            <p className="text-sm font-bold text-rk-ink">
+              {String(
+                (optResult as any)?.passing ?? '—',
+              )}
+              /
+              {String(
+                (optResult as any)?.total ?? '—',
+              )}{' '}
+              checks passing
             </p>
 
+            {(optResult as any)?.methodology ? (
+              <p className="rk-metadata mt-1">
+                {String(
+                  (optResult as any).methodology,
+                )}
+              </p>
+            ) : null}
+
             <div className="mt-3 space-y-2">
-              {(optResult.checks ?? []).map(
-                (check: any) => (
-                  <div
-                    key={check.key}
-                    className="flex items-start justify-between gap-3 rounded-xl bg-slate-50 p-3"
-                  >
-                    <div>
-                      <div className="text-sm font-semibold">
-                        {check.title}
-                      </div>
-
-                      <div className="mt-1 text-xs text-slate-500">
-                        {check.evidence}
-                      </div>
-                    </div>
-
-                    <Badge
-                      tone={
-                        check.state ===
-                        'GOOD'
-                          ? 'green'
-                          : check.state ===
-                              'ATTENTION'
-                            ? 'amber'
-                            : 'slate'
-                      }
-                    >
-                      {check.state}
-                    </Badge>
-                  </div>
-                ),
-              )}
-            </div>
-          </div>
-        )}
-      </Section>
-
-      <Section
-        title="Refresh Queue"
-        hint="Period-over-period GSC declines only. Age alone never triggers a refresh."
-      >
-        {!refresh || refresh.total === 0 ? (
-          <p className="text-sm text-slate-500">
-            No refresh candidates in the
-            latest comparison. Connect
-            GSC to enable refresh
-            intelligence.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {(refresh.refresh ?? []).map(
-              (item: any, index: number) => {
-                const persisted = (
-                  refresh.persisted ?? []
-                ).find(
-                  (entry: any) =>
-                    entry.query ===
-                    item.query,
-                );
-                const recId =
-                  persisted?.recommendationId;
-                const done =
-                  recId &&
-                  actionDone[recId];
-
-                return (
-                  <div
-                    key={`${item.query}-${index}`}
-                    className="rounded-xl border border-slate-100 p-4"
-                  >
-                    <div className="text-sm font-semibold">
-                      {item.query}
-                    </div>
-
-                    <p className="mt-1 text-xs text-slate-500">
-                      {item.reason}
+              {(
+                (optResult as any)?.checks ?? []
+              ).map((check: any) => (
+                <div
+                  key={String(check.key)}
+                  className="flex items-start justify-between gap-3 rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-rk-ink">
+                      {String(check.title)}
                     </p>
 
-                    {recId && (
-                      <button
-                        onClick={() =>
-                          handleRefreshAction(
-                            recId,
-                          )
-                        }
-                        disabled={Boolean(done)}
-                        className="mt-3 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-60"
-                      >
-                        {done
-                          ? 'Action created'
-                          : 'Create action'}
-                      </button>
-                    )}
+                    <p className="rk-metadata mt-1">
+                      {String(check.evidence ?? '')}
+                    </p>
                   </div>
-                );
-              },
-            )}
-          </div>
-        )}
-      </Section>
 
-      <Section
-        title="Page Performance"
-        hint="Page-level GSC plus attributed leads and revenue. Unrelated site metrics are never mixed in."
+                  <Badge
+                    label={String(check.state)}
+                    tone={checkTone(
+                      String(check.state ?? ''),
+                    )}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </Panel>
+
+      <Panel
+        eyebrow="Refresh queue"
+        title="Refresh candidates"
+        description="Period-over-period GSC declines only. Age alone never triggers a refresh."
       >
-        <div className="flex gap-2">
+        {refreshRows.length === 0 ? (
+          <EmptyState
+            title="No refresh candidates"
+            description="No period-over-period GSC declines in the latest comparison. Connect GSC to enable refresh intelligence."
+          />
+        ) : (
+          <DataTable
+            caption="Refresh candidates"
+            columns={[
+              {
+                key: 'query',
+                label: 'Query',
+                priority: 'high',
+                render: (item: any) => (
+                  <span className="block min-w-0">
+                    <span className="block truncate font-bold text-rk-ink">
+                      {String(item.query || '—')}
+                    </span>
+                    <span className="rk-metadata mt-0.5 block">
+                      {String(
+                        item.reason || 'Measured decline',
+                      )}
+                    </span>
+                  </span>
+                ),
+              },
+            ]}
+            rows={refreshRows}
+            keyOf={(item: any, i: number) =>
+              String(item.query || i)
+            }
+            pageSize={8}
+            rowActions={(item: any) => {
+              const persisted = (
+                (refresh as any)?.persisted ?? []
+              ).find(
+                (entry: any) =>
+                  entry.query === item.query,
+              );
+              const recId =
+                persisted?.recommendationId;
+              if (!recId) return [];
+              const done = Boolean(
+                actionDone[recId],
+              );
+              return [
+                {
+                  label: done
+                    ? 'Action created'
+                    : actionBusy[recId]
+                      ? 'Creating…'
+                      : 'Create action',
+                  onSelect: () =>
+                    void handleRefreshAction(
+                      String(recId),
+                    ),
+                },
+              ];
+            }}
+          />
+        )}
+      </Panel>
+
+      <Panel
+        eyebrow="Performance"
+        title="Page performance"
+        description="Page-level GSC plus attributed leads and revenue. Unrelated site metrics are never mixed in."
+      >
+        <div className="flex flex-col gap-2 sm:flex-row">
           <input
             value={perfUrl}
             onChange={(e) =>
               setPerfUrl(e.target.value)
             }
             placeholder="Page URL *"
-            className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none"
+            className="rk-input flex-1"
+            aria-label="Page URL to measure"
           />
 
-          <button
+          <PrimaryButton
             onClick={handlePerformance}
             disabled={perfLoading}
-            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-60"
           >
             {perfLoading
-              ? 'Loading...'
+              ? 'Loading…'
               : 'Measure'}
-          </button>
+          </PrimaryButton>
         </div>
 
-        {perf && (
-          <div className="mt-4 grid gap-2 text-sm md:grid-cols-3">
-            <div className="rounded-xl bg-slate-50 p-3">
-              <div className="text-xs text-slate-500">
-                GSC 28d
-              </div>
-
-              <div className="mt-1 font-bold">
-                {perf.gsc
-                  ? `${perf.gsc.clicks} clicks · ${perf.gsc.impressions} impressions`
-                  : 'No page rows'}
-              </div>
+        {perf ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+              <Metric
+                label="GSC 28d"
+                value={
+                  (perf as any)?.gsc
+                    ? `${(perf as any).gsc.clicks} clicks`
+                    : 'No page rows'
+                }
+                detail={
+                  (perf as any)?.gsc
+                    ? `${(perf as any).gsc.impressions} impressions`
+                    : undefined
+                }
+              />
             </div>
 
-            <div className="rounded-xl bg-slate-50 p-3">
-              <div className="text-xs text-slate-500">
-                Leads
-              </div>
-
-              <div className="mt-1 font-bold">
-                {perf.leads?.total ?? 0}{' '}
-                total ·{' '}
-                {perf.leads?.converted ??
-                  0}{' '}
-                converted
-              </div>
+            <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+              <Metric
+                label="Leads"
+                value={String(
+                  (perf as any)?.leads?.total ?? 0,
+                )}
+                detail={`${String((perf as any)?.leads?.converted ?? 0)} converted`}
+              />
             </div>
 
-            <div className="rounded-xl bg-slate-50 p-3">
-              <div className="text-xs text-slate-500">
-                Revenue
-              </div>
-
-              <div className="mt-1 font-bold">
-                {perf.revenue?.state ===
-                'LIVE'
-                  ? `${perf.revenue.total} ${perf.revenue.currency ?? ''}`
-                  : 'NOT_MEASURABLE'}
-              </div>
+            <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+              <Metric
+                label="Revenue"
+                value={
+                  (perf as any)?.revenue?.state ===
+                  'LIVE'
+                    ? `${String((perf as any).revenue.total)} ${String((perf as any).revenue.currency ?? '')}`.trim()
+                    : 'NOT_MEASURABLE'
+                }
+              />
             </div>
 
-            {(perf.limitations ?? []).map(
+            {((perf as any)?.limitations ?? []).map(
               (limitation: string) => (
                 <p
                   key={limitation}
-                  className="text-xs text-slate-400 md:col-span-3"
+                  className="rk-metadata sm:col-span-3"
                 >
                   {limitation}
                 </p>
               ),
             )}
           </div>
+        ) : (
+          <p className="rk-metadata mt-3">
+            Enter a page URL to measure real GSC,
+            lead and revenue attribution.
+          </p>
         )}
-      </Section>
+      </Panel>
 
-      {openBrief && (
-        <BriefViewer
-          title="Evidence Brief"
-          onClose={() =>
-            setOpenBrief(null)
-          }
-        >
-          <BriefBody
-            payload={
-              (openBrief.payload ??
-                openBrief) as Record<
-                string,
-                any
+      <Drawer
+        open={openBrief !== null}
+        onClose={() => setOpenBrief(null)}
+        eyebrow="Evidence brief"
+        title={String(
+          (openBrief as any)?.payload?.targetQuery ??
+            (openBrief as any)?.targetQuery ??
+            'Evidence Brief',
+        )}
+        description="Deterministic brief with disclosed evidence and limitations."
+        wide
+      >
+        {openBrief ? (
+          <>
+            <BriefBody
+              payload={
+                ((openBrief as any).payload ??
+                  openBrief) as Record<
+                  string,
+                  any
+                >
+              }
+              evidence={
+                (openBrief as any).evidence as
+                  | Record<string, any>
+                  | undefined
+              }
+              copy={() =>
+                copyText(
+                  JSON.stringify(
+                    (openBrief as any).payload ??
+                      openBrief,
+                    null,
+                    2,
+                  ),
+                )
+              }
+              copied={copied}
+            />
+          </>
+        ) : null}
+      </Drawer>
+
+      <Drawer
+        open={openDraft !== null}
+        onClose={() => setOpenDraft(null)}
+        eyebrow="AI draft"
+        title={String(
+          (openDraft as any)?.title ??
+            (openDraft as any)?.mode ??
+            'Draft',
+        )}
+        description={
+          openDraft
+            ? String(
+                (openDraft as any).humanCreated
+                  ? 'Human-created draft.'
+                  : `${String((openDraft as any).provider ?? 'AI')} ${String((openDraft as any).model ?? '')}`.trim(),
+              )
+            : undefined
+        }
+        wide
+      >
+        {openDraft ? (
+          <>
+            <DrawerSection title="Content">
+              <pre className="whitespace-pre-wrap rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3 text-sm leading-6 text-rk-ink">
+                {String(
+                  (openDraft as any).content ?? '',
+                )}
+              </pre>
+            </DrawerSection>
+            <DrawerSection title="Actions">
+              <SecondaryButton
+                size="sm"
+                onClick={() =>
+                  void copyText(
+                    String(
+                      (openDraft as any).content ??
+                        '',
+                    ),
+                  )
+                }
               >
-            }
-            evidence={
-              openBrief.evidence as
-                | Record<string, any>
-                | undefined
-            }
-            copy={() =>
-              copyText(
-                JSON.stringify(
-                  openBrief.payload ??
-                    openBrief,
-                  null,
-                  2,
-                ),
-              )
-            }
-            copied={copied}
-          />
-        </BriefViewer>
-      )}
-
-      {openDraft && (
-        <BriefViewer
-          title={`${openDraft.mode ?? 'Draft'} · ${openDraft.humanCreated ? 'human' : `${openDraft.provider ?? ''} ${openDraft.model ?? ''}`.trim()}`}
-          onClose={() =>
-            setOpenDraft(null)
-          }
-        >
-          <pre className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
-            {openDraft.content}
-          </pre>
-
-          <button
-            onClick={() =>
-              copyText(
-                openDraft.content ?? '',
-              )
-            }
-            className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold hover:bg-slate-50"
-          >
-            {copied ? (
-              <Check size={14} />
-            ) : (
-              <Clipboard size={14} />
-            )}
-            {copied ? 'Copied' : 'Copy'}
-          </button>
-        </BriefViewer>
-      )}
+                {copied ? (
+                  <Check size={14} aria-hidden />
+                ) : (
+                  <Clipboard
+                    size={14}
+                    aria-hidden
+                  />
+                )}
+                {copied ? 'Copied' : 'Copy'}
+              </SecondaryButton>
+            </DrawerSection>
+          </>
+        ) : null}
+      </Drawer>
 
       <ConfirmDialog
         open={publishTarget !== null}
         title="Confirm published?"
         description="Confirm this content is published at its live URL? This is your explicit confirmation."
         confirmLabel="Confirm published"
-        tone="neutral"
         confirming={confirming}
         onConfirm={() => void handlePublishConfirm()}
         onCancel={() => {
@@ -1237,45 +1457,19 @@ export default function ContentWorkspace({
           if (!confirming) setDeleteTarget(null);
         }}
       />
-    </div>
-  );
-}
 
-function BriefViewer({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <>
-      <button
-        type="button"
-        aria-label="Close viewer"
-        onClick={onClose}
-        className="fixed inset-0 z-[60] bg-slate-900/30 backdrop-blur-[1px]"
+      <ConfirmDialog
+        open={briefDeleteTarget !== null}
+        title="Delete brief?"
+        description="Delete this evidence brief? Linked drafts are kept. This cannot be undone."
+        confirmLabel="Delete brief"
+        confirming={confirming}
+        onConfirm={() => void handleBriefDeleteConfirm()}
+        onCancel={() => {
+          if (!confirming) setBriefDeleteTarget(null);
+        }}
       />
-
-      <aside className="fixed right-0 top-0 z-[70] h-screen w-full max-w-[620px] overflow-y-auto border-l border-slate-200 bg-white p-6 shadow-2xl">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold">
-            {title}
-          </h2>
-
-          <button
-            onClick={onClose}
-            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold hover:bg-slate-50"
-          >
-            Close
-          </button>
-        </div>
-
-        <div className="mt-4">{children}</div>
-      </aside>
-    </>
+    </div>
   );
 }
 
@@ -1306,66 +1500,63 @@ function BriefBody({
 
   return (
     <div>
-      <div className="rounded-2xl bg-slate-900 p-5 text-white">
-        <div className="text-xl font-bold">
-          {payload.recommendedTitle ??
-            payload.targetQuery}
-        </div>
+      <div className="rounded-rk-md bg-rk-ink px-4 py-3.5 text-white">
+        <p className="text-base font-bold">
+          {String(
+            payload.recommendedTitle ??
+              payload.targetQuery ??
+              'Brief',
+          )}
+        </p>
       </div>
 
-      <div className="mt-4 space-y-2">
+      <div className="mt-3 space-y-2">
         {rows.map(([label, value]) => (
           <div
             key={label}
-            className="rounded-xl bg-slate-50 p-3 text-sm"
+            className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-2.5 text-sm"
           >
-            <span className="font-bold">
+            <span className="font-bold text-rk-ink">
               {label}:{' '}
             </span>
-            {String(value ?? '—')}
+            <span className="text-rk-secondary">
+              {String(value ?? '—')}
+            </span>
           </div>
         ))}
       </div>
 
-      <h3 className="mt-5 text-sm font-bold">
-        Outline
-      </h3>
+      <DrawerSection title="Outline">
+        <ol className="list-decimal space-y-1 pl-5 text-sm leading-6 text-rk-secondary">
+          {(payload.outline ?? []).map(
+            (section: string) => (
+              <li key={section}>{section}</li>
+            ),
+          )}
+        </ol>
+      </DrawerSection>
 
-      <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-700">
-        {(payload.outline ?? []).map(
-          (section: string) => (
-            <li key={section}>{section}</li>
-          ),
-        )}
-      </ol>
-
-      <h3 className="mt-5 text-sm font-bold">
-        Questions to answer
-      </h3>
-
-      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
-        {(payload.questionsToAnswer ?? []).map(
-          (question: string) => (
-            <li key={question}>
-              {question}
-            </li>
-          ),
-        )}
-      </ul>
+      <DrawerSection title="Questions to answer">
+        <ul className="list-disc space-y-1 pl-5 text-sm leading-6 text-rk-secondary">
+          {(payload.questionsToAnswer ?? []).map(
+            (question: string) => (
+              <li key={question}>
+                {question}
+              </li>
+            ),
+          )}
+        </ul>
+      </DrawerSection>
 
       {(payload.internalLinks ?? []).length >
         0 && (
-        <>
-          <h3 className="mt-5 text-sm font-bold">
-            Internal links (real pages)
-          </h3>
-
-          <ul className="mt-2 space-y-1 text-sm text-slate-700">
+        <DrawerSection title="Internal links (real pages)">
+          <ul className="space-y-1 text-sm text-rk-secondary">
             {payload.internalLinks.map(
               (link: any) => (
                 <li
                   key={link.url}
-                  className="break-all"
+                  className="rk-technical-value break-all !text-rk-secondary"
                 >
                   {link.title ?? link.url} —{' '}
                   {link.url}
@@ -1373,17 +1564,13 @@ function BriefBody({
               ),
             )}
           </ul>
-        </>
+        </DrawerSection>
       )}
 
       {(payload.competitorNotes ?? [])
         .length > 0 && (
-        <>
-          <h3 className="mt-5 text-sm font-bold">
-            Competitors (manual review)
-          </h3>
-
-          <ul className="mt-2 space-y-1 text-sm text-slate-700">
+        <DrawerSection title="Competitors (manual review)">
+          <ul className="space-y-1 text-sm text-rk-secondary">
             {payload.competitorNotes.map(
               (note: any) => (
                 <li key={note.domain}>
@@ -1392,17 +1579,13 @@ function BriefBody({
               ),
             )}
           </ul>
-        </>
+        </DrawerSection>
       )}
 
       {(evidence?.sources ?? []).length >
         0 && (
-        <>
-          <h3 className="mt-5 text-sm font-bold">
-            Evidence sources
-          </h3>
-
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+        <DrawerSection title="Evidence sources">
+          <ul className="list-disc space-y-1 pl-5 text-sm text-rk-secondary">
             {(evidence?.sources ?? []).map(
               (source: string) => (
                 <li key={source}>
@@ -1411,32 +1594,37 @@ function BriefBody({
               ),
             )}
           </ul>
-        </>
+        </DrawerSection>
       )}
 
-      <button
-        onClick={copy}
-        className="mt-5 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold hover:bg-slate-50"
-      >
-        {copied ? (
-          <Check size={14} />
-        ) : (
-          <Clipboard size={14} />
-        )}
-        {copied
-          ? 'Copied'
-          : 'Copy brief JSON'}
-      </button>
+      <div className="mt-4">
+        <SecondaryButton
+          size="sm"
+          onClick={copy}
+        >
+          {copied ? (
+            <Check size={14} aria-hidden />
+          ) : (
+            <Clipboard size={14} aria-hidden />
+          )}
+          {copied
+            ? 'Copied'
+            : 'Copy brief JSON'}
+        </SecondaryButton>
+      </div>
 
-      <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-amber-700">
+      <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-rk-warning">
         <CheckCircle2
           size={14}
+          aria-hidden
           className="mt-0.5 shrink-0"
         />
-        No SERP provider is connected.
-        Search volume and difficulty are
-        unavailable; competitor review is
-        manual.
+        <span>
+          No SERP provider is connected.
+          Search volume and difficulty are
+          unavailable; competitor review is
+          manual.
+        </span>
       </p>
     </div>
   );

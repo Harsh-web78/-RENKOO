@@ -1,10 +1,33 @@
 'use client';
 
+/*
+ * RENKOO — Settings (V2 design-system pass).
+ * UI ONLY: shared PageHeader / Panel / badges / buttons /
+ * states with rk-* tokens. Profile/account logic, website
+ * information, team management, password change, validation,
+ * messages, permissions and auth behavior are unchanged.
+ * No settings controls were added — every control maps to
+ * an existing backend capability.
+ */
+
 import { getTeamMembers, inviteTeamMember, updateTeamMemberRole, removeTeamMember, TeamMember } from "../../lib/api";
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppShell from '@/components/AppShell';
 import PersonaSelector from '@/components/PersonaSelector';
+import PageHeader from '@/components/ui/PageHeader';
+import Panel from '@/components/ui/Panel';
+import { Badge } from '@/components/ui/badge';
+import {
+  PrimaryButton,
+  SecondaryButton,
+  DangerButton,
+} from '@/components/ui/buttons';
+import {
+  EmptyState,
+  LoadingBlock,
+  LimitReachedState,
+} from '@/components/ui/states';
 import {
   getCurrentAccount,
   isLimitError,
@@ -143,178 +166,215 @@ const [open, setOpen] = useState(false);
     }
   }
 
+  async function handleInvite() {
+    const trimmedEmail = inviteEmail.trim();
+    if (!trimmedEmail) return;
+    setTeamLoading(true);
+    setTeamMessage("");
+    setTeamLimit(null);
+    try {
+      await inviteTeamMember(trimmedEmail, inviteRole);
+      setInviteEmail("");
+      const refreshed = await getTeamMembers();
+      setTeamMembers(refreshed);
+      setTeamMessage(
+        `Invite sent to ${trimmedEmail}. Member list refreshed — they will appear below once they accept.`
+      );
+    } catch (error) {
+      if (isLimitError(error)) {
+        setTeamLimit(error);
+      } else {
+        setTeamMessage(error instanceof Error ? error.message : "Failed to invite member.");
+      }
+    } finally {
+      setTeamLoading(false);
+    }
+  }
+
   return (
     <AppShell
       mobileOpen={open}
       onClose={() => setOpen(false)}
       onMenu={() => setOpen(true)}
     >
-      <section className="mx-auto max-w-[1150px] p-5 lg:p-8">
-          <h1 className="text-3xl font-bold">Settings</h1>
+      <div className="rk-page">
+        <PageHeader
+          eyebrow="Account"
+          title="Settings"
+          description="Manage your RENKOO account, workspace and security."
+          meta={
+            <>
+              {account?.user.email ? (
+                <span className="truncate">{account.user.email}</span>
+              ) : (
+                <span>Your account</span>
+              )}
+              <span aria-hidden>·</span>
+              <Badge
+                label={account?.membership?.role || 'MEMBER'}
+                tone="neutral"
+              />
+            </>
+          }
+        />
 
-          <p className="mt-2 text-sm text-slate-500">
-            Manage your RENKOO account, workspace and security.
-          </p>
+        <nav
+          aria-label="Settings sections"
+          className="mt-5 flex flex-wrap gap-2"
+        >
+          {(
+            [
+              { key: 'workspace', label: 'Workspace' },
+              { key: 'profile', label: 'Profile' },
+              { key: 'team', label: 'Team' },
+              { key: 'security', label: 'Security' },
+              { key: 'billing', label: 'Billing' },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => scrollToSection(tab.key)}
+              aria-current={activeTab === tab.key ? 'true' : undefined}
+              className={`rk-focusable rounded-rk-md px-4 py-2 text-[13px] font-bold transition ${
+                activeTab === tab.key
+                  ? 'bg-rk-ink text-white shadow-rk-sm'
+                  : 'border border-rk-border bg-rk-surface text-rk-secondary hover:border-rk-strong hover:text-rk-ink'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
 
-          {/* SECTION NAV — lightweight in-page anchor tabs */}
-          <nav
-            aria-label="Settings sections"
-            className="mt-6 flex flex-wrap gap-2"
-          >
-            {(
-              [
-                { key: 'workspace', label: 'Workspace' },
-                { key: 'profile', label: 'Profile' },
-                { key: 'team', label: 'Team' },
-                { key: 'security', label: 'Security' },
-                { key: 'billing', label: 'Billing' },
-              ] as const
-            ).map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => scrollToSection(tab.key)}
-                aria-current={activeTab === tab.key ? 'true' : undefined}
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                  activeTab === tab.key
-                    ? 'bg-slate-900 text-white'
-                    : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
-                }`}
+        {loading ? (
+          <div className="mt-4">
+            <LoadingBlock title="Loading account…" lines={4} />
+          </div>
+        ) : (
+          <div className="mt-6 space-y-6">
+
+            <div id="settings-profile" className="scroll-mt-24">
+              <Panel
+                eyebrow="Profile"
+                title="Personal account information"
+                description="Your personal RENKOO account information."
+                actions={
+                  <Badge
+                    label={account?.membership?.role || 'MEMBER'}
+                    tone="info"
+                  />
+                }
               >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-
-          {loading ? (
-            <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-500">
-              Loading account...
-            </div>
-          ) : (
-            <div className="mt-8 space-y-6">
-
-              {/* PROFILE */}
-              <section id="settings-profile" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="text-lg font-bold">Profile</h2>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Your personal RENKOO account information.
-                    </p>
-                  </div>
-
-                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600">
-                    {account?.membership?.role || 'MEMBER'}
-                  </span>
-                </div>
-
-                <div className="mt-6 grid gap-5 md:grid-cols-2">
-                  <div>
-                    <label className="text-sm font-semibold">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="block">
+                    <span className="rk-field-label">
                       Full name
-                    </label>
+                    </span>
 
                     <input
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                      className="rk-input mt-1.5"
                     />
-                  </div>
+                  </label>
 
                   <div>
-                    <label className="text-sm font-semibold">
-                      Email
-                    </label>
+                    <span className="rk-field-label">
+                      Email (read-only)
+                    </span>
 
                     <input
                       value={account?.user.email || ''}
                       disabled
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500"
+                      className="rk-input mt-1.5 opacity-70"
                     />
                   </div>
                 </div>
 
-                <div className="mt-5 flex items-center gap-4">
-                  <button
-                    onClick={handleProfileSave}
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <PrimaryButton
+                    onClick={() => void handleProfileSave()}
                     disabled={savingProfile}
-                    className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white disabled:opacity-50"
                   >
-                    {savingProfile ? 'Saving...' : 'Save profile'}
-                  </button>
+                    {savingProfile ? 'Saving…' : 'Save profile'}
+                  </PrimaryButton>
 
                   {profileMessage && (
-                    <span className="text-sm text-slate-500">
+                    <span className="rk-metadata">
                       {profileMessage}
                     </span>
                   )}
                 </div>
-              </section>
+              </Panel>
+            </div>
 
-              {/* WORKSPACE */}
-              <section id="settings-workspace" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h2 className="text-lg font-bold">Workspace</h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Your RENKOO business workspace.
-                </p>
-
-                <div className="mt-6 grid gap-5 md:grid-cols-2">
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <div id="settings-workspace" className="scroll-mt-24">
+              <Panel
+                eyebrow="Workspace"
+                title="Business workspace"
+                description="Your RENKOO business workspace."
+                actions={
+                  <Badge label="Read-only" tone="neutral" />
+                }
+              >
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                    <p className="rk-field-label">
                       Organization
-                    </div>
-                    <div className="mt-2 text-base font-semibold">
+                    </p>
+                    <p className="mt-1 font-bold text-rk-ink">
                       {account?.organization.name || '—'}
-                    </div>
+                    </p>
                   </div>
 
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                    <p className="rk-field-label">
                       Workspace slug
-                    </div>
-                    <div className="mt-2 text-base font-semibold">
+                    </p>
+                    <p className="rk-technical-value mt-1 !text-rk-ink">
                       {account?.organization.slug || '—'}
-                    </div>
+                    </p>
                   </div>
 
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                    <p className="rk-field-label">
                       Website
-                    </div>
-                    <div className="mt-2 text-base font-semibold">
+                    </p>
+                    <p className="mt-1 font-bold text-rk-ink">
                       {account?.website?.name || 'No website connected'}
-                    </div>
+                    </p>
 
                     {account?.website?.url && (
-                      <div className="mt-1 text-sm text-slate-500">
+                      <p className="rk-technical-value mt-0.5 !text-rk-muted">
                         {account.website.url}
-                      </div>
+                      </p>
                     )}
                   </div>
 
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                    <p className="rk-field-label">
                       Industry
-                    </div>
-                    <div className="mt-2 text-base font-semibold">
+                    </p>
+                    <p className="mt-1 font-bold text-rk-ink">
                       {account?.website?.industry || 'Not specified'}
-                    </div>
+                    </p>
                   </div>
                 </div>
-              </section>
+              </Panel>
+            </div>
 
-              {/* SECURITY */}
-              <section id="settings-security" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h2 className="text-lg font-bold">Security</h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Change your account password.
-                </p>
-
-                <div className="mt-6 grid gap-5 md:grid-cols-3">
-                  <label className="block text-xs font-semibold text-slate-600">
-                    Current password
+            <div id="settings-security" className="scroll-mt-24">
+              <Panel
+                eyebrow="Security"
+                title="Password & sessions"
+                description="Change your account password."
+              >
+                <div className="grid gap-4 md:grid-cols-3">
+                  <label className="block">
+                    <span className="rk-field-label">
+                      Current password
+                    </span>
                     <input
                       type="password"
                       placeholder="Current password"
@@ -323,12 +383,14 @@ const [open, setOpen] = useState(false);
                         setCurrentPassword(e.target.value)
                       }
                       autoComplete="current-password"
-                      className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                      className="rk-input mt-1.5"
                     />
                   </label>
 
-                  <label className="block text-xs font-semibold text-slate-600">
-                    New password
+                  <label className="block">
+                    <span className="rk-field-label">
+                      New password
+                    </span>
                     <input
                       type="password"
                       placeholder="New password"
@@ -337,12 +399,14 @@ const [open, setOpen] = useState(false);
                         setNewPassword(e.target.value)
                       }
                       autoComplete="new-password"
-                      className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                      className="rk-input mt-1.5"
                     />
                   </label>
 
-                  <label className="block text-xs font-semibold text-slate-600">
-                    Confirm new password
+                  <label className="block">
+                    <span className="rk-field-label">
+                      Confirm new password
+                    </span>
                     <input
                       type="password"
                       placeholder="Confirm new password"
@@ -351,227 +415,185 @@ const [open, setOpen] = useState(false);
                         setConfirmPassword(e.target.value)
                       }
                       autoComplete="new-password"
-                      className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                      className="rk-input mt-1.5"
                     />
                   </label>
                 </div>
 
-                <div className="mt-5 flex items-center gap-4">
-                  <button
-                    onClick={handlePasswordSave}
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <PrimaryButton
+                    onClick={() => void handlePasswordSave()}
                     disabled={savingPassword}
-                    className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-bold text-white disabled:opacity-50"
                   >
                     {savingPassword
-                      ? 'Updating...'
+                      ? 'Updating…'
                       : 'Update password'}
-                  </button>
+                  </PrimaryButton>
 
                   {passwordMessage && (
-                    <span className="text-sm text-slate-500">
+                    <span className="rk-metadata">
                       {passwordMessage}
                     </span>
                   )}
                 </div>
 
-                <div className="mt-6 border-t border-slate-100 pt-5">
-                  <p className="text-sm font-semibold text-slate-700">
+                <div className="mt-5 border-t border-rk-border pt-4">
+                  <p className="text-sm font-bold text-rk-ink">
                     Sign out of RENKOO on this device.
                   </p>
 
-                  <button
-                    type="button"
+                  <SecondaryButton
                     onClick={() => {
                       logout();
                       router.push('/login');
                       router.refresh();
                     }}
-                    className="mt-3 rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                    className="mt-3"
                   >
                     Log out
-                  </button>
+                  </SecondaryButton>
                 </div>
-              </section>
+              </Panel>
+            </div>
 
-              {/* ROLE FOCUS */}
-              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h2 className="text-lg font-bold">
-                  Your role
-                </h2>
+            <Panel
+              eyebrow="Role focus"
+              title="Your role"
+              description="What best describes your role? RENKOO re-orders dashboards, navigation and suggestions around it."
+            >
+              <PersonaSelector />
+            </Panel>
 
-                <p className="mt-1 text-sm text-slate-500">
-                  What best describes your role?
-                  RENKOO re-orders dashboards,
-                  navigation and suggestions
-                  around it.
-                </p>
-
-                <div className="mt-5">
-                  <PersonaSelector />
-                </div>
-              </section>
-
-              {/* BILLING */}
-              <section id="settings-billing" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h2 className="text-lg font-bold">Billing</h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Manage your RENKOO subscription, plan and usage.
-                </p>
-
-                <a
-                  href="/billing"
-                  className="mt-5 inline-flex rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white"
+            <div id="settings-billing" className="scroll-mt-24">
+              <Panel
+                eyebrow="Billing"
+                title="Subscription & usage"
+                description="Manage your RENKOO subscription, plan and usage."
+              >
+                <PrimaryButton
+                  onClick={() => router.push('/billing')}
                 >
                   Open billing
-                </a>
-              </section>
+                </PrimaryButton>
+              </Panel>
+            </div>
 
-              {/* TEAM — inside the main container like other sections */}
-              <section id="settings-team" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="mb-5">
-                  <h2 className="text-lg font-semibold text-slate-900">Team</h2>
-                  <p className="text-sm text-slate-500">
-                    Manage organization members and permissions.
-                  </p>
-                </div>
+            <div id="settings-team" className="scroll-mt-24">
+              <Panel
+                eyebrow="Team"
+                title="Members & permissions"
+                description="Manage organization members and permissions."
+                padded={false}
+              >
+                <div className="border-b border-rk-border bg-rk-soft/60 px-4 py-4 sm:px-5">
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      placeholder="team@example.com"
+                      aria-label="Team member email"
+                      className="rk-input flex-1"
+                    />
 
-                <div className="mb-6 flex flex-col gap-3 sm:flex-row">
-                  <input
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    placeholder="team@example.com"
-                    className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-slate-500"
-                  />
-
-                  <select
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value as "ADMIN" | "MEMBER")}
-                    className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm"
-                  >
-                    <option value="MEMBER">Member</option>
-                    <option value="ADMIN">Admin</option>
-                  </select>
-
-                  <button
-                    onClick={async () => {
-                      const trimmedEmail = inviteEmail.trim();
-                      if (!trimmedEmail) return;
-                      setTeamLoading(true);
-                      setTeamMessage("");
-                      setTeamLimit(null);
-                      try {
-                        await inviteTeamMember(trimmedEmail, inviteRole);
-                        setInviteEmail("");
-                        const refreshed = await getTeamMembers();
-                        setTeamMembers(refreshed);
-                        setTeamMessage(
-                          `Invite sent to ${trimmedEmail}. Member list refreshed — they will appear below once they accept.`
-                        );
-                      } catch (error) {
-                        if (isLimitError(error)) {
-                          setTeamLimit(error);
-                        } else {
-                          setTeamMessage(error instanceof Error ? error.message : "Failed to invite member.");
-                        }
-                      } finally {
-                        setTeamLoading(false);
-                      }
-                    }}
-                    disabled={teamLoading}
-                    className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
-                  >
-                    {teamLoading ? "Inviting..." : "Invite"}
-                  </button>
-                </div>
-
-                {teamMessage && (
-                  <div className="mb-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                    {teamMessage}
-                  </div>
-                )}
-
-                {teamLimit ? (
-                  <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                    <p className="font-bold text-amber-900">
-                      Free plan limit reached
-                    </p>
-
-                    <p className="mt-1">
-                      This workspace already uses
-                      its included team seat.
-                      {limitUsageText(teamLimit)
-                        ? ` ${limitUsageText(teamLimit)}.`
-                        : ''}
-                    </p>
-
-                    <a
-                      href="/billing"
-                      className="mt-3 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
+                    <select
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value as "ADMIN" | "MEMBER")}
+                      aria-label="Invite role"
+                      className="rk-input sm:w-auto"
                     >
-                      View plans
-                    </a>
+                      <option value="MEMBER">Member</option>
+                      <option value="ADMIN">Admin</option>
+                    </select>
+
+                    <PrimaryButton
+                      onClick={() => void handleInvite()}
+                      disabled={teamLoading}
+                    >
+                      {teamLoading ? "Inviting…" : "Invite"}
+                    </PrimaryButton>
                   </div>
-                ) : null}
 
-                <div className="divide-y divide-slate-100">
-                  {teamMembers.map((member) => (
-                    <div key={member.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <div className="font-medium text-slate-900">
-                          {member.user.name || member.user.email}
-                        </div>
-                        <div className="text-sm text-slate-500">{member.user.email}</div>
-                      </div>
+                  {teamMessage && (
+                    <p role="status" className="rk-metadata mt-2 !text-rk-ink">
+                      {teamMessage}
+                    </p>
+                  )}
 
-                      <div className="flex items-center gap-2">
-                        {member.role === "OWNER" ? (
-                          <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700">
-                            Owner
-                          </span>
-                        ) : (
-                          <>
-                            <select
-                              value={member.role}
-                              onChange={async (e) => {
-                                await updateTeamMemberRole(
-                                  member.id,
-                                  e.target.value as "ADMIN" | "MEMBER"
-                                );
-                                setTeamMembers(await getTeamMembers());
-                              }}
-                              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
-                            >
-                              <option value="MEMBER">Member</option>
-                              <option value="ADMIN">Admin</option>
-                            </select>
-
-                            <button
-                              onClick={async () => {
-                                await removeTeamMember(member.id);
-                                setTeamMembers(await getTeamMembers());
-                              }}
-                              className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600"
-                            >
-                              Remove
-                            </button>
-                          </>
-                        )}
-                      </div>
+                  {teamLimit ? (
+                    <div className="mt-3">
+                      <LimitReachedState
+                        title="Free plan limit reached"
+                        description={`This workspace already uses its included team seat.${limitUsageText(teamLimit) ? ` ${limitUsageText(teamLimit)}.` : ''}`}
+                        actionLabel="View plans"
+                        actionHref="/billing"
+                      />
                     </div>
-                  ))}
+                  ) : null}
+                </div>
 
-                  {teamMembers.length === 0 && (
-                    <div className="py-8 text-center text-sm text-slate-500">
-                      No team members found.
-                    </div>
+                <div className="px-2 py-2 sm:px-3">
+                  {teamMembers.length === 0 ? (
+                    <EmptyState
+                      title="No team members found"
+                      description="Invite your first team member above."
+                    />
+                  ) : (
+                    <ul className="divide-y divide-rk-border">
+                      {teamMembers.map((member) => (
+                        <li key={member.id} className="flex flex-col gap-3 px-3 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold text-rk-ink">
+                              {member.user.name || member.user.email}
+                            </p>
+                            <p className="rk-metadata mt-0.5 truncate">
+                              {member.user.email}
+                            </p>
+                          </div>
+
+                          <div className="flex shrink-0 items-center gap-2">
+                            {member.role === "OWNER" ? (
+                              <Badge label="Owner" tone="neutral" />
+                            ) : (
+                              <>
+                                <select
+                                  value={member.role}
+                                  onChange={async (e) => {
+                                    await updateTeamMemberRole(
+                                      member.id,
+                                      e.target.value as "ADMIN" | "MEMBER"
+                                    );
+                                    setTeamMembers(await getTeamMembers());
+                                  }}
+                                  aria-label={`Role for ${member.user.email}`}
+                                  className="rk-input w-auto"
+                                >
+                                  <option value="MEMBER">Member</option>
+                                  <option value="ADMIN">Admin</option>
+                                </select>
+
+                                <DangerButton
+                                  size="sm"
+                                  onClick={async () => {
+                                    await removeTeamMember(member.id);
+                                    setTeamMembers(await getTeamMembers());
+                                  }}
+                                >
+                                  Remove
+                                </DangerButton>
+                              </>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </div>
-              </section>
-
+              </Panel>
             </div>
-          )}
-        </section>
+
+          </div>
+        )}
+      </div>
     </AppShell>
   );
 }

@@ -79,20 +79,20 @@ export default function PersonaSelector() {
                 setDraft(id);
                 setMessage('');
               }}
-              className={`rounded-xl border p-4 text-left transition ${
+              className={`rk-focusable rounded-rk-md border p-4 text-left shadow-rk-sm transition-all ${
                 active
-                  ? 'border-slate-900 bg-slate-900 text-white'
-                  : 'border-slate-200 bg-white hover:border-slate-400'
+                  ? 'border-rk-ink bg-rk-ink text-white shadow-rk-md'
+                  : 'border-rk-border bg-rk-surface hover:border-rk-strong hover:shadow-rk-md'
               }`}
             >
               <span className="block text-sm font-bold">
                 {meta.label}
               </span>
               <span
-                className={`mt-1 block text-xs ${
+                className={`mt-1 block text-xs leading-5 ${
                   active
-                    ? 'text-slate-300'
-                    : 'text-slate-500'
+                    ? 'text-white/70'
+                    : 'text-rk-secondary'
                 }`}
               >
                 {meta.tagline}
@@ -109,13 +109,13 @@ export default function PersonaSelector() {
           disabled={
             loading || saving || !shown
           }
-          className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+          className="rk-focusable h-10 rounded-rk-md bg-rk-ink px-5 text-sm font-bold text-white shadow-rk-sm transition-all hover:opacity-90 hover:shadow-rk-md disabled:opacity-50 disabled:shadow-none"
         >
-          {saving ? 'Saving...' : 'Save role'}
+          {saving ? 'Saving…' : 'Save role'}
         </button>
 
         {source === 'default' && (
-          <span className="text-xs text-slate-500">
+          <span className="rk-metadata">
             Currently showing the suggested{' '}
             {
               PERSONA_META[effectivePersona]
@@ -126,13 +126,16 @@ export default function PersonaSelector() {
         )}
 
         {message && (
-          <span className="text-sm text-slate-600">
+          <span
+            role="status"
+            className="text-sm font-medium text-rk-secondary"
+          >
             {message}
           </span>
         )}
       </div>
 
-      <p className="mt-3 text-xs text-slate-400">
+      <p className="rk-metadata mt-3">
         Your role only changes how RENKOO
         prioritizes information. Team
         permissions are managed separately

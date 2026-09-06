@@ -541,10 +541,10 @@ export default function DataTable<T>({
                     }
                     className={
                       onRowClick
-                        ? 'rk-focusable cursor-pointer transition-colors hover:bg-rk-soft'
+                        ? 'rk-focusable rk-table-row cursor-pointer hover:bg-rk-soft'
                         : selected
-                          ? 'bg-rk-soft/60'
-                          : undefined
+                          ? 'rk-table-row bg-rk-soft/70'
+                          : 'rk-table-row hover:bg-rk-soft/50'
                     }
                   >
                     {expandable ? (

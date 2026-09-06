@@ -76,6 +76,7 @@ const config: Config = {
       boxShadow: {
         'rk-sm': 'var(--rk-shadow-sm)',
         'rk-md': 'var(--rk-shadow-md)',
+        'rk-lg': 'var(--rk-shadow-lg, 0 20px 60px rgba(19,19,22,.12))',
       },
       fontFamily: {
         sans: [

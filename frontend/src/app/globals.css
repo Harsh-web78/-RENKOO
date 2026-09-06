@@ -3,23 +3,24 @@
 @tailwind utilities;
 
 :root {
-  --rk-bg: #f7f8fa;
+  --rk-bg: #fafaf8;
   --rk-surface: #ffffff;
-  --rk-surface-soft: #f9fafb;
-  --rk-border: #e7e9ee;
-  --rk-border-strong: #d9dde5;
-  --rk-text: #111318;
-  --rk-text-secondary: #5f6673;
-  --rk-text-muted: #8b929f;
-  --rk-primary: #111318;
-  --rk-success: #16835b;
-  --rk-warning: #b7791f;
-  --rk-danger: #c24141;
+  --rk-surface-soft: #f6f6f4;
+  --rk-border: #e8e6e1;
+  --rk-border-strong: #d8d5cd;
+  --rk-text: #131316;
+  --rk-text-secondary: #5d5d67;
+  --rk-text-muted: #8e8e99;
+  --rk-primary: #131316;
+  --rk-success: #16794f;
+  --rk-warning: #a86a12;
+  --rk-danger: #bc3f3f;
   --rk-radius-sm: 8px;
   --rk-radius-md: 12px;
   --rk-radius-lg: 16px;
-  --rk-shadow-sm: 0 1px 2px rgba(16,24,40,.04);
-  --rk-shadow-md: 0 8px 24px rgba(16,24,40,.06);
+  --rk-shadow-sm: 0 1px 2px rgba(19,19,22,.05);
+  --rk-shadow-md: 0 8px 28px rgba(19,19,22,.08);
+  --rk-shadow-lg: 0 20px 60px rgba(19,19,22,.12);
 }
 
 * {
@@ -38,9 +39,7 @@ body {
 }
 
 body {
-  background:
-    radial-gradient(circle at 85% 0%, rgba(17,19,24,.025), transparent 28%),
-    var(--rk-bg);
+  background: var(--rk-bg);
   color: var(--rk-text);
   font-family:
     Inter,
@@ -52,6 +51,7 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  font-feature-settings: "cv11", "ss01";
 }
 
 button,
@@ -97,8 +97,33 @@ button {
   box-shadow: var(--rk-shadow-sm);
 }
 
-.rk-surface:hover {
-  border-color: var(--rk-border-strong);
+.rk-surface-interactive {
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rk-surface-interactive:hover {
+    border-color: var(--rk-border-strong);
+    box-shadow: var(--rk-shadow-md);
+    transform: translateY(-1px);
+  }
+}
+
+.rk-card {
+  background: var(--rk-surface);
+  border: 1px solid var(--rk-border);
+  border-radius: var(--rk-radius-lg);
+  box-shadow: var(--rk-shadow-sm);
+}
+
+.rk-card-padded {
+  padding: 20px;
+}
+
+@media (min-width: 640px) {
+  .rk-card-padded {
+    padding: 24px;
+  }
 }
 
 .rk-label {
@@ -161,8 +186,60 @@ button {
 }
 
 .input:focus {
-  border-color: #6b7280;
-  box-shadow: 0 0 0 3px rgba(17,19,24,.07);
+  border-color: var(--rk-text);
+  box-shadow: 0 0 0 3px rgba(19,19,22,.1);
+}
+
+.rk-input {
+  width: 100%;
+  height: 44px;
+  border-radius: var(--rk-radius-md);
+  border: 1px solid var(--rk-border);
+  background: var(--rk-surface);
+  padding: 0 14px;
+  font-size: 14px;
+  color: var(--rk-text);
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+.rk-input::placeholder {
+  color: var(--rk-text-muted);
+}
+
+.rk-input:hover {
+  border-color: var(--rk-border-strong);
+}
+
+.rk-input:focus {
+  border-color: var(--rk-text);
+  box-shadow: 0 0 0 3px rgba(19,19,22,.1);
+}
+
+.rk-input[aria-invalid="true"] {
+  border-color: var(--rk-danger);
+  box-shadow: 0 0 0 3px rgba(188,63,63,.12);
+}
+
+.rk-field-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--rk-text-secondary);
+}
+
+.rk-helper {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--rk-text-muted);
+}
+
+.rk-error-text {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rk-danger);
 }
 
 .input:disabled {
@@ -471,4 +548,178 @@ select.input:disabled {
   font-variant-numeric: tabular-nums;
   color: var(--rk-text-secondary);
   word-break: break-all;
+}
+
+/* =========================================================
+   RENKOO premium UI transformation — motion, overlays,
+   auth, tables, dialogs. Additive only; no backend impact.
+   ========================================================= */
+
+@keyframes rk-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes rk-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes rk-shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+
+.rk-animate-pop {
+  animation: rk-pop-in 180ms ease-out;
+}
+
+.rk-animate-fade {
+  animation: rk-fade-in 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rk-animate-pop,
+  .rk-animate-fade,
+  .rk-dashboard {
+    animation: none;
+  }
+}
+
+/* Premium buttons — base transitions for all V2 buttons */
+.rk-focusable {
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease, opacity 150ms ease, transform 150ms ease;
+}
+
+.rk-focusable:active:not(:disabled) {
+  transform: translateY(0.5px);
+}
+
+/* Tables — Linear/Stripe density */
+.rk-table-row {
+  transition: background-color 120ms ease;
+}
+
+.rk-table-row:hover {
+  background: var(--rk-surface-soft);
+}
+
+/* Auth — premium split layout */
+.rk-auth-grid {
+  display: grid;
+  min-height: 100vh;
+}
+
+@media (min-width: 1024px) {
+  .rk-auth-grid {
+    grid-template-columns: 1.05fr 1fr;
+  }
+}
+
+.rk-auth-panel {
+  background: #131316;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+}
+
+.rk-auth-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 20% 15%, rgba(255,255,255,.09), transparent 42%),
+    radial-gradient(circle at 85% 90%, rgba(255,255,255,.06), transparent 40%);
+  pointer-events: none;
+}
+
+.rk-auth-card {
+  background: var(--rk-surface);
+  border: 1px solid var(--rk-border);
+  border-radius: var(--rk-radius-lg);
+  box-shadow: var(--rk-shadow-md);
+}
+
+/* Dialogs */
+.rk-dialog-backdrop {
+  background: rgba(19,19,22,.48);
+  backdrop-filter: blur(2px);
+  animation: rk-fade-in 150ms ease-out;
+}
+
+.rk-dialog {
+  animation: rk-pop-in 200ms ease-out;
+  box-shadow: var(--rk-shadow-lg);
+}
+
+/* Dropdowns */
+.rk-dropdown {
+  animation: rk-pop-in 160ms ease-out;
+  box-shadow: var(--rk-shadow-md);
+}
+
+/* Skeleton shimmer */
+.rk-skeleton-shimmer {
+  background: linear-gradient(90deg, var(--rk-border) 25%, var(--rk-surface-soft) 50%, var(--rk-border) 75%);
+  background-size: 800px 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rk-skeleton-shimmer {
+    animation: rk-shimmer 1400ms ease-in-out infinite;
+  }
+}
+
+/* Scrollbars for nav */
+.rk-scroll-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.rk-scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--rk-border-strong);
+}
+
+/* Active nav indicator */
+.rk-nav-active {
+  position: relative;
+  box-shadow: 0 1px 2px rgba(19,19,22,.18);
+}
+
+/* Metric trend */
+.rk-trend-up {
+  color: var(--rk-success);
+}
+
+.rk-trend-down {
+  color: var(--rk-danger);
+}
+
+.rk-trend-flat {
+  color: var(--rk-text-muted);
+}
+
+/* Responsive content rhythm */
+.rk-page {
+  animation: rk-page-in 240ms ease-out;
+}
+
+@media (max-width: 640px) {
+  .rk-topbar {
+    backdrop-filter: blur(12px);
+  }
 }

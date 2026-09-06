@@ -2,13 +2,14 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Sparkles } from 'lucide-react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 import {
   getMe,
   isAuthenticated,
   register,
   clearToken,
 } from '../../lib/api';
+import AuthShell from '../../components/AuthShell';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -88,156 +89,185 @@ export default function SignupPage() {
     }
   }
 
+  const passwordMismatch =
+    confirmPassword.length > 0 && password !== confirmPassword;
+
   return (
-    <main className="min-h-screen bg-slate-50 flex items-center justify-center px-5 py-10">
-      <div className="w-full max-w-md">
+    <AuthShell
+      title="Create your account"
+      subtitle="Create your RENKOO workspace to turn growth data into actions."
+      footer={
+        <p className="text-center text-sm text-rk-secondary">
+          Already have an account?{' '}
+          <button
+            type="button"
+            onClick={() => router.push('/login')}
+            className="rk-focusable font-bold text-rk-ink underline decoration-rk-border-strong underline-offset-4 hover:decoration-rk-ink"
+          >
+            Sign in
+          </button>
+        </p>
+      }
+    >
+      {error ? (
+        <div
+          role="alert"
+          className="mb-5 flex items-start gap-2.5 rounded-rk-md border border-rk-danger/30 bg-rk-dangerSoft px-3.5 py-3 text-sm font-medium leading-5 text-rk-danger"
+        >
+          <AlertTriangle
+            size={16}
+            aria-hidden
+            className="mt-0.5 shrink-0"
+          />
+          <span>{error}</span>
+        </div>
+      ) : null}
 
-        {/* Brand */}
-        <div className="mb-8 text-center">
-          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-2xl font-black text-white">
-            R
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label
+              htmlFor="signup-name"
+              className="rk-field-label mb-1.5 block"
+            >
+              Your name
+            </label>
+
+            <input
+              id="signup-name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ava Sharma"
+              minLength={2}
+              required
+              autoComplete="name"
+              className="rk-input"
+            />
           </div>
 
-          <h1 className="mt-4 text-3xl font-bold text-slate-900">
-            RENKOO
-          </h1>
+          <div>
+            <label
+              htmlFor="signup-org"
+              className="rk-field-label mb-1.5 block"
+            >
+              Company
+            </label>
 
-          <p className="mt-1 text-sm text-blue-600">
-            AI Growth Operating System
-          </p>
+            <input
+              id="signup-org"
+              type="text"
+              value={organizationName}
+              onChange={(e) =>
+                setOrganizationName(e.target.value)
+              }
+              placeholder="Acme Inc"
+              minLength={2}
+              required
+              autoComplete="organization"
+              className="rk-input"
+            />
+          </div>
         </div>
 
-        {/* Card */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-7 shadow-sm">
+        <div>
+          <label
+            htmlFor="signup-email"
+            className="rk-field-label mb-1.5 block"
+          >
+            Work email
+          </label>
 
-          <div className="mb-6">
-            <div className="flex items-center gap-2">
-              <Sparkles size={19} className="text-blue-600" />
+          <input
+            id="signup-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@company.com"
+            required
+            autoComplete="email"
+            className="rk-input"
+          />
+        </div>
 
-              <h2 className="text-xl font-bold text-slate-900">
-                Create your account
-              </h2>
-            </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label
+              htmlFor="signup-password"
+              className="rk-field-label mb-1.5 block"
+            >
+              Password
+            </label>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Create your RENKOO workspace to get started.
-            </p>
+            <input
+              id="signup-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="8+ characters"
+              minLength={8}
+              required
+              autoComplete="new-password"
+              aria-invalid={passwordMismatch}
+              className="rk-input"
+            />
           </div>
 
-          {error && (
-            <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-              {error}
-            </div>
+          <div>
+            <label
+              htmlFor="signup-confirm"
+              className="rk-field-label mb-1.5 block"
+            >
+              Confirm
+            </label>
+
+            <input
+              id="signup-confirm"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) =>
+                setConfirmPassword(e.target.value)
+              }
+              placeholder="Repeat password"
+              minLength={8}
+              required
+              autoComplete="new-password"
+              aria-invalid={passwordMismatch}
+              className="rk-input"
+            />
+          </div>
+        </div>
+
+        {passwordMismatch ? (
+          <p role="alert" className="rk-error-text">
+            Passwords do not match.
+          </p>
+        ) : (
+          <p className="rk-helper">
+            Use at least 8 characters. You&apos;ll sign in
+            right after creating your workspace.
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="rk-focusable flex h-11 w-full items-center justify-center gap-2 rounded-rk-md bg-rk-ink text-sm font-bold text-white shadow-rk-sm transition-all hover:opacity-90 hover:shadow-rk-md disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+        >
+          {loading ? (
+            <>
+              <Loader2
+                size={16}
+                aria-hidden
+                className="animate-spin"
+              />
+              Creating account…
+            </>
+          ) : (
+            'Create account'
           )}
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-900">
-                Your name
-              </label>
-
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Your name"
-                minLength={2}
-                required
-                autoComplete="name"
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-900">
-                Company / Organization
-              </label>
-
-              <input
-                type="text"
-                value={organizationName}
-                onChange={(e) => setOrganizationName(e.target.value)}
-                placeholder="Your company name"
-                minLength={2}
-                required
-                autoComplete="organization"
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-900">
-                Email
-              </label>
-
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@company.com"
-                required
-                autoComplete="email"
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-900">
-                Password
-              </label>
-
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 8 characters"
-                minLength={8}
-                required
-                autoComplete="new-password"
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-900">
-                Confirm password
-              </label>
-
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Repeat your password"
-                minLength={8}
-                required
-                autoComplete="new-password"
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading ? 'Creating account...' : 'Create account'}
-            </button>
-          </form>
-
-          <p className="mt-6 text-center text-sm text-slate-500">
-            Already have an account?{' '}
-            <button
-              type="button"
-              onClick={() => router.push('/login')}
-              className="font-semibold text-blue-600 hover:text-blue-700 hover:underline"
-            >
-              Sign in
-            </button>
-          </p>
-
-        </div>
-      </div>
-    </main>
+        </button>
+      </form>
+    </AuthShell>
   );
 }

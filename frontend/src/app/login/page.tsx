@@ -2,12 +2,13 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Sparkles } from 'lucide-react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 import {
   getMe,
   isAuthenticated,
   login,
 } from '../../lib/api';
+import AuthShell from '../../components/AuthShell';
 
 function safeNextPath(value: string | null) {
   if (
@@ -92,112 +93,123 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 flex items-center justify-center px-5">
-      <div className="w-full max-w-md">
-
-        <div className="mb-8 text-center">
-          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-2xl font-black text-white">
-            R
-          </div>
-
-          <h1 className="mt-4 text-3xl font-bold text-slate-900">
-            RENKOO
-          </h1>
-
-          <p className="mt-1 text-sm text-blue-600">
-            AI Growth Operating System
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-7 shadow-sm">
-
-          <div className="mb-6">
-            <div className="flex items-center gap-2">
-              <Sparkles size={19} className="text-blue-600" />
-
-              <h2 className="text-xl font-bold">
-                Welcome back
-              </h2>
-            </div>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Sign in to your RENKOO workspace.
-            </p>
-          </div>
-
-          {error && (
-            <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-              {error}
-            </div>
-          )}
-
-          <form
-            onSubmit={handleSubmit}
-            className="space-y-5"
-          >
-            <div>
-              <label className="mb-2 block text-sm font-medium">
-                Email
-              </label>
-
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@company.com"
-                required
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium">
-                Password
-              </label>
-
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading ? 'Signing in...' : 'Sign in'}
-            </button>
-          </form>
-
-          <p className="mt-4 text-center text-sm text-slate-500">
-            Don't have an account?{' '}
+    <AuthShell
+      title="Welcome back"
+      subtitle="Sign in to your RENKOO workspace."
+      footer={
+        <>
+          <p className="text-center text-sm text-rk-secondary">
+            Don&apos;t have an account?{' '}
             <button
               type="button"
               onClick={() => router.push('/signup')}
-              className="font-semibold text-blue-600 hover:text-blue-700 hover:underline"
+              className="rk-focusable font-bold text-rk-ink underline decoration-rk-border-strong underline-offset-4 hover:decoration-rk-ink"
             >
               Create account
             </button>
           </p>
 
-          <p className="mt-4 text-center text-sm">
+          <p className="mt-3 text-center text-sm">
             <button
               type="button"
               onClick={() =>
                 router.push('/reset-password')
               }
-              className="font-semibold text-blue-600 hover:text-blue-700 hover:underline"
+              className="rk-focusable font-semibold text-rk-secondary underline decoration-rk-border underline-offset-4 hover:text-rk-ink"
             >
               Forgot your password?
             </button>
           </p>
+        </>
+      }
+    >
+      {error ? (
+        <div
+          role="alert"
+          className="mb-5 flex items-start gap-2.5 rounded-rk-md border border-rk-danger/30 bg-rk-dangerSoft px-3.5 py-3 text-sm font-medium leading-5 text-rk-danger"
+        >
+          <AlertTriangle
+            size={16}
+            aria-hidden
+            className="mt-0.5 shrink-0"
+          />
+          <span>{error}</span>
         </div>
-      </div>
-    </main>
+      ) : null}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label
+            htmlFor="login-email"
+            className="rk-field-label mb-1.5 block"
+          >
+            Email
+          </label>
+
+          <input
+            id="login-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@company.com"
+            required
+            autoComplete="email"
+            aria-invalid={Boolean(error)}
+            className="rk-input"
+          />
+        </div>
+
+        <div>
+          <div className="mb-1.5 flex items-center justify-between">
+            <label
+              htmlFor="login-password"
+              className="rk-field-label"
+            >
+              Password
+            </label>
+            <button
+              type="button"
+              onClick={() =>
+                router.push('/reset-password')
+              }
+              className="rk-focusable text-xs font-semibold text-rk-secondary hover:text-rk-ink"
+            >
+              Forgot?
+            </button>
+          </div>
+
+          <input
+            id="login-password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter your password"
+            required
+            autoComplete="current-password"
+            aria-invalid={Boolean(error)}
+            className="rk-input"
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading || !email.trim() || !password}
+          className="rk-focusable flex h-11 w-full items-center justify-center gap-2 rounded-rk-md bg-rk-ink text-sm font-bold text-white shadow-rk-sm transition-all hover:opacity-90 hover:shadow-rk-md disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+        >
+          {loading ? (
+            <>
+              <Loader2
+                size={16}
+                aria-hidden
+                className="animate-spin"
+              />
+              Signing in…
+            </>
+          ) : (
+            'Sign in'
+          )}
+        </button>
+      </form>
+    </AuthShell>
   );
 }

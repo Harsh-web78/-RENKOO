@@ -1,8 +1,16 @@
 'use client';
 
+/*
+ * RENKOO — Clients & Command Center (V2 design-system pass).
+ * UI ONLY: shared PageHeader / Panel / Metric / FilterBar /
+ * DataTable / badges / Drawer / ConfirmDialog / buttons /
+ * states. All client CRUD, website assignment, agency Q&A,
+ * Command Center data handling, drawers, forms, validation
+ * and business logic are unchanged.
+ */
+
 import AppShell from '@/components/AppShell';
-import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Badge,
   ConfirmDialog,
@@ -10,9 +18,18 @@ import {
   Drawer,
   DrawerMeta,
   DrawerSection,
+  EmptyState,
+  FilterBar,
+  LoadingBlock,
+  Metric,
+  PageHeader,
+  Panel,
+  PrimaryButton,
+  SecondaryButton,
   StatusBadge,
   type DataTableColumn,
 } from '@/components/ui';
+import { RefreshCw, Plus, X, AlertTriangle } from 'lucide-react';
 import {
   assignClientWebsite,
   askAgency,
@@ -47,6 +64,7 @@ export default function ClientsPage() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [clientSearch, setClientSearch] = useState('');
   const [form, setForm] = useState({
     name: '',
     company: '',
@@ -308,6 +326,21 @@ export default function ClientsPage() {
     return 'STABLE';
   }
 
+  const filteredClients = useMemo(() => {
+    const q = clientSearch.trim().toLowerCase();
+    if (!q) return clients;
+    return clients.filter((client) =>
+      `${client.name || ''} ${client.company || ''} ${client.email || ''}`
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [clients, clientSearch]);
+
+  const unassignedCount = useMemo(
+    () => websites.filter((site) => !site.clientId).length,
+    [websites],
+  );
+
   const drawerClient = drawerClientId
     ? (clients.find(
         (client) => client.id === drawerClientId,
@@ -324,47 +357,34 @@ export default function ClientsPage() {
           <div className="truncate text-sm font-bold text-rk-ink">
             {client.name}
           </div>
-          <div className="mt-0.5 truncate text-xs text-rk-muted">
+          <div className="rk-metadata mt-0.5 truncate">
             {client.company || client.email || '—'}
           </div>
         </div>
       ),
     },
     {
+      key: 'websites',
+      label: 'Websites',
+      priority: 'high',
+      render: (client) => (
+        <span className="rk-number text-sm font-bold text-rk-ink">
+          {websitesForClient(client).length}
+        </span>
+      ),
+    },
+    {
       key: 'attention',
-      label: 'Attention',
+      label: 'Status',
       priority: 'high',
       render: (client) => (
         <StatusBadge status={attentionOf(client)} />
       ),
     },
     {
-      key: 'websites',
-      label: 'Websites',
-      priority: 'medium',
-      render: (client) => (
-        <span className="text-sm font-bold tabular-nums text-rk-ink">
-          {websitesForClient(client).length}
-        </span>
-      ),
-    },
-    {
-      key: 'actions',
-      label: 'Actions',
-      priority: 'medium',
-      render: (client) => (
-        <span className="text-sm tabular-nums text-rk-secondary">
-          <b className="text-rk-ink">
-            {signalsForClient(client).actions}
-          </b>{' '}
-          open
-        </span>
-      ),
-    },
-    {
       key: 'activity',
       label: 'Last activity',
-      priority: 'low',
+      priority: 'medium',
       render: (client) => {
         const latest = signalsForClient(client).latest;
         if (!latest) {
@@ -377,7 +397,7 @@ export default function ClientsPage() {
             <div className="truncate text-xs font-semibold text-rk-ink">
               {latest.title}
             </div>
-            <div className="mt-0.5 whitespace-nowrap text-[11px] text-rk-muted">
+            <div className="rk-metadata mt-0.5 whitespace-nowrap">
               {new Date(
                 latest.createdAt,
               ).toLocaleDateString()}
@@ -386,29 +406,49 @@ export default function ClientsPage() {
         );
       },
     },
+    {
+      key: 'actions',
+      label: 'Actions',
+      priority: 'low',
+      align: 'right',
+      render: (client) => (
+        <span className="rk-number text-sm text-rk-secondary">
+          <b className="text-rk-ink">
+            {signalsForClient(client).actions}
+          </b>{' '}
+          open
+        </span>
+      ),
+    },
   ];
 
   function renderClientExpanded(client: AgencyClient) {
     const sites = websitesForClient(client);
     const signals = signalsForClient(client);
     return (
-      <div className="space-y-1 text-xs leading-5 text-rk-secondary">
-        <p>
-          <b className="text-rk-ink">Websites:</b>{' '}
-          {sites.length > 0
-            ? sites.map((site) => site.name).join(' · ')
-            : 'None assigned'}
-        </p>
-        <p>
-          <b className="text-rk-ink">Signals:</b>{' '}
-          {signals.high} high · {signals.actions} open
-          actions · {signals.alerts} alerts
-          {signals.missing ? ' · missing crawl data' : ''}
-        </p>
-        <p className="text-rk-muted">
-          Select the row for the full detail view.
-        </p>
-      </div>
+      <dl className="grid gap-x-6 gap-y-2 text-[13px] sm:grid-cols-2">
+        <div>
+          <dt className="rk-field-label">Websites</dt>
+          <dd className="mt-0.5 font-medium text-rk-ink">
+            {sites.length > 0
+              ? sites.map((site) => site.name).join(' · ')
+              : 'None assigned'}
+          </dd>
+        </div>
+        <div>
+          <dt className="rk-field-label">Signals</dt>
+          <dd className="mt-0.5 font-medium text-rk-ink">
+            {signals.high} high · {signals.actions} open
+            actions · {signals.alerts} alerts
+            {signals.missing ? ' · missing crawl data' : ''}
+          </dd>
+        </div>
+        <div className="sm:col-span-2">
+          <dd className="rk-metadata">
+            Open details for the full client workspace.
+          </dd>
+        </div>
+      </dl>
     );
   }
 
@@ -418,85 +458,144 @@ export default function ClientsPage() {
       onClose={() => setOpen(false)}
       onMenu={() => setOpen(true)}
     >
-      <section className="mx-auto max-w-[1500px] p-5 lg:p-8">
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-              Agency OS
-            </div>
-            <h1 className="mt-1 text-3xl font-bold">
-              Clients & Command Center
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-500">
-              Which workspaces need attention, and which client
-              owns each website. No cross-client data ever
-              leaves its workspace.
-            </p>
-          </div>
-
-          {error && (
-            <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-              {error}
-            </div>
-          )}
-
-          {loading ? (
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
-              Loading agency data...
-            </div>
-          ) : (
+      <div className="rk-page">
+        <PageHeader
+          eyebrow="Agency OS"
+          title="Clients & Command Center"
+          description="Which workspaces need attention, and which client owns each website. No cross-client data ever leaves its workspace."
+          meta={
             <>
-              <div className="mt-6 grid gap-4 sm:grid-cols-3">
-                <StatCard
-                  label="Websites"
-                  value={stats.totalWebsites}
-                  hint="Active workspaces"
-                />
-                <StatCard
-                  label="Needing attention"
-                  value={stats.needingAttention}
-                  hint="Open highs, actions, alerts"
-                  alert={stats.needingAttention > 0}
-                />
-                <StatCard
-                  label="Missing crawl data"
-                  value={stats.missingData}
-                  hint="No completed crawl"
-                />
+              <span>
+                {clients.length} clients · {websites.length}{' '}
+                websites
+              </span>
+              <span aria-hidden>·</span>
+              <span>
+                {stats.needingAttention} needing attention
+              </span>
+            </>
+          }
+          actions={
+            <SecondaryButton
+              onClick={() => void loadAll()}
+              disabled={loading}
+            >
+              <RefreshCw
+                size={14}
+                aria-hidden
+                className={loading ? 'animate-spin' : ''}
+              />
+              Refresh
+            </SecondaryButton>
+          }
+        />
+
+        {error ? (
+          <div className="mt-4">
+            <div
+              role="alert"
+              className="flex items-start gap-2.5 rounded-rk-md border border-rk-danger/30 bg-rk-dangerSoft px-3.5 py-3 text-sm font-medium leading-5 text-rk-danger"
+            >
+              <AlertTriangle
+                size={16}
+                aria-hidden
+                className="mt-0.5 shrink-0"
+              />
+              <span className="min-w-0 flex-1">{error}</span>
+              <button
+                type="button"
+                onClick={() => setError('')}
+                aria-label="Dismiss error"
+                className="rk-focusable grid h-7 w-7 shrink-0 place-items-center rounded-rk-sm hover:bg-rk-danger/10"
+              >
+                <X size={15} aria-hidden />
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {loading ? (
+          <div className="mt-4">
+            <LoadingBlock title="Loading agency data…" lines={5} />
+          </div>
+        ) : (
+          <>
+            <section aria-label="Agency metrics" className="mt-6">
+              <div className="mb-3 flex items-baseline justify-between gap-3">
+                <h2 className="text-[15px] font-extrabold tracking-[-0.015em] text-rk-ink">
+                  What needs attention?
+                </h2>
+                <p className="rk-metadata hidden sm:block">
+                  Across all client workspaces
+                </p>
               </div>
 
-              <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h2 className="text-sm font-bold">
-                  Ask across clients
-                </h2>
-                <div className="mt-2 flex flex-wrap gap-2">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+                  <Metric
+                    label="Websites"
+                    value={String(stats.totalWebsites)}
+                    detail="Active workspaces"
+                  />
+                </div>
+
+                <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+                  <Metric
+                    label="Needing attention"
+                    value={String(stats.needingAttention)}
+                    detail="Open highs, actions, alerts"
+                    tone={
+                      stats.needingAttention > 0
+                        ? 'warning'
+                        : 'neutral'
+                    }
+                  />
+                </div>
+
+                <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+                  <Metric
+                    label="Missing crawl data"
+                    value={String(stats.missingData)}
+                    detail="No completed crawl"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <div className="mt-6">
+              <Panel
+                eyebrow="Agency intelligence"
+                title="Ask across clients"
+                description="Deterministic answers from organization records — never invented."
+              >
+                <div className="flex flex-wrap gap-2">
                   {AGENCY_QUESTIONS.map((question) => (
-                    <button
+                    <SecondaryButton
                       key={question}
-                      type="button"
+                      size="sm"
                       disabled={askingAgency}
                       onClick={() =>
-                        handleAgencyQuestion(question)
+                        void handleAgencyQuestion(question)
                       }
-                      className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-900 disabled:opacity-60"
                     >
                       {question}
-                    </button>
+                    </SecondaryButton>
                   ))}
                 </div>
 
                 {askingAgency && (
-                  <p className="mt-3 text-xs text-slate-400">
-                    Reading organization records...
+                  <p className="rk-metadata mt-3">
+                    Reading organization records…
                   </p>
                 )}
 
                 {agencyAnswer && (
-                  <div className="mt-3 rounded-xl bg-slate-50 p-4">
-                    <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                      {agencyAnswer.confidence} confidence ·{' '}
+                  <div className="mt-4 rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                    <p className="rk-field-label">
+                      {agencyAnswer.confidence} confidence ·
                       deterministic
-                    </div>
-                    <p className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-800">
+                    </p>
+                    <p className="mt-1.5 whitespace-pre-line text-sm leading-6 text-rk-ink">
                       {agencyAnswer.answer}
                     </p>
                     {agencyAnswer.evidence.length >
@@ -507,7 +606,7 @@ export default function ClientsPage() {
                           .map((item, i) => (
                             <li
                               key={i}
-                              className="text-xs text-slate-500"
+                              className="rk-metadata"
                             >
                               · {item.entity || item.metric}
                               {item.value != null
@@ -519,79 +618,99 @@ export default function ClientsPage() {
                     )}
                   </div>
                 )}
-              </div>
+              </Panel>
+            </div>
 
-              <div className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="border-b border-slate-100 px-5 py-4">
-                  <h2 className="text-sm font-bold">
-                    Attention queue
-                  </h2>
-                </div>
-
-                {entries.length === 0 ? (
-                  <p className="p-6 text-sm text-slate-400">
-                    No websites yet.{' '}
-                    <Link
-                      href="/onboarding"
-                      className="font-semibold text-slate-700 underline underline-offset-2 hover:text-slate-900"
-                    >
-                      Add a website in onboarding
-                    </Link>{' '}
-                    to begin.
-                  </p>
-                ) : (
-                  <div className="divide-y divide-slate-100">
-                    {entries.map((entry) => (
-                      <div
-                        key={entry.website.id}
-                        className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-bold">
+            <div className="mt-6">
+              <Panel
+                eyebrow="Attention queue"
+                title="Websites by signal"
+                description="Assign every website to the client that owns it."
+                footer={
+                  unassignedCount > 0 ? (
+                    <span>
+                      <strong className="text-rk-ink">
+                        {unassignedCount} unassigned
+                      </strong>{' '}
+                      — assign them from the table below.
+                    </span>
+                  ) : undefined
+                }
+                padded={false}
+              >
+                <div className="px-2 py-2 sm:px-3">
+                  <DataTable
+                    caption="Attention queue"
+                    columns={[
+                      {
+                        key: 'website',
+                        label: 'Website',
+                        priority: 'high',
+                        render: (entry: CommandCenterEntry) => (
+                          <span className="block min-w-0">
+                            <span className="block truncate font-bold text-rk-ink">
                               {entry.website.name}
                             </span>
-                            {entry.client ? (
-                              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
-                                {entry.client.name}
-                              </span>
-                            ) : (
-                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">
-                                UNASSIGNED
-                              </span>
-                            )}
-                            {entry.missingData && (
-                              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
-                                NO CRAWL DATA
-                              </span>
-                            )}
-                          </div>
-                          <div className="mt-0.5 truncate text-xs text-slate-400">
-                            {entry.website.url}
-                            {entry.latestReport &&
-                              ` · latest report: ${entry.latestReport.title}`}
-                          </div>
-                        </div>
-
-                        <div className="flex shrink-0 items-center gap-3 text-xs text-slate-500">
-                          <span>
-                            <b className="text-slate-900">
+                            <span className="rk-metadata mt-0.5 block truncate">
+                              {entry.website.url}
+                              {entry.latestReport &&
+                                ` · ${entry.latestReport.title}`}
+                            </span>
+                          </span>
+                        ),
+                      },
+                      {
+                        key: 'client',
+                        label: 'Client',
+                        priority: 'high',
+                        render: (entry: CommandCenterEntry) =>
+                          entry.client ? (
+                            <Badge
+                              label={entry.client.name}
+                              tone="info"
+                            />
+                          ) : (
+                            <Badge
+                              label="Unassigned"
+                              tone="neutral"
+                            />
+                          ),
+                      },
+                      {
+                        key: 'signals',
+                        label: 'Signals',
+                        priority: 'medium',
+                        render: (entry: CommandCenterEntry) => (
+                          <span className="rk-number whitespace-nowrap text-[13px] text-rk-secondary">
+                            <b className="text-rk-ink">
                               {entry.highOpportunities}
                             </b>{' '}
-                            high
-                          </span>
-                          <span>
-                            <b className="text-slate-900">
+                            high ·{' '}
+                            <b className="text-rk-ink">
                               {entry.openActions}
                             </b>{' '}
-                            actions
-                          </span>
-                          <span>
-                            <b className="text-slate-900">
+                            actions ·{' '}
+                            <b className="text-rk-ink">
                               {entry.activeAlerts}
                             </b>{' '}
                             alerts
+                            {entry.missingData ? (
+                              <>
+                                {' '}·{' '}
+                                <Badge
+                                  label="No crawl data"
+                                  tone="warning"
+                                />
+                              </>
+                            ) : null}
                           </span>
+                        ),
+                      },
+                      {
+                        key: 'assign',
+                        label: 'Assign',
+                        priority: 'medium',
+                        render: (entry: CommandCenterEntry) => (
                           <select
                             value={
                               assignMap[entry.website.id] ??
@@ -611,7 +730,11 @@ export default function ClientsPage() {
                                 value,
                               );
                             }}
-                            className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold outline-none"
+                            aria-label={`Assign ${entry.website.name} to a client`}
+                            className="rk-input w-auto"
+                            onClick={(e) =>
+                              e.stopPropagation()
+                            }
                           >
                             <option value="">
                               No client
@@ -631,154 +754,166 @@ export default function ClientsPage() {
                                 </option>
                               ))}
                           </select>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                        ),
+                      },
+                    ]}
+                    rows={entries}
+                    keyOf={(entry) => entry.website.id}
+                    emptyTitle="No websites yet"
+                    emptyDescription="Add a website in onboarding to begin."
+                    emptyActionLabel="Open onboarding"
+                    emptyActionHref="/onboarding"
+                    pageSize={8}
+                  />
+                </div>
+              </Panel>
+            </div>
 
-              <div className="mt-6 grid gap-6 xl:grid-cols-[380px_1fr]">
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <h2 className="text-sm font-bold">
-                    New client
-                  </h2>
-                  <div className="mt-3 space-y-2">
-                    <label className="block text-xs font-semibold text-slate-600">
+            <div className="mt-6">
+              <FilterBar
+                searchValue={clientSearch}
+                searchPlaceholder="Search clients…"
+                onSearchChange={setClientSearch}
+                meta={
+                  filteredClients.length !== clients.length
+                    ? `Showing ${filteredClients.length} of ${clients.length} clients`
+                    : `${clients.length} clients`
+                }
+              />
+            </div>
+
+            <div className="mt-6 grid gap-6 xl:grid-cols-[380px_1fr]">
+              <Panel
+                eyebrow="New client"
+                title="Add a client"
+                description="Notes stay internal — shared reports never include them."
+              >
+                <div className="space-y-3">
+                  <label className="block">
+                    <span className="rk-field-label">
                       Client name
-                      <input
-                        value={form.name}
-                        onChange={(e) =>
-                          setForm((prev) => ({
-                            ...prev,
-                            name: e.target.value,
-                          }))
-                        }
-                        placeholder="Client name *"
-                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-normal outline-none"
-                      />
-                    </label>
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Company
-                      <input
-                        value={form.company}
-                        onChange={(e) =>
-                          setForm((prev) => ({
-                            ...prev,
-                            company: e.target.value,
-                          }))
-                        }
-                        placeholder="Company (optional)"
-                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-normal outline-none"
-                      />
-                    </label>
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Email
-                      <input
-                        value={form.email}
-                        onChange={(e) =>
-                          setForm((prev) => ({
-                            ...prev,
-                            email: e.target.value,
-                          }))
-                        }
-                        placeholder="Email (optional)"
-                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-normal outline-none"
-                      />
-                    </label>
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Internal notes
-                      <textarea
-                        value={form.notes}
-                        onChange={(e) =>
-                          setForm((prev) => ({
-                            ...prev,
-                            notes: e.target.value,
-                          }))
-                        }
-                        placeholder="Internal notes (never shared with clients)"
-                        rows={3}
-                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-normal outline-none"
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={handleCreate}
-                      disabled={loading}
-                      className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-50"
-                    >
-                      {loading ? 'Adding…' : 'Add client'}
-                    </button>
-                    <p className="text-[11px] leading-4 text-slate-400">
-                      Notes stay internal — shared reports never
-                      include them.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-                  <div className="border-b border-slate-100 px-5 py-4">
-                    <h2 className="text-sm font-bold">
-                      Clients ({clients.length})
-                    </h2>
-                  </div>
-
-                  <div className="p-4">
-                    <DataTable<AgencyClient>
-                      caption="Clients"
-                      columns={clientColumns}
-                      rows={clients}
-                      keyOf={(client) => client.id}
-                      emptyTitle="No clients yet"
-                      emptyDescription="Freelancers can skip clients and work per-website; agencies add one per customer."
-                      emptyActionLabel="Open onboarding"
-                      emptyActionHref="/onboarding"
-                      onRowClick={(client) =>
-                        setDrawerClientId(client.id)
+                    </span>
+                    <input
+                      value={form.name}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          name: e.target.value,
+                        }))
                       }
-                      renderExpanded={renderClientExpanded}
-                      rowActions={(client) => [
-                        {
-                          label: 'Details',
-                          onSelect: () =>
-                            setDrawerClientId(client.id),
-                        },
-                        {
-                          label:
-                            client.status === 'ACTIVE'
-                              ? 'Archive'
-                              : 'Restore',
-                          onSelect: () =>
-                            handleToggleStatus(client),
-                        },
-                        {
-                          label: 'Delete',
-                          onSelect: () => {
-                            setDeleteError(null);
-                            setDeleteTarget(client);
-                          },
-                        },
-                      ]}
+                      placeholder="Client name *"
+                      className="rk-input mt-1.5"
                     />
-                  </div>
+                  </label>
+                  <label className="block">
+                    <span className="rk-field-label">
+                      Company
+                    </span>
+                    <input
+                      value={form.company}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          company: e.target.value,
+                        }))
+                      }
+                      placeholder="Company (optional)"
+                      className="rk-input mt-1.5"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="rk-field-label">
+                      Email
+                    </span>
+                    <input
+                      value={form.email}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          email: e.target.value,
+                        }))
+                      }
+                      placeholder="Email (optional)"
+                      className="rk-input mt-1.5"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="rk-field-label">
+                      Internal notes
+                    </span>
+                    <textarea
+                      value={form.notes}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          notes: e.target.value,
+                        }))
+                      }
+                      placeholder="Internal notes (never shared with clients)"
+                      rows={3}
+                      className="rk-input mt-1.5 resize-y"
+                    />
+                  </label>
+                  <PrimaryButton
+                    onClick={() => void handleCreate()}
+                    disabled={loading}
+                    className="w-full"
+                  >
+                    <Plus size={14} aria-hidden />
+                    {loading ? 'Adding…' : 'Add client'}
+                  </PrimaryButton>
                 </div>
-              </div>
+              </Panel>
 
-              {websites.filter((site) => !site.clientId)
-                .length > 0 && (
-                <p className="mt-4 text-xs text-slate-400">
-                  {
-                    websites.filter(
-                      (site) => !site.clientId,
-                    ).length
-                  }{' '}
-                  websites are unassigned — assign them from the
-                  attention queue above.
-                </p>
-              )}
-            </>
-          )}
-        </section>
+              <Panel
+                eyebrow="Clients"
+                title={`All clients (${filteredClients.length})`}
+                description="Expand a row for lightweight signals. Open details for the full client workspace."
+                padded={false}
+              >
+                <div className="px-2 py-2 sm:px-3">
+                  <DataTable<AgencyClient>
+                    caption="Clients"
+                    columns={clientColumns}
+                    rows={filteredClients}
+                    keyOf={(client) => client.id}
+                    emptyTitle="No clients yet"
+                    emptyDescription="Freelancers can skip clients and work per-website; agencies add one per customer."
+                    emptyActionLabel="Open onboarding"
+                    emptyActionHref="/onboarding"
+                    onRowClick={(client) =>
+                      setDrawerClientId(client.id)
+                    }
+                    renderExpanded={renderClientExpanded}
+                    rowActions={(client) => [
+                      {
+                        label: 'Details',
+                        onSelect: () =>
+                          setDrawerClientId(client.id),
+                      },
+                      {
+                        label:
+                          client.status === 'ACTIVE'
+                            ? 'Archive'
+                            : 'Restore',
+                        onSelect: () =>
+                          void handleToggleStatus(client),
+                      },
+                      {
+                        label: 'Delete',
+                        onSelect: () => {
+                          setDeleteError(null);
+                          setDeleteTarget(client);
+                        },
+                      },
+                    ]}
+                  />
+                </div>
+              </Panel>
+            </div>
+          </>
+        )}
+      </div>
 
       <Drawer
         open={drawerClient !== null}
@@ -801,7 +936,7 @@ export default function ClientsPage() {
               (site) => !site.clientId,
             )}
             onAssign={(websiteId, clientId) =>
-              handleAssign(websiteId, clientId)
+              void handleAssign(websiteId, clientId)
             }
           />
         ) : null}
@@ -901,16 +1036,12 @@ function ClientDetailBody({
 
       <DrawerSection title="Assigned websites">
         {sites.length === 0 ? (
-          <p className="text-xs text-rk-muted">
-            No websites assigned yet.{' '}
-            <Link
-              href="/onboarding"
-              className="font-semibold text-rk-ink underline underline-offset-2"
-            >
-              Add a website in onboarding
-            </Link>
-            .
-          </p>
+          <EmptyState
+            title="No websites assigned yet"
+            description="Assign a website from the attention queue, or add one in onboarding."
+            actionLabel="Open onboarding"
+            actionHref="/onboarding"
+          />
         ) : (
           <ul className="space-y-2">
             {sites.map((site) => {
@@ -920,41 +1051,40 @@ function ClientDetailBody({
               return (
                 <li
                   key={site.id}
-                  className="rounded-rk-md border border-rk-border px-3 py-2"
+                  className="rounded-rk-md border border-rk-border bg-rk-surface px-3 py-2.5"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <div className="truncate text-sm font-bold text-rk-ink">
                         {site.name}
                       </div>
-                      <div className="truncate text-[11px] text-rk-muted">
+                      <div className="rk-technical-value mt-0.5 truncate !text-rk-muted">
                         {site.url}
                       </div>
                     </div>
-                    <button
-                      type="button"
+                    <SecondaryButton
+                      size="sm"
                       onClick={() => onAssign(site.id, '')}
-                      className="rk-focusable shrink-0 rounded-rk-sm border border-rk-border px-2 py-1 text-[11px] font-bold text-rk-secondary hover:text-rk-ink"
                     >
                       Unassign
-                    </button>
+                    </SecondaryButton>
                   </div>
                   {entry ? (
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-rk-secondary">
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-rk-secondary">
                       <span>
-                        <b className="text-rk-ink">
+                        <b className="rk-number text-rk-ink">
                           {entry.highOpportunities}
                         </b>{' '}
                         high
                       </span>
                       <span>
-                        <b className="text-rk-ink">
+                        <b className="rk-number text-rk-ink">
                           {entry.openActions}
                         </b>{' '}
                         actions
                       </span>
                       <span>
-                        <b className="text-rk-ink">
+                        <b className="rk-number text-rk-ink">
                           {entry.activeAlerts}
                         </b>{' '}
                         alerts
@@ -967,7 +1097,7 @@ function ClientDetailBody({
                       ) : null}
                     </div>
                   ) : (
-                    <p className="mt-1 text-[11px] text-rk-muted">
+                    <p className="rk-metadata mt-1">
                       No Command Center signals recorded.
                     </p>
                   )}
@@ -988,7 +1118,7 @@ function ClientDetailBody({
                   onAssign(e.target.value, client.id);
                 }
               }}
-              className="input mt-1"
+              className="rk-input mt-1.5"
             >
               <option value="">Select website…</option>
               {unassigned.map((site) => (
@@ -1003,7 +1133,7 @@ function ClientDetailBody({
 
       <DrawerSection title="Growth signals">
         {related.length === 0 ? (
-          <p className="text-xs text-rk-muted">
+          <p className="rk-metadata">
             No Command Center signals for this client yet.
           </p>
         ) : (
@@ -1038,7 +1168,7 @@ function ClientDetailBody({
 
       <DrawerSection title="Recent reports">
         {recentReports.length === 0 ? (
-          <p className="text-xs text-rk-muted">
+          <p className="rk-metadata">
             No reports recorded for this client&apos;s
             websites yet.
           </p>
@@ -1061,35 +1191,6 @@ function ClientDetailBody({
           </ul>
         )}
       </DrawerSection>
-    </div>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  hint,
-  alert,
-}: {
-  label: string;
-  value: number;
-  hint: string;
-  alert?: boolean;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-          {label}
-        </span>
-        {alert && (
-          <span className="h-2 w-2 rounded-full bg-slate-900" />
-        )}
-      </div>
-      <div className="mt-2 text-3xl font-bold">{value}</div>
-      <div className="mt-1 text-xs text-slate-400">
-        {hint}
-      </div>
     </div>
   );
 }

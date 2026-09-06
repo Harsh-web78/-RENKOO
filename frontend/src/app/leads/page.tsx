@@ -1,5 +1,13 @@
 ﻿'use client';
 
+/*
+ * RENKOO — Leads & Revenue (V2 design-system pass).
+ * UI ONLY: shared PageHeader / Panel / Metric / FilterBar /
+ * DataTable / badges / buttons / states. All API calls, lead
+ * + revenue data handling, attribution logic, forms, validation,
+ * dialogs, filters and business logic are unchanged.
+ */
+
 import {
   FormEvent,
   ReactNode,
@@ -8,20 +16,35 @@ import {
 } from 'react';
 
 import {
-  Users,
   RefreshCw,
   Plus,
   AlertTriangle,
   X,
-  Pencil,
-  Trash2,
   CheckCircle2,
   IndianRupee,
-  Wallet,
   ArrowUpRight,
 } from 'lucide-react';
 
 import AppShell from '../../components/AppShell';
+import PageHeader from '../../components/ui/PageHeader';
+import Panel from '../../components/ui/Panel';
+import SharedMetric from '../../components/ui/Metric';
+import FilterBar from '../../components/ui/FilterBar';
+import DataTable, {
+  type DataTableColumn,
+} from '../../components/ui/DataTable';
+import {
+  Badge,
+} from '../../components/ui/badge';
+import {
+  PrimaryButton,
+  SecondaryButton,
+} from '../../components/ui/buttons';
+import {
+  EmptyState,
+  ErrorState,
+  LoadingBlock,
+} from '../../components/ui/states';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Link from 'next/link';
 
@@ -44,6 +67,8 @@ import {
   RevenueSummary,
   OutcomeResponse,
 } from '../../lib/api';
+
+const STORAGE_KEY = 'renkoo_website_id';
 
 type DateRangeKey =
   | 'LAST_7'
@@ -149,6 +174,31 @@ const emptyRevenueForm: RevenueForm = {
   status: 'RECOGNIZED',
   description: '',
 };
+
+/*
+ * Lead status → shared badge tone. Meaning stays in text;
+ * tone only reinforces it.
+ */
+function leadStatusTone(
+  status: string,
+): 'neutral' | 'info' | 'positive' | 'warning' | 'danger' {
+  const normalized = status.toUpperCase();
+
+  if (normalized === 'CONVERTED') return 'positive';
+  if (normalized === 'QUALIFIED') return 'info';
+  if (normalized === 'CONTACTED') return 'warning';
+  if (normalized === 'LOST') return 'danger';
+
+  return 'neutral';
+}
+
+function revenueStatusTone(
+  status: string,
+): 'neutral' | 'info' | 'positive' | 'warning' | 'danger' {
+  return status.toUpperCase() === 'RECOGNIZED'
+    ? 'positive'
+    : 'neutral';
+}
 
 /*
  * =========================================================
@@ -293,7 +343,16 @@ export default function LeadsPage() {
       setWebsites(safeWebsites);
 
       if (safeWebsites.length > 0) {
-        setWebsiteId(safeWebsites[0].id);
+        const stored =
+          typeof window !== 'undefined'
+            ? localStorage.getItem(STORAGE_KEY)
+            : null;
+        const valid =
+          stored &&
+          safeWebsites.some((site) => site.id === stored)
+            ? stored
+            : safeWebsites[0].id;
+        setWebsiteId(valid);
       } else {
         setWebsiteId('');
         setLeads([]);
@@ -310,6 +369,14 @@ export default function LeadsPage() {
       );
 
       setLoading(false);
+    }
+  }
+
+  function handleWebsiteChange(id: string) {
+    setWebsiteId(id);
+    if (typeof window !== 'undefined') {
+      if (id) localStorage.setItem(STORAGE_KEY, id);
+      else localStorage.removeItem(STORAGE_KEY);
     }
   }
 
@@ -845,45 +912,6 @@ export default function LeadsPage() {
 
   /*
    * =========================================================
-   * STATUS STYLE
-   * =========================================================
-   */
-
-  function getStatusClass(
-    status: string,
-  ) {
-    const normalized =
-      status.toUpperCase();
-
-    if (
-      normalized === 'CONVERTED'
-    ) {
-      return 'bg-emerald-50 text-emerald-700';
-    }
-
-    if (
-      normalized === 'QUALIFIED'
-    ) {
-      return 'bg-blue-50 text-blue-700';
-    }
-
-    if (
-      normalized === 'CONTACTED'
-    ) {
-      return 'bg-violet-50 text-violet-700';
-    }
-
-    if (
-      normalized === 'LOST'
-    ) {
-      return 'bg-red-50 text-red-700';
-    }
-
-    return 'bg-slate-100 text-slate-700';
-  }
-
-  /*
-   * =========================================================
    * HELPERS
    * =========================================================
    */
@@ -902,6 +930,191 @@ export default function LeadsPage() {
     ).toLocaleString('en-IN')}`;
   }
 
+  const activeWebsite =
+    websites.find((site) => site.id === websiteId) || null;
+
+  const dateLabel =
+    DATE_RANGES.find((range) => range.key === dateRange)?.label ?? '';
+
+  const revenueValue = (() => {
+    if (
+      revenueSummary == null &&
+      summary == null
+    ) {
+      return '—';
+    }
+
+    const revenueRaw =
+      revenueSummary != null &&
+      (revenueSummary as any)
+        .totalRevenue !==
+        undefined
+        ? (revenueSummary as any)
+            .totalRevenue
+        : summary != null &&
+            (summary as any)
+              .revenue !==
+              undefined
+          ? (summary as any)
+              .revenue
+          : undefined;
+
+    if (
+      revenueRaw == null &&
+      (revenueSummary != null ||
+        summary != null)
+    ) {
+      return 'Not measurable — no leads recorded';
+    }
+
+    return formatMoney(
+      revenueRaw ?? 0,
+    );
+  })();
+
+  const leadColumns: DataTableColumn<Lead>[] = [
+    {
+      key: 'lead',
+      label: 'Lead',
+      priority: 'high',
+      render: (lead) => (
+        <span className="block min-w-0">
+          <span className="block truncate font-bold text-rk-ink">
+            {lead.name || 'Unnamed lead'}
+          </span>
+          <span className="rk-metadata mt-0.5 block truncate">
+            {lead.email || lead.phone || '—'}
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      priority: 'high',
+      render: (lead) => (
+        <Badge
+          label={lead.status || 'NEW'}
+          tone={leadStatusTone(lead.status || 'NEW')}
+        />
+      ),
+    },
+    {
+      key: 'value',
+      label: 'Value',
+      align: 'right',
+      priority: 'high',
+      render: (lead) => (
+        <span className="font-bold">
+          {formatMoney(lead.estimatedValue ?? 0)}
+        </span>
+      ),
+    },
+    {
+      key: 'source',
+      label: 'Source',
+      priority: 'medium',
+      render: (lead) => (
+        <Badge label={lead.source || 'Unknown'} tone="info" />
+      ),
+    },
+    {
+      key: 'company',
+      label: 'Company',
+      priority: 'low',
+      render: (lead) => lead.company || '—',
+    },
+    {
+      key: 'score',
+      label: 'Score',
+      align: 'right',
+      priority: 'low',
+      render: (lead) => (
+        <span className="font-bold">{lead.score ?? 0}</span>
+      ),
+    },
+  ];
+
+  const revenueColumns: DataTableColumn<Revenue>[] = [
+    {
+      key: 'lead',
+      label: 'Lead',
+      priority: 'high',
+      render: (revenue) => {
+        const linkedLead = leads.find(
+          (lead) => lead.id === revenue.leadId,
+        );
+        return (
+          <span className="block min-w-0">
+            <span className="block truncate font-bold text-rk-ink">
+              {linkedLead?.name ||
+                linkedLead?.email ||
+                'Direct Revenue'}
+            </span>
+            {linkedLead?.company ? (
+              <span className="rk-metadata mt-0.5 block truncate">
+                {linkedLead.company}
+              </span>
+            ) : null}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'amount',
+      label: 'Amount',
+      align: 'right',
+      priority: 'high',
+      render: (revenue) => (
+        <span className="font-bold text-rk-success">
+          {formatMoney(
+            revenue.amount ?? 0,
+            revenue.currency || 'INR',
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'date',
+      label: 'Date',
+      priority: 'medium',
+      render: (revenue) =>
+        revenue.recognizedAt
+          ? new Date(
+              revenue.recognizedAt,
+            ).toLocaleDateString('en-IN', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+            })
+          : '—',
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      priority: 'medium',
+      render: (revenue) => (
+        <Badge
+          label={revenue.status || 'RECOGNIZED'}
+          tone={revenueStatusTone(revenue.status || 'RECOGNIZED')}
+        />
+      ),
+    },
+    {
+      key: 'source',
+      label: 'Source',
+      priority: 'low',
+      render: (revenue) => revenue.source || '—',
+    },
+    {
+      key: 'description',
+      label: 'Description',
+      priority: 'low',
+      render: (revenue) =>
+        revenue.description || revenue.sourceDetail || '—',
+    },
+  ];
+
   /*
    * =========================================================
    * RENDER
@@ -914,821 +1127,464 @@ export default function LeadsPage() {
       onClose={() => setMobileOpen(false)}
       onMenu={() => setMobileOpen(true)}
     >
-      <div className="mx-auto max-w-7xl p-5 lg:p-8">
-
-          {/* =====================================================
-              HEADER
-          ====================================================== */}
-
-          <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Users
-                    size={23}
-                    className="text-blue-600"
-                  />
-
-                  <h1 className="text-2xl font-bold text-slate-900">
-                    Leads & Revenue
-                  </h1>
-                </div>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Track leads, pipeline value,
-                conversions, revenue and
-                acquisition sources.
-              </p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <select
-                value={websiteId}
-                onChange={(e) =>
-                  setWebsiteId(
-                    e.target.value,
-                  )
-                }
-                disabled={
-                  websites.length === 0
-                }
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {websites.map(
-                  (website) => (
-                    <option
-                      key={website.id}
-                      value={website.id}
-                    >
-                      {website.name}
-                    </option>
-                  ),
-                )}
-              </select>
-
-              <select
-                value={dateRange}
-                onChange={(e) =>
-                  setDateRange(
-                    e.target.value as DateRangeKey,
-                  )
-                }
-                disabled={!websiteId}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {DATE_RANGES.map(
-                  (range) => (
-                    <option
-                      key={range.key}
-                      value={range.key}
-                    >
-                      {range.label}
-                    </option>
-                  ),
-                )}
-              </select>
-
-              <button
-                type="button"
+      <div className="rk-page">
+        <PageHeader
+          eyebrow="Business impact"
+          title="Leads & Revenue"
+          description="Track leads, pipeline value, conversions, revenue and acquisition sources."
+          meta={
+            <>
+              {activeWebsite ? (
+                <span className="truncate">{activeWebsite.name}</span>
+              ) : (
+                <span>No website selected</span>
+              )}
+              <span aria-hidden>·</span>
+              <span>{dateLabel}</span>
+              <span aria-hidden>·</span>
+              <span>
+                {leads.length} leads · {revenues.length} transactions
+              </span>
+            </>
+          }
+          actions={
+            <>
+              <SecondaryButton
                 onClick={loadData}
-                disabled={
-                  loading ||
-                  !websiteId
-                }
-                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={loading || !websiteId}
               >
                 <RefreshCw
-                  size={15}
-                  className={
-                    loading
-                      ? 'animate-spin'
-                      : ''
-                  }
+                  size={14}
+                  aria-hidden
+                  className={loading ? 'animate-spin' : ''}
                 />
-
                 Refresh
-              </button>
-            </div>
-          </header>
+              </SecondaryButton>
 
-          {/* =====================================================
-              ERROR
-          ====================================================== */}
-
-          {error && (
-            <div className="mt-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-              <AlertTriangle
-                size={18}
-                className="mt-0.5 shrink-0"
-              />
-
-              <div className="flex-1">
-                {error}
-              </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setError('')
-                }
-                className="rounded-lg p-1 hover:bg-red-100"
+              <SecondaryButton
+                onClick={() => openAddRevenue()}
+                disabled={!websiteId || loading}
               >
-                <X size={16} />
-              </button>
-            </div>
-          )}
+                <IndianRupee size={14} aria-hidden />
+                Add Revenue
+              </SecondaryButton>
 
-          {/* =====================================================
-              LEAD METRICS
-          ====================================================== */}
+              <PrimaryButton onClick={openAddLead}>
+                <Plus size={14} aria-hidden />
+                Add Lead
+              </PrimaryButton>
+            </>
+          }
+        />
 
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            <Metric
-              label="Total Leads"
-              value={
-                summary?.total ??
-                leads.length
-              }
-            />
-
-            <Metric
-              label="New"
-              value={
-                summary == null
-                  ? '—'
-                  : (summary.new ?? 0)
-              }
-            />
-
-            <Metric
-              label="Qualified"
-              value={
-                summary == null
-                  ? '—'
-                  : (summary.qualified ?? 0)
-              }
-            />
-
-            <Metric
-              label="Converted"
-              value={
-                summary == null
-                  ? '—'
-                  : (summary.converted ?? 0)
-              }
-            />
-
-            <Metric
-              label="Conversion Rate"
-              value={
-                summary == null
-                  ? '—'
-                  : summary.conversionRate == null
-                    ? 'Not measurable — no leads recorded'
-                    : `${summary.conversionRate}%`
-              }
-            />
-          </div>
-
-          {/* =====================================================
-              VALUE METRICS
-          ====================================================== */}
-
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <Metric
-              label="Pipeline Value"
-              value={
-                summary == null
-                  ? '—'
-                  : formatMoney(
-                      summary.pipelineValue ??
-                        0,
-                    )
-              }
-            />
-
-            <Metric
-              label="Revenue"
-              value={(() => {
-                if (
-                  revenueSummary == null &&
-                  summary == null
-                ) {
-                  return '—';
-                }
-
-                const revenueRaw =
-                  revenueSummary != null &&
-                  (revenueSummary as any)
-                    .totalRevenue !==
-                    undefined
-                    ? (revenueSummary as any)
-                        .totalRevenue
-                    : summary != null &&
-                        (summary as any)
-                          .revenue !==
-                          undefined
-                      ? (summary as any)
-                          .revenue
-                      : undefined;
-
-                if (
-                  revenueRaw == null &&
-                  (revenueSummary != null ||
-                    summary != null)
-                ) {
-                  return 'Not measurable — no leads recorded';
-                }
-
-                return formatMoney(
-                  revenueRaw ?? 0,
-                );
-              })()}
-            />
-          </div>
-
-          <OutcomeSection
-            outcome={outcome}
-            outcomeError={outcomeError}
-            dateLabel={
-              DATE_RANGES.find(
-                (range) =>
-                  range.key ===
-                  dateRange,
-              )?.label ?? ''
-            }
-            onGapAction={
-              handleGapAction
-            }
-            gapActionMap={
-              gapActionMap
+        {/* Website + period — shared FilterBar */}
+        <div className="mt-5">
+          <FilterBar
+            selects={[
+              {
+                key: 'website',
+                label: 'Website',
+                value: websiteId,
+                options: websites.map((website) => ({
+                  value: website.id,
+                  label: website.name,
+                })),
+                onChange: handleWebsiteChange,
+              },
+              {
+                key: 'period',
+                label: 'Period',
+                value: dateRange,
+                options: DATE_RANGES.map((range) => ({
+                  value: range.key,
+                  label: range.label,
+                })),
+                onChange: (value) =>
+                  setDateRange(value as DateRangeKey),
+              },
+            ]}
+            meta={
+              activeWebsite
+                ? `Showing pipeline for ${activeWebsite.name}`
+                : 'Select a website to load its pipeline'
             }
           />
+        </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-            <Link
-              href="/roi"
-              className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:underline"
+        {error ? (
+          <div className="mt-4">
+            <div
+              role="alert"
+              className="flex items-start gap-2.5 rounded-rk-md border border-rk-danger/30 bg-rk-dangerSoft px-3.5 py-3 text-sm font-medium leading-5 text-rk-danger"
             >
-              Open Revenue Intelligence
-              <ArrowUpRight size={13} />
-            </Link>
+              <AlertTriangle
+                size={16}
+                aria-hidden
+                className="mt-0.5 shrink-0"
+              />
+              <span className="min-w-0 flex-1">{error}</span>
+              <button
+                type="button"
+                onClick={() => setError('')}
+                aria-label="Dismiss error"
+                className="rk-focusable grid h-7 w-7 shrink-0 place-items-center rounded-rk-sm hover:bg-rk-danger/10"
+              >
+                <X size={15} aria-hidden />
+              </button>
+            </div>
           </div>
+        ) : null}
 
-          {/* =====================================================
-              LEAD PIPELINE
-          ====================================================== */}
-
-          <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-
-            <div className="flex flex-col gap-3 border-b border-slate-100 p-5 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-sm font-bold text-slate-900">
-                  Lead Pipeline
+        {loading ? (
+          <div className="mt-4">
+            <LoadingBlock title="Loading leads and revenue…" lines={5} />
+          </div>
+        ) : (
+          <>
+            {/* What happened — pipeline metrics */}
+            <section aria-label="Lead metrics" className="mt-6">
+              <div className="mb-3 flex items-baseline justify-between gap-3">
+                <h2 className="text-[15px] font-extrabold tracking-[-0.015em] text-rk-ink">
+                  What happened?
                 </h2>
-
-                <p className="mt-1 text-xs text-slate-500">
-                  Latest captured leads
+                <p className="rk-metadata hidden sm:block">
+                  Leads captured in range
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={
-                  openAddLead
-                }
-                disabled={
-                  !websiteId ||
-                  loading
-                }
-                className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Plus size={15} />
-                Add Lead
-              </button>
-            </div>
-
-            {loading ? (
-              <div className="flex items-center justify-center p-12">
-                <RefreshCw
-                  size={22}
-                  className="animate-spin text-blue-600"
-                />
-              </div>
-            ) : leads.length ===
-              0 ? (
-              <div className="p-12 text-center">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
-                  <Users
-                    size={21}
-                    className="text-slate-500"
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+                <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm">
+                  <SharedMetric
+                    label="Total Leads"
+                    value={String(summary?.total ?? leads.length)}
                   />
                 </div>
 
-                <div className="mt-4 text-sm font-semibold text-slate-800">
-                  No leads captured yet.
+                <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm">
+                  <SharedMetric
+                    label="New"
+                    value={
+                      summary == null
+                        ? '—'
+                        : String(summary.new ?? 0)
+                    }
+                  />
                 </div>
 
-                <p className="mt-1 text-xs text-slate-500">
-                  Add your first lead to
-                  start tracking your
-                  pipeline.
-                </p>
+                <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm">
+                  <SharedMetric
+                    label="Qualified"
+                    value={
+                      summary == null
+                        ? '—'
+                        : String(summary.qualified ?? 0)
+                    }
+                    tone="neutral"
+                  />
+                </div>
 
-                <button
-                  type="button"
-                  onClick={
-                    openAddLead
-                  }
-                  className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-                >
-                  <Plus size={14} />
-                  Add First Lead
-                </button>
+                <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm">
+                  <SharedMetric
+                    label="Converted"
+                    value={
+                      summary == null
+                        ? '—'
+                        : String(summary.converted ?? 0)
+                    }
+                    tone="positive"
+                  />
+                </div>
+
+                <div className="col-span-2 rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:col-span-1">
+                  <SharedMetric
+                    label="Conversion Rate"
+                    value={
+                      summary == null
+                        ? '—'
+                        : summary.conversionRate == null
+                          ? '—'
+                          : `${summary.conversionRate}%`
+                    }
+                    detail={
+                      summary != null &&
+                      summary.conversionRate == null
+                        ? 'Not measurable — no leads recorded'
+                        : undefined
+                    }
+                  />
+                </div>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1050px] text-left text-sm">
+            </section>
 
-                  <thead className="bg-slate-50 text-xs text-slate-500">
-                    <tr>
-                      <th className="px-5 py-3 font-semibold">
-                        Lead
-                      </th>
+            {/* How much — value metrics */}
+            <section aria-label="Value metrics" className="mt-6">
+              <div className="mb-3 flex items-baseline justify-between gap-3">
+                <h2 className="text-[15px] font-extrabold tracking-[-0.015em] text-rk-ink">
+                  How much revenue did it generate?
+                </h2>
+              </div>
 
-                      <th className="px-5 py-3 font-semibold">
-                        Company
-                      </th>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+                  <SharedMetric
+                    label="Pipeline Value"
+                    value={
+                      summary == null
+                        ? '—'
+                        : formatMoney(summary.pipelineValue ?? 0)
+                    }
+                    detail="Estimated value of open pipeline"
+                  />
+                </div>
 
-                      <th className="px-5 py-3 font-semibold">
-                        Source
-                      </th>
+                <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+                  <SharedMetric
+                    label="Revenue"
+                    value={revenueValue}
+                    detail="Recognized transactions in range"
+                    tone="positive"
+                  />
+                </div>
+              </div>
+            </section>
 
-                      <th className="px-5 py-3 font-semibold">
-                        Status
-                      </th>
+            <OutcomeSection
+              outcome={outcome}
+              outcomeError={outcomeError}
+              dateLabel={dateLabel}
+              onGapAction={handleGapAction}
+              gapActionMap={gapActionMap}
+            />
 
-                      <th className="px-5 py-3 font-semibold">
-                        Score
-                      </th>
+            <p className="mt-3">
+              <Link
+                href="/roi"
+                className="rk-focusable inline-flex items-center gap-1 text-[13px] font-bold text-rk-ink underline decoration-rk-border-strong underline-offset-4 hover:decoration-rk-ink"
+              >
+                Open Revenue Intelligence
+                <ArrowUpRight size={13} aria-hidden />
+              </Link>
+            </p>
 
-                      <th className="px-5 py-3 font-semibold">
-                        Value
-                      </th>
+            {/* Lead pipeline — shared DataTable */}
+            <div id="leads-pipeline" className="mt-6 scroll-mt-24">
+              <Panel
+                eyebrow="Pipeline"
+                title="Lead Pipeline"
+                description="Latest captured leads."
+                actions={
+                  <SecondaryButton
+                    size="sm"
+                    onClick={openAddLead}
+                    disabled={!websiteId || loading}
+                  >
+                    <Plus size={14} aria-hidden />
+                    Add Lead
+                  </SecondaryButton>
+                }
+                padded={false}
+              >
+                <div className="px-2 py-2 sm:px-3">
+                  <DataTable
+                    caption="Lead pipeline"
+                    columns={leadColumns}
+                    rows={leads}
+                    keyOf={(lead) => lead.id}
+                    loading={false}
+                    emptyTitle="No leads captured yet"
+                    emptyDescription="Add your first lead to start tracking your pipeline."
+                    rowActions={(lead) => [
+                      ...(lead.status?.toUpperCase() !== 'CONVERTED'
+                        ? [
+                            {
+                              label: 'Revenue',
+                              onSelect: () =>
+                                openAddRevenue(lead),
+                            },
+                          ]
+                        : []),
+                      {
+                        label: 'Edit',
+                        onSelect: () => openEditLead(lead),
+                      },
+                      {
+                        label:
+                          deletingId === lead.id
+                            ? 'Deleting…'
+                            : 'Delete',
+                        onSelect: () =>
+                          handleDeleteLead(lead),
+                      },
+                    ]}
+                    renderExpanded={(lead) => (
+                      <dl className="grid gap-x-6 gap-y-2 text-[13px] sm:grid-cols-2">
+                        <div>
+                          <dt className="rk-field-label">Company</dt>
+                          <dd className="mt-0.5 font-medium text-rk-ink">
+                            {lead.company || '—'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="rk-field-label">Contact</dt>
+                          <dd className="mt-0.5 font-medium text-rk-ink">
+                            {[lead.email, lead.phone]
+                              .filter(Boolean)
+                              .join(' · ') || '—'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="rk-field-label">Source detail</dt>
+                          <dd className="mt-0.5 font-medium text-rk-ink">
+                            {lead.sourceDetail || '—'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="rk-field-label">Landing page</dt>
+                          <dd className="rk-technical-value mt-0.5 !text-rk-ink">
+                            {lead.landingPage || '—'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="rk-field-label">Keyword</dt>
+                          <dd className="mt-0.5 font-medium text-rk-ink">
+                            {lead.keyword || '—'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="rk-field-label">Notes</dt>
+                          <dd className="mt-0.5 font-medium text-rk-ink">
+                            {lead.notes || '—'}
+                          </dd>
+                        </div>
+                      </dl>
+                    )}
+                  />
+                </div>
+              </Panel>
+            </div>
 
-                      <th className="px-5 py-3 text-right font-semibold">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
+            {/* Revenue — shared DataTable */}
+            <div className="mt-6">
+              <Panel
+                eyebrow="Revenue"
+                title="Revenue"
+                description="Revenue generated from converted leads."
+                actions={
+                  <SecondaryButton
+                    size="sm"
+                    onClick={() => openAddRevenue()}
+                    disabled={!websiteId || loading}
+                  >
+                    <Plus size={14} aria-hidden />
+                    Add Revenue
+                  </SecondaryButton>
+                }
+                padded={false}
+              >
+                <div className="grid gap-px border-b border-rk-border bg-rk-border sm:grid-cols-3">
+                  <div className="bg-rk-surface px-4 py-3.5 sm:px-5">
+                    <SharedMetric
+                      label="Total Revenue"
+                      value={
+                        revenueSummary == null
+                          ? '—'
+                          : formatMoney(
+                              revenueSummary.totalRevenue ?? 0,
+                            )
+                      }
+                      tone="positive"
+                    />
+                  </div>
 
-                  <tbody className="divide-y divide-slate-100">
-                    {leads.map(
-                      (lead) => (
-                        <tr
-                          key={
-                            lead.id
-                          }
-                          className="transition hover:bg-slate-50"
+                  <div className="bg-rk-surface px-4 py-3.5 sm:px-5">
+                    <SharedMetric
+                      label="Transactions"
+                      value={
+                        revenueSummary == null
+                          ? '—'
+                          : String(revenueSummary.transactions ?? 0)
+                      }
+                    />
+                  </div>
+
+                  <div className="bg-rk-surface px-4 py-3.5 sm:px-5">
+                    <SharedMetric
+                      label="Average Revenue"
+                      value={
+                        revenueSummary == null
+                          ? '—'
+                          : formatMoney(
+                              revenueSummary.averageRevenue ?? 0,
+                            )
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="px-2 py-2 sm:px-3">
+                  <DataTable
+                    caption="Revenue transactions"
+                    columns={revenueColumns}
+                    rows={revenues}
+                    keyOf={(revenue) => revenue.id}
+                    loading={false}
+                    emptyTitle="No revenue recorded yet"
+                    emptyDescription="Add revenue when a lead converts."
+                    renderExpanded={(revenue) => (
+                      <dl className="grid gap-x-6 gap-y-2 text-[13px] sm:grid-cols-2">
+                        <div>
+                          <dt className="rk-field-label">Source detail</dt>
+                          <dd className="mt-0.5 font-medium text-rk-ink">
+                            {revenue.sourceDetail || '—'}
+                          </dd>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <dt className="rk-field-label">Description</dt>
+                          <dd className="mt-0.5 font-medium text-rk-ink">
+                            {revenue.description || '—'}
+                          </dd>
+                        </div>
+                      </dl>
+                    )}
+                  />
+                </div>
+              </Panel>
+            </div>
+
+            {/* Lead sources */}
+            <div className="mt-6">
+              <Panel
+                eyebrow="Acquisition"
+                title="Lead Sources"
+                description="Where pipeline originates."
+              >
+                {summary &&
+                Object.keys(summary.bySource || {}).length > 0 ? (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {Object.entries(summary.bySource || {}).map(
+                      ([source, count]) => (
+                        <div
+                          key={source}
+                          className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5"
                         >
-                          <td className="px-5 py-4">
-                            <div className="font-semibold text-slate-900">
-                              {lead.name ||
-                                'Unnamed lead'}
-                            </div>
-
-                            <div className="mt-1 text-xs text-slate-500">
-                              {lead.email ||
-                                lead.phone ||
-                                '—'}
-                            </div>
-                          </td>
-
-                          <td className="px-5 py-4 text-slate-600">
-                            {lead.company ||
-                              '—'}
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
-                              {lead.source ||
-                                'Unknown'}
-                            </span>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <span
-                              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusClass(
-                                lead.status ||
-                                  'NEW',
-                              )}`}
-                            >
-                              {lead.status ||
-                                'NEW'}
-                            </span>
-                          </td>
-
-                          <td className="px-5 py-4 font-bold text-slate-900">
-                            {lead.score ??
-                              0}
-                          </td>
-
-                          <td className="px-5 py-4 font-semibold text-slate-900">
-                            {formatMoney(
-                              lead.estimatedValue ??
-                                0,
-                            )}
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <div className="flex justify-end gap-2">
-
-                              {lead.status?.toUpperCase() !==
-                                'CONVERTED' && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    openAddRevenue(
-                                      lead,
-                                    )
-                                  }
-                                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50"
-                                >
-                                  <IndianRupee
-                                    size={
-                                      13
-                                    }
-                                  />
-                                  Revenue
-                                </button>
-                              )}
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  openEditLead(
-                                    lead,
-                                  )
-                                }
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                              >
-                                <Pencil
-                                  size={
-                                    13
-                                  }
-                                />
-                                Edit
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleDeleteLead(
-                                    lead,
-                                  )
-                                }
-                                disabled={
-                                  deletingId ===
-                                  lead.id
-                                }
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {deletingId ===
-                                lead.id ? (
-                                  <RefreshCw
-                                    size={
-                                      13
-                                    }
-                                    className="animate-spin"
-                                  />
-                                ) : (
-                                  <Trash2
-                                    size={
-                                      13
-                                    }
-                                  />
-                                )}
-
-                                Delete
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
+                          <p className="rk-field-label truncate">
+                            {source}
+                          </p>
+                          <p className="rk-number mt-1.5 text-xl font-extrabold">
+                            {String(count)}
+                          </p>
+                        </div>
                       ),
                     )}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-
-          {/* =====================================================
-              REVENUE SECTION
-          ====================================================== */}
-
-          <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-
-            <div className="flex flex-col gap-3 border-b border-slate-100 p-5 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Wallet
-                    size={18}
-                    className="text-emerald-600"
-                  />
-
-                  <h2 className="text-sm font-bold text-slate-900">
-                    Revenue
-                  </h2>
-                </div>
-
-                <p className="mt-1 text-xs text-slate-500">
-                  Revenue generated from
-                  converted leads
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  openAddRevenue()
-                }
-                disabled={
-                  !websiteId ||
-                  loading
-                }
-                className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Plus size={15} />
-                Add Revenue
-              </button>
-            </div>
-
-            {/* REVENUE SUMMARY */}
-
-            <div className="grid gap-4 border-b border-slate-100 p-5 sm:grid-cols-3">
-
-              <RevenueMetric
-                icon={
-                  <IndianRupee
-                    size={17}
-                  />
-                }
-                label="Total Revenue"
-                value={
-                  revenueSummary == null
-                    ? '—'
-                    : formatMoney(
-                        revenueSummary.totalRevenue ??
-                          0,
-                      )
-                }
-              />
-
-              <RevenueMetric
-                icon={
-                  <Wallet
-                    size={17}
-                  />
-                }
-                label="Transactions"
-                value={
-                  revenueSummary == null
-                    ? '—'
-                    : (revenueSummary.transactions ??
-                      0)
-                }
-              />
-
-              <RevenueMetric
-                icon={
-                  <ArrowUpRight
-                    size={17}
-                  />
-                }
-                label="Average Revenue"
-                value={
-                  revenueSummary == null
-                    ? '—'
-                    : formatMoney(
-                        revenueSummary.averageRevenue ??
-                          0,
-                      )
-                }
-              />
-
-            </div>
-
-            {/* REVENUE TABLE */}
-
-            {loading ? (
-              <div className="flex items-center justify-center p-10">
-                <RefreshCw
-                  size={20}
-                  className="animate-spin text-blue-600"
-                />
-              </div>
-            ) : revenues.length ===
-              0 ? (
-              <div className="p-10 text-center">
-                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-emerald-50">
-                  <Wallet
-                    size={19}
-                    className="text-emerald-600"
-                  />
-                </div>
-
-                <div className="mt-3 text-sm font-semibold text-slate-800">
-                  No revenue recorded yet.
-                </div>
-
-                <p className="mt-1 text-xs text-slate-500">
-                  Add revenue when a lead
-                  converts.
-                </p>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    openAddRevenue()
-                  }
-                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
-                >
-                  <Plus size={14} />
-                  Add Revenue
-                </button>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[900px] text-left text-sm">
-
-                  <thead className="bg-slate-50 text-xs text-slate-500">
-                    <tr>
-                      <th className="px-5 py-3 font-semibold">
-                        Date
-                      </th>
-
-                      <th className="px-5 py-3 font-semibold">
-                        Lead
-                      </th>
-
-                      <th className="px-5 py-3 font-semibold">
-                        Source
-                      </th>
-
-                      <th className="px-5 py-3 font-semibold">
-                        Description
-                      </th>
-
-                      <th className="px-5 py-3 font-semibold">
-                        Status
-                      </th>
-
-                      <th className="px-5 py-3 text-right font-semibold">
-                        Amount
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-slate-100">
-                    {revenues.map(
-                      (revenue) => {
-                        const linkedLead =
-                          leads.find(
-                            (lead) =>
-                              lead.id ===
-                              revenue.leadId,
-                          );
-
-                        return (
-                          <tr
-                            key={
-                              revenue.id
-                            }
-                            className="transition hover:bg-slate-50"
-                          >
-                            <td className="px-5 py-4 text-xs text-slate-500">
-                              {revenue.recognizedAt
-                                ? new Date(
-                                    revenue.recognizedAt,
-                                  ).toLocaleDateString(
-                                    'en-IN',
-                                    {
-                                      day: '2-digit',
-                                      month: 'short',
-                                      year: 'numeric',
-                                    },
-                                  )
-                                : '—'}
-                            </td>
-
-                            <td className="px-5 py-4">
-                              <div className="font-semibold text-slate-900">
-                                {linkedLead?.name ||
-                                  linkedLead?.email ||
-                                  'Direct Revenue'}
-                              </div>
-
-                              {linkedLead?.company && (
-                                <div className="mt-1 text-xs text-slate-500">
-                                  {
-                                    linkedLead.company
-                                  }
-                                </div>
-                              )}
-                            </td>
-
-                            <td className="px-5 py-4 text-xs text-slate-600">
-                              {revenue.source ||
-                                '—'}
-                            </td>
-
-                            <td className="max-w-[260px] px-5 py-4 text-xs text-slate-500">
-                              {revenue.description ||
-                                revenue.sourceDetail ||
-                                '—'}
-                            </td>
-
-                            <td className="px-5 py-4">
-                              <span
-                                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                                  revenue.status?.toUpperCase() ===
-                                  'RECOGNIZED'
-                                    ? 'bg-emerald-50 text-emerald-700'
-                                    : 'bg-slate-100 text-slate-700'
-                                }`}
-                              >
-                                {revenue.status ||
-                                  'RECOGNIZED'}
-                              </span>
-                            </td>
-
-                            <td className="px-5 py-4 text-right font-bold text-emerald-700">
-                              {formatMoney(
-                                revenue.amount ??
-                                  0,
-                                revenue.currency ||
-                                  'INR',
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      },
-                    )}
-                  </tbody>
-
-                </table>
-              </div>
-            )}
-          </section>
-
-          {/* =====================================================
-              LEAD SOURCES
-          ====================================================== */}
-
-          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-
-            <h2 className="text-sm font-bold text-slate-900">
-              Lead Sources
-            </h2>
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-
-              {Object.entries(
-                summary?.bySource ||
-                  {},
-              ).map(
-                ([source, count]) => (
-                  <div
-                    key={source}
-                    className="rounded-xl bg-slate-50 p-4"
-                  >
-                    <div className="text-xs font-medium text-slate-500">
-                      {source}
-                    </div>
-
-                    <div className="mt-2 text-xl font-bold text-slate-900">
-                      {String(count)}
-                    </div>
                   </div>
-                ),
-              )}
-
-              {(!summary ||
-                Object.keys(
-                  summary.bySource ||
-                    {},
-                ).length ===
-                  0) && (
-                <div className="text-xs text-slate-500">
-                  No source data yet.
-                </div>
-              )}
-
+                ) : (
+                  <p className="rk-metadata">No source data yet.</p>
+                )}
+              </Panel>
             </div>
-          </section>
-
-        </div>
+          </>
+        )}
+      </div>
 
       {/* =========================================================
           ADD / EDIT LEAD MODAL
@@ -1736,7 +1592,7 @@ export default function LeadsPage() {
 
       {showLeadModal && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"
+          className="rk-dialog-backdrop fixed inset-0 z-[100] flex items-center justify-center p-4"
           onMouseDown={(event) => {
             if (
               event.target ===
@@ -1746,17 +1602,21 @@ export default function LeadsPage() {
             }
           }}
         >
-          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white p-5">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={editingLead ? 'Edit lead' : 'Add lead'}
+            className="rk-dialog max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-rk-lg border border-rk-border bg-rk-surface"
+          >
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-rk-border bg-rk-surface p-5">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">
+                <h2 className="text-lg font-extrabold tracking-tight text-rk-ink">
                   {editingLead
                     ? 'Edit Lead'
                     : 'Add Lead'}
                 </h2>
 
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="rk-metadata mt-1">
                   {editingLead
                     ? 'Update lead information.'
                     : 'Capture a new lead in your pipeline.'}
@@ -1769,9 +1629,10 @@ export default function LeadsPage() {
                   closeLeadModal
                 }
                 disabled={saving}
-                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
+                aria-label="Close"
+                className="rk-focusable grid h-9 w-9 place-items-center rounded-rk-md text-rk-secondary hover:bg-rk-soft hover:text-rk-ink disabled:opacity-50"
               >
-                <X size={19} />
+                <X size={18} aria-hidden />
               </button>
             </div>
 
@@ -2061,39 +1922,38 @@ export default function LeadsPage() {
               </div>
 
               <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
+                <SecondaryButton
                   onClick={
                     closeLeadModal
                   }
                   disabled={saving}
-                  className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
                 >
                   Cancel
-                </button>
+                </SecondaryButton>
 
-                <button
+                <PrimaryButton
                   type="submit"
                   disabled={saving}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {saving ? (
                     <RefreshCw
                       size={15}
+                      aria-hidden
                       className="animate-spin"
                     />
                   ) : (
                     <CheckCircle2
                       size={15}
+                      aria-hidden
                     />
                   )}
 
                   {saving
-                    ? 'Saving...'
+                    ? 'Saving…'
                     : editingLead
                     ? 'Update Lead'
                     : 'Create Lead'}
-                </button>
+                </PrimaryButton>
               </div>
             </form>
           </div>
@@ -2101,13 +1961,13 @@ export default function LeadsPage() {
           <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
             <Link
               href="/opportunities"
-              className="font-semibold text-blue-700 hover:underline"
+              className="rk-focusable font-bold text-rk-ink underline decoration-rk-border-strong underline-offset-4 hover:decoration-rk-ink"
             >
               Review in Opportunities
             </Link>
             <Link
               href="/actions"
-              className="font-semibold text-blue-700 hover:underline"
+              className="rk-focusable font-bold text-rk-ink underline decoration-rk-border-strong underline-offset-4 hover:decoration-rk-ink"
             >
               Open Actions
             </Link>
@@ -2121,7 +1981,7 @@ export default function LeadsPage() {
 
       {showRevenueModal && (
         <div
-          className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"
+          className="rk-dialog-backdrop fixed inset-0 z-[110] flex items-center justify-center p-4"
           onMouseDown={(event) => {
             if (
               event.target ===
@@ -2131,24 +1991,30 @@ export default function LeadsPage() {
             }
           }}
         >
-          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white p-5">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Add revenue"
+            className="rk-dialog max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-rk-lg border border-rk-border bg-rk-surface"
+          >
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-rk-border bg-rk-surface p-5">
               <div>
-                <div className="flex items-center gap-2">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50">
+                <div className="flex items-center gap-2.5">
+                  <span
+                    aria-hidden
+                    className="grid h-9 w-9 place-items-center rounded-rk-md bg-rk-successSoft text-rk-success"
+                  >
                     <IndianRupee
                       size={18}
-                      className="text-emerald-600"
                     />
-                  </div>
+                  </span>
 
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900">
+                    <h2 className="text-lg font-extrabold tracking-tight text-rk-ink">
                       Add Revenue
                     </h2>
 
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="rk-metadata mt-1">
                       Record revenue generated
                       from your pipeline.
                     </p>
@@ -2164,9 +2030,10 @@ export default function LeadsPage() {
                 disabled={
                   savingRevenue
                 }
-                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
+                aria-label="Close"
+                className="rk-focusable grid h-9 w-9 place-items-center rounded-rk-md text-rk-secondary hover:bg-rk-soft hover:text-rk-ink disabled:opacity-50"
               >
-                <X size={19} />
+                <X size={18} aria-hidden />
               </button>
             </div>
 
@@ -2382,62 +2249,61 @@ export default function LeadsPage() {
               {/* INFO */}
 
               {revenueForm.leadId && (
-                <div className="mt-5 rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-xs text-emerald-800">
-                  <div className="font-semibold">
+                <div className="mt-5 rounded-rk-md border border-rk-success/30 bg-rk-successSoft px-4 py-3 text-xs leading-5 text-rk-ink">
+                  <p className="font-bold">
                     Lead conversion
-                  </div>
+                  </p>
 
-                  <div className="mt-1">
+                  <p className="mt-1 text-rk-secondary">
                     When this revenue is
                     created against a lead,
                     the backend will mark that
                     lead as{' '}
-                    <strong>
+                    <strong className="text-rk-ink">
                       CONVERTED
                     </strong>
                     .
-                  </div>
+                  </p>
                 </div>
               )}
 
               {/* ACTIONS */}
 
               <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
+                <SecondaryButton
                   onClick={
                     closeRevenueModal
                   }
                   disabled={
                     savingRevenue
                   }
-                  className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
                 >
                   Cancel
-                </button>
+                </SecondaryButton>
 
-                <button
+                <PrimaryButton
                   type="submit"
                   disabled={
                     savingRevenue
                   }
-                  className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {savingRevenue ? (
                     <RefreshCw
                       size={15}
+                      aria-hidden
                       className="animate-spin"
                     />
                   ) : (
                     <CheckCircle2
                       size={15}
+                      aria-hidden
                     />
                   )}
 
                   {savingRevenue
-                    ? 'Saving...'
+                    ? 'Saving…'
                     : 'Record Revenue'}
-                </button>
+                </PrimaryButton>
               </div>
             </form>
           </div>
@@ -2480,15 +2346,15 @@ function Field({
 }) {
   return (
     <label className="block">
-      <div className="mb-1.5 text-xs font-semibold text-slate-700">
+      <span className="rk-field-label mb-1.5 block">
         {label}
 
         {required && (
-          <span className="ml-1 text-red-500">
+          <span className="ml-1 text-rk-danger">
             *
           </span>
         )}
-      </div>
+      </span>
 
       {children}
     </label>
@@ -2497,33 +2363,7 @@ function Field({
 
 /*
  * =========================================================
- * METRIC
- * =========================================================
- */
-
-function Metric({
-  label,
-  value,
-}: {
-  label: string;
-  value: number | string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="text-xs font-medium text-slate-500">
-        {label}
-      </div>
-
-      <div className="mt-2 text-2xl font-bold text-slate-900">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-/*
- * =========================================================
- * OUTCOME SECTION
+ * OUTCOME SECTION — How confidently is it attributed?
  * =========================================================
  */
 
@@ -2547,17 +2387,25 @@ function OutcomeSection({
 }) {
   if (outcomeError && !outcome) {
     return (
-      <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
-        <div className="text-sm font-bold text-amber-800">
-          Outcome engine unavailable
-        </div>
+      <div className="mt-6">
+        <Panel
+          eyebrow="Outcome"
+          title="Business Outcome"
+          description="Traffic → leads → revenue attribution for the selected period."
+        >
+          <div className="rounded-rk-md border border-rk-warning/30 bg-rk-warningSoft px-4 py-3.5">
+            <p className="text-sm font-bold text-rk-ink">
+              Outcome engine unavailable
+            </p>
 
-        <p className="mt-1 text-xs text-amber-700">
-          {outcomeError} Lead and
-          revenue records below remain
-          fully available.
-        </p>
-      </section>
+            <p className="mt-1 text-xs leading-5 text-rk-secondary">
+              {outcomeError} Lead and
+              revenue records below remain
+              fully available.
+            </p>
+          </div>
+        </Panel>
+      </div>
     );
   }
 
@@ -2611,315 +2459,327 @@ function OutcomeSection({
   ];
 
   return (
-    <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-100 p-5">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-sm font-bold text-slate-900">
-            Business Outcome
-          </h2>
-
-          <span className="text-xs text-slate-400">
-            {dateLabel} · real records
-            only
-          </span>
-        </div>
-
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <div className="mt-6">
+      <Panel
+        eyebrow="Outcome"
+        title="Business Outcome"
+        description={`How confidently is revenue attributed? ${dateLabel} · real records only.`}
+      >
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {funnelStages.map(
             (stage) => (
               <div
                 key={stage.label}
-                className="rounded-xl border border-slate-100 bg-slate-50 p-4"
+                className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5"
               >
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                <p className="rk-label">
                   {stage.label}
-                </div>
+                </p>
 
-                <div className="mt-1 text-xl font-bold text-slate-900">
+                <p className="rk-number mt-1.5 truncate text-xl font-extrabold">
                   {stage.display}
-                </div>
+                </p>
 
                 {stage.availability &&
                   stage.availability !==
                     'AVAILABLE' && (
-                    <div className="mt-1 text-[11px] text-slate-400">
+                    <p className="rk-metadata mt-1">
                       {formatAvailability(
                         stage.availability,
                       )}
-                    </div>
+                    </p>
                   )}
               </div>
             ),
           )}
         </div>
 
-        <div className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs text-rk-secondary">
           Conversion rate:{' '}
-          <span className="font-bold text-slate-900">
+          <span className="font-bold text-rk-ink">
             {funnel.conversionRate !==
             null
               ? `${funnel.conversionRate}%`
               : '— (no leads in range)'}
           </span>
-        </div>
-      </div>
+        </p>
 
-      <div className="grid gap-0 lg:grid-cols-2">
-        <div className="border-b border-slate-100 p-5 lg:border-b-0 lg:border-r">
-          <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
-            Revenue attribution
-          </h3>
+        <div className="mt-5 grid gap-5 border-t border-rk-border pt-5 lg:grid-cols-2">
+          <div>
+            <h3 className="rk-label">
+              Revenue attribution
+            </h3>
 
-          <div className="mt-3 space-y-2">
-            <AttributionRow
-              label="Directly attributed (linked lead)"
-              count={
-                outcome.attribution
-                  .tiers
-                  .DIRECTLY_ATTRIBUTED
-                  ?.count ?? 0
-              }
-              amount={
-                outcome.attribution
-                  .tiers
-                  .DIRECTLY_ATTRIBUTED
-                  ?.amount ?? 0
-              }
-            />
+            <div className="mt-3 space-y-2">
+              <AttributionRow
+                label="Directly attributed (linked lead)"
+                count={
+                  outcome.attribution
+                    .tiers
+                    .DIRECTLY_ATTRIBUTED
+                    ?.count ?? 0
+                }
+                amount={
+                  outcome.attribution
+                    .tiers
+                    .DIRECTLY_ATTRIBUTED
+                    ?.amount ?? 0
+                }
+              />
 
-            <AttributionRow
-              label="Source recorded"
-              count={
-                outcome.attribution
-                  .tiers
-                  .SOURCE_RECORDED
-                  ?.count ?? 0
-              }
-              amount={
-                outcome.attribution
-                  .tiers
-                  .SOURCE_RECORDED
-                  ?.amount ?? 0
-              }
-            />
+              <AttributionRow
+                label="Source recorded"
+                count={
+                  outcome.attribution
+                    .tiers
+                    .SOURCE_RECORDED
+                    ?.count ?? 0
+                }
+                amount={
+                  outcome.attribution
+                    .tiers
+                    .SOURCE_RECORDED
+                    ?.amount ?? 0
+                }
+              />
 
-            <AttributionRow
-              label="Unattributed"
-              count={
-                outcome.attribution
-                  .tiers.UNATTRIBUTED
-                  ?.count ?? 0
-              }
-              amount={
-                outcome.attribution
-                  .tiers.UNATTRIBUTED
-                  ?.amount ?? 0
-              }
-            />
-          </div>
-
-          <div className="mt-3 text-xs text-slate-500">
-            Attribution coverage:{' '}
-            <span className="font-bold text-slate-900">
-              {coverage !== null
-                ? `${coverage}%`
-                : '— (no recognized revenue)'}
-            </span>
-          </div>
-        </div>
-
-        <div className="p-5">
-          <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
-            Attributed ROI
-          </h3>
-
-          {roi.measurable &&
-          roi.attributedRoi !==
-            null ? (
-            <div className="mt-3">
-              <div className="text-3xl font-bold text-slate-900">
-                {roi.attributedRoi}%
-              </div>
-
-              <p className="mt-1 text-xs text-slate-500">
-                {formatOutcomeMoney(
-                  roi.attributedRevenue,
-                )}{' '}
-                attributed revenue
-                against{' '}
-                {formatOutcomeMoney(
-                  roi.spend,
-                )}{' '}
-                spend.
-              </p>
+              <AttributionRow
+                label="Unattributed"
+                count={
+                  outcome.attribution
+                    .tiers.UNATTRIBUTED
+                    ?.count ?? 0
+                }
+                amount={
+                  outcome.attribution
+                    .tiers.UNATTRIBUTED
+                    ?.amount ?? 0
+                }
+              />
             </div>
-          ) : (
-            <p className="mt-3 text-xs leading-5 text-slate-500">
-              ROI unavailable —
-              insufficient
-              spend/attribution
-              data.
-              {roi.spend <= 0
-                ? ' No marketing spend is recorded in range.'
-                : ' No attributed revenue is recorded in range.'}
-            </p>
-          )}
 
-          <div className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">
-            <span className="font-semibold text-slate-700">
-              Recent 30d vs prior 30d:
-            </span>{' '}
-            leads{' '}
-            {
-              outcome.recentChanges
-                .leadsRecent
-            }{' '}
-            ({signed(
-              outcome.recentChanges
-                .leadsDelta,
+            <p className="mt-3 text-xs text-rk-secondary">
+              Attribution coverage:{' '}
+              <span className="font-bold text-rk-ink">
+                {coverage !== null
+                  ? `${coverage}%`
+                  : '— (no recognized revenue)'}
+              </span>
+            </p>
+          </div>
+
+          <div>
+            <h3 className="rk-label">
+              Attributed ROI
+            </h3>
+
+            {roi.measurable &&
+            roi.attributedRoi !==
+              null ? (
+              <div className="mt-3">
+                <p className="rk-number text-3xl font-extrabold">
+                  {roi.attributedRoi}%
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-rk-secondary">
+                  {formatOutcomeMoney(
+                    roi.attributedRevenue,
+                  )}{' '}
+                  attributed revenue
+                  against{' '}
+                  {formatOutcomeMoney(
+                    roi.spend,
+                  )}{' '}
+                  spend.
+                </p>
+              </div>
+            ) : (
+              <p className="mt-3 text-xs leading-5 text-rk-secondary">
+                ROI unavailable —
+                insufficient
+                spend/attribution
+                data.
+                {roi.spend <= 0
+                  ? ' No marketing spend is recorded in range.'
+                  : ' No attributed revenue is recorded in range.'}
+              </p>
             )}
-            ) · revenue{' '}
-            {formatOutcomeMoney(
-              outcome.recentChanges
-                .revenueRecent,
-            )}{' '}
-            ({signedMoney(
-              outcome.recentChanges
-                .revenueDelta,
-            )}
-            )
+
+            <div className="mt-4 border-t border-rk-border pt-3 text-xs leading-5 text-rk-secondary">
+              <span className="font-semibold text-rk-ink">
+                Recent 30d vs prior 30d:
+              </span>{' '}
+              leads{' '}
+              {
+                outcome.recentChanges
+                  .leadsRecent
+              }{' '}
+              ({signed(
+                outcome.recentChanges
+                  .leadsDelta,
+              )}
+              ) · revenue{' '}
+              {formatOutcomeMoney(
+                outcome.recentChanges
+                  .revenueRecent,
+              )}{' '}
+              ({signedMoney(
+                outcome.recentChanges
+                  .revenueDelta,
+              )}
+              )
+            </div>
           </div>
         </div>
-      </div>
 
-      {outcome.sources.length >
-        0 && (
-        <div className="border-t border-slate-100 p-5">
-          <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
-            Source performance
-          </h3>
+        {outcome.sources.length >
+          0 && (
+          <div className="mt-5 border-t border-rk-border pt-5">
+            <h3 className="rk-label">
+              Source performance
+            </h3>
 
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-[11px] uppercase tracking-wide text-slate-400">
-                  <th className="py-2 pr-3">
-                    Source
-                  </th>
-                  <th className="py-2 pr-3 text-right">
-                    Leads
-                  </th>
-                  <th className="py-2 pr-3 text-right">
-                    Conv.
-                  </th>
-                  <th className="py-2 pr-3 text-right">
-                    Attr. revenue
-                  </th>
-                  <th className="py-2 pr-3 text-right">
-                    Spend
-                  </th>
-                  <th className="py-2 text-right">
-                    ROI
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {outcome.sources.map(
-                  (row) => (
-                    <tr
-                      key={row.source}
-                      className="border-b border-slate-50 last:border-0"
-                    >
-                      <td className="py-2 pr-3 font-semibold text-slate-900">
+            <div className="mt-3">
+              <DataTable
+                caption="Outcome source performance"
+                columns={[
+                  {
+                    key: 'source',
+                    label: 'Source',
+                    priority: 'high',
+                    render: (row: (typeof outcome.sources)[number]) => (
+                      <span className="font-semibold">
                         {row.source}
-                      </td>
-                      <td className="py-2 pr-3 text-right tabular-nums">
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'leads',
+                    label: 'Leads',
+                    align: 'right',
+                    priority: 'high',
+                    render: (row: (typeof outcome.sources)[number]) => (
+                      <span className="tabular-nums">
                         {row.leads}
-                      </td>
-                      <td className="py-2 pr-3 text-right tabular-nums">
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'conversions',
+                    label: 'Conv.',
+                    align: 'right',
+                    priority: 'medium',
+                    render: (row: (typeof outcome.sources)[number]) => (
+                      <span className="tabular-nums">
                         {row.conversions}
                         {row.conversionRate !==
                         null
                           ? ` (${row.conversionRate}%)`
                           : ''}
-                      </td>
-                      <td className="py-2 pr-3 text-right tabular-nums">
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'revenue',
+                    label: 'Attr. revenue',
+                    align: 'right',
+                    priority: 'medium',
+                    render: (row: (typeof outcome.sources)[number]) => (
+                      <span className="tabular-nums">
                         {formatOutcomeMoney(
                           row.attributedRevenue,
                         )}
-                      </td>
-                      <td className="py-2 pr-3 text-right tabular-nums">
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'spend',
+                    label: 'Spend',
+                    align: 'right',
+                    priority: 'low',
+                    render: (row: (typeof outcome.sources)[number]) => (
+                      <span className="tabular-nums">
                         {formatOutcomeMoney(
                           row.spend,
                         )}
-                      </td>
-                      <td className="py-2 text-right tabular-nums font-semibold">
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'roi',
+                    label: 'ROI',
+                    align: 'right',
+                    priority: 'low',
+                    render: (row: (typeof outcome.sources)[number]) => (
+                      <span className="font-semibold tabular-nums">
                         {row.roi !== null
                           ? `${row.roi}%`
                           : '—'}
-                      </td>
-                    </tr>
-                  ),
-                )}
-              </tbody>
-            </table>
+                      </span>
+                    ),
+                  },
+                ]}
+                rows={outcome.sources}
+                keyOf={(row) => row.source}
+                loading={false}
+                density="compact"
+              />
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {outcome.conversionGaps
-        .length > 0 && (
-        <div className="border-t border-slate-100 bg-amber-50/50 p-5">
-          <h3 className="text-xs font-bold uppercase tracking-wide text-amber-800">
-            Outcome opportunities
-          </h3>
+        {outcome.conversionGaps
+          .length > 0 && (
+          <div className="mt-5 rounded-rk-md border border-rk-warning/30 bg-rk-warningSoft/50 px-4 py-3.5">
+            <h3 className="rk-label">
+              Outcome opportunities
+            </h3>
 
-          <div className="mt-3 space-y-2">
-            {outcome.conversionGaps.map(
-              (gap) => {
-                const busy =
-                  gapActionMap[
-                    gap.id
-                  ];
+            <div className="mt-3 space-y-2">
+              {outcome.conversionGaps.map(
+                (gap) => {
+                  const busy =
+                    gapActionMap[
+                      gap.id
+                    ];
 
-                return (
-                  <div
-                    key={gap.id}
-                    className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div>
-                      <div className="text-sm font-bold text-slate-900">
-                        {gap.title}
+                  return (
+                    <div
+                      key={gap.id}
+                      className="flex flex-col gap-2 rounded-rk-md border border-rk-border bg-rk-surface px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-rk-ink">
+                          {gap.title}
+                        </p>
+
+                        <p className="mt-0.5 text-xs leading-5 text-rk-secondary">
+                          {gap.description}
+                        </p>
                       </div>
 
-                      <p className="mt-0.5 text-xs leading-5 text-slate-500">
-                        {gap.description}
-                      </p>
+                      <PrimaryButton
+                        size="sm"
+                        disabled={busy}
+                        onClick={() =>
+                          onGapAction(
+                            gap.id,
+                          )
+                        }
+                      >
+                        {busy
+                          ? 'Added ✓'
+                          : 'Add to Actions'}
+                      </PrimaryButton>
                     </div>
-
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        onGapAction(
-                          gap.id,
-                        )
-                      }
-                      className="shrink-0 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white transition hover:bg-slate-700 disabled:opacity-60"
-                    >
-                      {busy
-                        ? 'Added ✓'
-                        : 'Add to Actions'}
-                    </button>
-                  </div>
-                );
-              },
-            )}
+                  );
+                },
+              )}
+            </div>
           </div>
-        </div>
-      )}
-    </section>
+        )}
+      </Panel>
+    </div>
   );
 }
 
@@ -2943,12 +2803,12 @@ function AttributionRow({
   amount: number;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-2.5">
-      <span className="text-xs font-semibold text-slate-600">
+    <div className="flex items-center justify-between gap-3 rounded-rk-md border border-rk-border bg-rk-soft px-4 py-2.5">
+      <span className="text-xs font-semibold text-rk-secondary">
         {label}
       </span>
 
-      <span className="text-xs tabular-nums text-slate-900">
+      <span className="text-xs tabular-nums text-rk-ink">
         <span className="font-bold">
           {count}
         </span>{' '}
@@ -2981,33 +2841,4 @@ function signedMoney(
   value: number,
 ) {
   return `${value > 0 ? '+' : ''}${formatOutcomeMoney(value)}`;
-}
-
-/*
- * =========================================================
- * REVENUE METRIC
- * =========================================================
- */
-
-function RevenueMetric({
-  icon,
-  label,
-  value,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: number | string;
-}) {
-  return (
-    <div className="rounded-xl bg-slate-50 p-4">
-      <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-        {icon}
-        {label}
-      </div>
-
-      <div className="mt-2 text-xl font-bold text-slate-900">
-        {value}
-      </div>
-    </div>
-  );
 }

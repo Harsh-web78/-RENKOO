@@ -1,19 +1,19 @@
 ﻿'use client';
 
 /*
- * RENKOO V2 â€” AppShell (Phase 2 foundation).
+ * RENKOO V2 — AppShell (Phase 2 foundation).
  * Grouped primary navigation (7 groups) with the Money
  * group giving /roi its proper home alongside Leads &
  * Revenue. Persona composes through the existing orderNav
  * helper: items re-order within their groups, groups stay
- * fixed, and nothing is ever hidden â€” RBAC remains the
+ * fixed, and nothing is ever hidden — RBAC remains the
  * sole authority server-side.
  *
  * Legacy /[section] is intentionally absent from
  * navigation; the route itself is preserved untouched.
  * Auth-only routes (/login, /signup, /invite, /onboarding,
  * /reset-password, /verify-email, /share/*) never mount
- * this shell â€” pages own their auth redirects as before.
+ * this shell — pages own their auth redirects as before.
  *
  * Sidebar.tsx stays authoritative for existing pages until
  * each route migrates. New work may opt into AppShell +
@@ -255,7 +255,7 @@ export default function AppShell({
    * Persona ranks every destination once; groups then
    * render in their fixed order with persona-ranked
    * items inside. Group labels are structural, not
-   * permissions â€” all routes remain reachable.
+   * permissions — all routes remain reachable.
    */
   const flat = NAV_GROUPS.flatMap((group) =>
     group.items.map((item) => ({
@@ -339,28 +339,28 @@ export default function AppShell({
           type="button"
           aria-label="Close menu"
           onClick={onClose}
-          className="fixed inset-0 z-30 bg-rk-scrim lg:hidden"
+          className="rk-dialog-backdrop fixed inset-0 z-30 lg:hidden"
         />
       ) : null}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-[270px] flex-col border-r border-rk-border bg-rk-surface transition-transform lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 flex w-[276px] flex-col border-r border-rk-border bg-rk-surface transition-transform duration-200 ease-out lg:translate-x-0 ${
           mobileOpen
             ? 'translate-x-0'
             : '-translate-x-full'
         }`}
       >
-        <div className="flex items-center gap-2.5 px-5 pt-5">
-          <div className="grid h-9 w-9 place-items-center rounded-rk-md bg-rk-ink text-base font-black text-white">
+        <div className="flex items-center gap-3 px-5 pt-5">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] bg-rk-ink text-[17px] font-black tracking-tight text-white shadow-rk-sm">
             R
           </div>
 
           <div className="min-w-0">
-            <p className="text-lg font-bold leading-none tracking-tight">
+            <p className="text-[17px] font-extrabold leading-none tracking-[-0.02em]">
               RENKOO
             </p>
 
-            <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-rk-muted">
+            <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-rk-muted">
               Growth OS
             </p>
           </div>
@@ -369,39 +369,47 @@ export default function AppShell({
             type="button"
             onClick={onClose}
             aria-label="Close menu"
-            className="rk-focusable ml-auto grid h-8 w-8 place-items-center rounded-rk-md text-rk-secondary lg:hidden"
+            className="rk-focusable ml-auto grid h-8 w-8 place-items-center rounded-rk-md text-xl leading-none text-rk-secondary hover:bg-rk-soft hover:text-rk-ink lg:hidden"
           >
-            Ã—
+            ×
           </button>
         </div>
 
-        <div className="mx-5 mt-4 rounded-rk-md border border-rk-border bg-rk-soft px-3 py-2.5">
-          <p
-            className="truncate text-sm font-bold"
-            title={organizationName}
-          >
-            {organizationName}
-          </p>
+        <div className="mx-4 mt-4 flex items-center gap-2.5 rounded-rk-md border border-rk-border bg-rk-soft px-3 py-2.5">
+          <span
+            aria-hidden
+            className="h-2 w-2 shrink-0 rounded-full bg-rk-success"
+          />
+          <div className="min-w-0 flex-1">
+            <p
+              className="truncate text-[13px] font-bold leading-tight"
+              title={organizationName}
+            >
+              {organizationName}
+            </p>
 
-          <p
-            className="mt-0.5 truncate text-xs text-rk-secondary"
-            title={websiteName}
-          >
-            {websiteName}
-          </p>
+            <p
+              className="mt-0.5 truncate text-xs leading-tight text-rk-secondary"
+              title={websiteName}
+            >
+              {websiteName}
+            </p>
+          </div>
         </div>
 
         <nav
           aria-label="Primary"
-          className="min-h-0 flex-1 overflow-y-auto px-3 py-4"
+          className="rk-scroll-thin min-h-0 flex-1 overflow-y-auto px-3 py-4"
         >
-          <p className="px-2 pb-2 text-[11px] font-semibold text-rk-muted">
-            {PERSONA_META[effectivePersona].label}{' '}
-            view
+          <p className="flex items-center justify-between px-2 pb-2 text-[11px] font-semibold text-rk-muted">
+            <span>
+              {PERSONA_META[effectivePersona].label}{' '}
+              view
+            </span>
             {source === 'default' ? (
               <Link
                 href="/settings"
-                className="rk-focusable ml-2 text-rk-ink underline underline-offset-2"
+                className="rk-focusable font-semibold text-rk-secondary underline decoration-rk-border-strong underline-offset-2 hover:text-rk-ink"
               >
                 Set role
               </Link>
@@ -413,11 +421,11 @@ export default function AppShell({
               key={group.label}
               className="mt-1 first:mt-0"
             >
-              <p className="rk-label px-2 pb-1 pt-3 first:pt-1">
+              <p className="rk-label px-2.5 pb-1.5 pt-4 first:pt-1">
                 {group.label}
               </p>
 
-              <ul className="space-y-0.5">
+              <ul className="space-y-[2px]">
                 {group.items.map(
                   ({ name, href, Icon }) => {
                     const active =
@@ -438,16 +446,17 @@ export default function AppShell({
                               ? 'page'
                               : undefined
                           }
-                          className={`rk-focusable flex w-full items-center gap-2.5 rounded-rk-md px-2.5 py-2 text-sm transition-colors ${
+                          className={`rk-focusable group flex w-full items-center gap-2.5 rounded-rk-md px-2.5 py-[7px] text-[13.5px] leading-5 ${
                             active
-                              ? 'bg-rk-ink font-semibold text-white'
-                              : 'text-rk-secondary hover:bg-rk-soft hover:text-rk-ink'
+                              ? 'rk-nav-active bg-rk-ink font-semibold text-white'
+                              : 'font-medium text-rk-secondary hover:bg-rk-soft hover:text-rk-ink'
                           }`}
                         >
                           <Icon
                             size={16}
+                            strokeWidth={active ? 2.25 : 2}
                             aria-hidden
-                            className="shrink-0"
+                            className={`shrink-0 ${active ? 'text-white' : 'text-rk-muted group-hover:text-rk-ink'}`}
                           />
                           <span className="truncate">
                             {name}
@@ -461,6 +470,29 @@ export default function AppShell({
             </div>
           ))}
         </nav>
+
+        <div className="border-t border-rk-border px-4 py-3">
+          <Link
+            href="/agents"
+            onClick={onClose}
+            className="rk-focusable flex items-center gap-2.5 rounded-rk-md border border-rk-border bg-rk-surface px-3 py-2.5 transition-colors hover:border-rk-strong hover:bg-rk-soft"
+          >
+            <span
+              aria-hidden
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-rk-sm bg-rk-ink text-white"
+            >
+              <Sparkles size={14} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-bold text-rk-ink">
+                Ask RENKOO
+              </span>
+              <span className="block truncate text-[11px] text-rk-muted">
+                Intelligence on your data
+              </span>
+            </span>
+          </Link>
+        </div>
       </aside>
 
       <div className="min-w-0 lg:pl-[270px]">

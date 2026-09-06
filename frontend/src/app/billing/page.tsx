@@ -869,16 +869,14 @@ export default function BillingPage() {
       onClose={() => setOpen(false)}
       onMenu={() => setOpen(true)}
     >
-      <section className="mx-auto max-w-[1500px] p-5 lg:p-8">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                Billing & Plans
-              </div>
-              <h1 className="mt-1 text-3xl font-bold">
+      <section className="rk-page mx-auto w-full max-w-6xl">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <p className="rk-label">Billing &amp; Plans</p>
+              <h1 className="mt-1.5 text-[26px] font-extrabold leading-[1.15] tracking-[-0.03em] text-rk-ink sm:text-[30px]">
                 Subscription
               </h1>
-              <p className="mt-2 max-w-2xl text-sm text-slate-500">
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-rk-secondary">
                 Plan, usage, limits and payment history for
                 this workspace. Downgrades never delete
                 data.
@@ -889,11 +887,12 @@ export default function BillingPage() {
               type="button"
               onClick={() => loadBilling()}
               disabled={loading}
-              className="flex items-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 disabled:opacity-60"
+              className="rk-focusable flex h-9 shrink-0 items-center gap-2 self-start rounded-rk-md border border-rk-border bg-rk-surface px-4 text-[13px] font-bold text-rk-ink shadow-rk-sm transition-all hover:border-rk-strong hover:shadow-rk-md disabled:opacity-60 disabled:shadow-none"
             >
               <RefreshCw
                 size={15}
                 className={loading ? "animate-spin" : ""}
+                aria-hidden
               />
               Refresh
             </button>
@@ -902,7 +901,7 @@ export default function BillingPage() {
           {error && (
             <div
               role="alert"
-              className="mt-5 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+              className="mt-5 flex items-start gap-2 rounded-rk-md border border-red-200 bg-red-50 p-4 text-sm text-red-700"
             >
               <AlertTriangle
                 size={17}
@@ -915,7 +914,7 @@ export default function BillingPage() {
           {notice && (
             <div
               role="status"
-              className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800"
+              className="mt-5 rounded-rk-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800"
             >
               {payPhase === "confirming" ? (
                 <span className="flex items-center gap-2">
@@ -934,7 +933,7 @@ export default function BillingPage() {
           {razorpayStatusFailed && (
             <div
               role="status"
-              className="mt-5 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"
+              className="mt-5 flex items-start gap-2 rounded-rk-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"
             >
               <LockKeyhole
                 size={17}
@@ -952,7 +951,7 @@ export default function BillingPage() {
           {!razorpayStatusFailed && !razorpayConfigured && (
             <div
               role="status"
-              className="mt-5 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"
+              className="mt-5 flex items-start gap-2 rounded-rk-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"
             >
               <LockKeyhole
                 size={17}
@@ -973,7 +972,7 @@ export default function BillingPage() {
             currency === "USD" && (
               <div
                 role="status"
-                className="mt-5 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"
+                className="mt-5 flex items-start gap-2 rounded-rk-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"
               >
                 <LockKeyhole
                   size={17}
@@ -999,23 +998,23 @@ export default function BillingPage() {
             )}
 
           {loading ? (
-            <div className="mt-6 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-10 text-sm text-slate-500">
+            <div className="mt-6 flex items-center gap-3 rounded-rk-lg border border-rk-border bg-rk-surface p-10 text-sm text-rk-secondary">
               <Loader2 size={20} className="animate-spin" />
               Loading billing...
             </div>
           ) : (
             <>
               <div className="mt-6 grid gap-4 lg:grid-cols-3">
-                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-6 shadow-sm">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-rk-muted">
                     Current plan
                   </div>
                   <div className="mt-2 text-2xl font-bold">
                     {entitlements?.planName || "Free"}
                   </div>
-                  <div className="mt-1 text-xs text-slate-500">
+                  <div className="mt-1 text-xs text-rk-secondary">
                     Status:{" "}
-                    <span className="font-bold text-slate-800">
+                    <span className="font-bold text-rk-ink">
                       {entitlements?.status || "FREE"}
                     </span>
                     {entitlements?.cancelAtPeriodEnd && (
@@ -1031,7 +1030,7 @@ export default function BillingPage() {
                     </div>
                   )}
                   {entitlements?.provider && (
-                    <div className="mt-1 text-xs text-slate-500">
+                    <div className="mt-1 text-xs text-rk-secondary">
                       Provider: {entitlements.provider}
                       {entitlements.currency
                         ? ` · ${entitlements.currency}`
@@ -1042,13 +1041,13 @@ export default function BillingPage() {
                     </div>
                   )}
                   {entitlements?.trialEnd && (
-                    <div className="mt-1 text-xs text-slate-500">
+                    <div className="mt-1 text-xs text-rk-secondary">
                       Trial ends{" "}
                       {formatDate(entitlements.trialEnd)}
                     </div>
                   )}
                   {entitlements?.currentPeriodEnd && (
-                    <div className="mt-1 text-xs text-slate-500">
+                    <div className="mt-1 text-xs text-rk-secondary">
                       Renews{" "}
                       {formatDate(
                         entitlements.currentPeriodEnd,
@@ -1062,7 +1061,7 @@ export default function BillingPage() {
                         type="button"
                         disabled={busy === "trial"}
                         onClick={handleTrial}
-                        className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-60"
+                        className="rounded-rk-md bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-60"
                       >
                         {busy === "trial"
                           ? "Starting..."
@@ -1076,7 +1075,7 @@ export default function BillingPage() {
                         onClick={() =>
                           setReactivateOpen(true)
                         }
-                        className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-60"
+                        className="rounded-rk-md bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-60"
                       >
                         {busy === "reactivate"
                           ? "Reactivating..."
@@ -1092,7 +1091,7 @@ export default function BillingPage() {
                           onClick={() =>
                             setCancelOpen(true)
                           }
-                          className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+                          className="rounded-rk-md border border-rk-border px-4 py-2 text-xs font-bold text-slate-600 hover:bg-rk-soft disabled:opacity-60"
                         >
                           {busy === "cancel"
                             ? "Canceling..."
@@ -1103,7 +1102,7 @@ export default function BillingPage() {
                       type="button"
                       disabled={busy === "portal"}
                       onClick={handlePortal}
-                      className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+                      className="rounded-rk-md border border-rk-border px-4 py-2 text-xs font-bold text-slate-600 hover:bg-rk-soft disabled:opacity-60"
                     >
                       {busy === "portal"
                         ? "Opening..."
@@ -1112,13 +1111,13 @@ export default function BillingPage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-6 shadow-sm lg:col-span-2">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-rk-muted">
                     Usage & limits
                   </div>
 
                   {!usage ? (
-                    <p className="mt-3 text-sm text-slate-400">
+                    <p className="mt-3 text-sm text-rk-muted">
                       Usage unavailable.
                     </p>
                   ) : (
@@ -1127,7 +1126,7 @@ export default function BillingPage() {
                         ([metric, item]) => (
                           <div
                             key={metric}
-                            className="rounded-xl border border-slate-100 px-4 py-3"
+                            className="rounded-rk-md border border-slate-100 px-4 py-3"
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-xs font-semibold text-slate-600">
@@ -1164,7 +1163,7 @@ export default function BillingPage() {
                                 />
                               </div>
                             ) : (
-                              <div className="mt-2 text-[11px] text-slate-400">
+                              <div className="mt-2 text-[11px] text-rk-muted">
                                 Not reliably measurable —
                                 unavailable, never
                                 zero-filled.
@@ -1179,8 +1178,8 @@ export default function BillingPage() {
               </div>
 
               {entitlements && (
-                <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <div className="mt-6 rounded-rk-lg border border-rk-border bg-rk-surface p-6 shadow-sm">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-rk-muted">
                     Entitlements
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -1192,7 +1191,7 @@ export default function BillingPage() {
                         className={`rounded-full px-3 py-1 text-xs font-bold ${
                           allowed
                             ? "bg-emerald-50 text-emerald-700"
-                            : "bg-slate-100 text-slate-500"
+                            : "bg-slate-100 text-rk-secondary"
                         }`}
                       >
                         {FEATURE_LABELS[feature] || feature}:{" "}
@@ -1201,7 +1200,7 @@ export default function BillingPage() {
                     ))}
                   </div>
                   {entitlements.customPricing && (
-                    <p className="mt-3 text-xs text-slate-500">
+                    <p className="mt-3 text-xs text-rk-secondary">
                       Custom Enterprise pricing — contact
                       sales for terms.
                     </p>
@@ -1209,17 +1208,17 @@ export default function BillingPage() {
                 </div>
               )}
 
-              <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="border-b border-slate-200 bg-slate-50/70 px-6 py-6">
+              <div className="mt-6 overflow-hidden rounded-rk-lg border border-rk-border bg-rk-surface shadow-sm">
+                <div className="border-b border-rk-border bg-rk-soft/70 px-6 py-6">
                   <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                     <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-rk-secondary">
                         Choose your growth engine
                       </div>
-                      <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">
+                      <h2 className="mt-1 text-2xl font-bold tracking-tight text-rk-ink">
                         Plans built around growth, not just SEO
                       </h2>
-                      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-rk-secondary">
                         Start with the essentials, then unlock deeper intelligence,
                         automation and agency workflows as your growth operation scales.
                       </p>
@@ -1229,7 +1228,7 @@ export default function BillingPage() {
                       <fieldset>
                         <legend className="sr-only">Checkout currency</legend>
                         <div
-                          className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm"
+                          className="flex items-center gap-1 rounded-rk-md border border-rk-border bg-rk-surface p-1 shadow-sm"
                           role="radiogroup"
                           aria-label="Checkout currency"
                         >
@@ -1242,32 +1241,32 @@ export default function BillingPage() {
                               onClick={() => setCurrency(option)}
                               className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
                                 currency === option
-                                  ? "bg-slate-950 text-white shadow-sm"
-                                  : "text-slate-500 hover:bg-slate-50"
+                                  ? "bg-rk-ink text-white shadow-sm"
+                                  : "text-rk-secondary hover:bg-rk-soft"
                               }`}
                             >
-                              {option === "INR" ? "???? INR" : "?? USD"}
+                              {option}
                             </button>
                           ))}
                         </div>
                       </fieldset>
 
-                      <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-sm">
+                      <label className="flex cursor-pointer items-center gap-2 rounded-rk-md border border-rk-border bg-rk-surface px-3 py-2 text-xs font-bold text-rk-secondary shadow-sm">
                         <input
                           type="checkbox"
                           checked={yearly}
                           onChange={(e) => setYearly(e.target.checked)}
-                          className="h-4 w-4 rounded border-slate-300"
+                          className="h-4 w-4 rounded border-rk-border"
                         />
                         Yearly billing
-                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                        <span className="rounded-full bg-rk-successSoft px-2 py-0.5 text-[10px] font-bold text-rk-success">
                           Save
                         </span>
                       </label>
                     </div>
                   </div>
 
-                  <p className="mt-4 text-xs leading-5 text-slate-500" id="currency-help">
+                  <p className="mt-4 text-xs leading-5 text-rk-secondary" id="currency-help">
                     {currency === "INR" ? (
                       <>
                         INR checkout via Razorpay
@@ -1292,7 +1291,7 @@ export default function BillingPage() {
                 </div>
 
                 {plans.length === 0 ? (
-                  <p className="p-6 text-sm text-slate-400">
+                  <p className="p-6 text-sm text-rk-muted">
                     No public plans configured.
                   </p>
                 ) : (
@@ -1360,26 +1359,26 @@ export default function BillingPage() {
                           return (
                             <div
                               key={plan.code}
-                              className={`relative flex min-h-[560px] flex-col border-b border-slate-200 p-6 xl:border-b-0 xl:border-r ${
+                              className={`relative flex min-h-[560px] flex-col border-b border-rk-border p-6 xl:border-b-0 xl:border-r ${
                                 isPopular
-                                  ? "bg-slate-950 text-white"
+                                  ? "bg-rk-ink text-white"
                                   : isCurrent
-                                    ? "bg-slate-50"
-                                    : "bg-white"
+                                    ? "bg-rk-soft"
+                                    : "bg-rk-surface"
                               } ${isAgency ? "xl:border-r-0" : ""}`}
                             >
                               {isPopular && (
-                                <div className="absolute inset-x-0 top-0 h-1 bg-white" />
+                                <div className="absolute inset-x-0 top-0 h-1 bg-rk-surface" />
                               )}
 
                               <div className="flex items-start justify-between gap-3">
                                 <div>
-                                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-rk-muted">
                                     {plan.description || "Plan"}
                                   </div>
                                   <h3
                                     className={`mt-2 text-xl font-bold ${
-                                      isPopular ? "text-white" : "text-slate-950"
+                                      isPopular ? "text-white" : "text-rk-ink"
                                     }`}
                                   >
                                     {plan.name}
@@ -1387,11 +1386,11 @@ export default function BillingPage() {
                                 </div>
 
                                 {isPopular ? (
-                                  <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-950">
+                                  <span className="rounded-full bg-rk-surface px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide text-rk-ink">
                                     Most popular
                                   </span>
                                 ) : isCurrent ? (
-                                  <span className="flex items-center gap-1 rounded-full bg-slate-950 px-2.5 py-1 text-[10px] font-extrabold text-white">
+                                  <span className="flex items-center gap-1 rounded-full bg-rk-ink px-2.5 py-1 text-[10px] font-extrabold text-white">
                                     <CheckCircle2 size={11} />
                                     Current
                                   </span>
@@ -1399,9 +1398,9 @@ export default function BillingPage() {
                               </div>
 
                               <p
-                                className={`mt-3 min-h-[48px] text-xs leading-5 ${
-                                  isPopular ? "text-slate-300" : "text-slate-500"
-                                }`}
+                                  className={`mt-3 min-h-[48px] text-xs leading-5 ${
+                                    isPopular ? "text-white/70" : "text-rk-secondary"
+                                  }`}
                               >
                                 {plan.description}
                               </p>
@@ -1410,27 +1409,27 @@ export default function BillingPage() {
                                 <div className="flex items-end gap-1">
                                   <span
                                     className={`text-4xl font-extrabold tracking-tight ${
-                                      isPopular ? "text-white" : "text-slate-950"
+                                      isPopular ? "text-white" : "text-rk-ink"
                                     }`}
                                   >
                                     {money(price, plan.currency || "INR")}
                                   </span>
-                                  <span className="mb-1 text-xs font-semibold text-slate-400">
+                                  <span className="mb-1 text-xs font-semibold text-rk-muted">
                                     /{yearly ? "yr" : "mo"}
                                   </span>
                                 </div>
                                 {yearly && plan.monthlyPrice > 0 && (
-                                  <p className="mt-1 text-[11px] text-slate-400">
+                                  <p className="mt-1 text-[11px] text-rk-muted">
                                     Billed annually · monthly equivalent shown by billing service
                                   </p>
                                 )}
                               </div>
 
                               <div
-                                className={`mt-5 grid grid-cols-2 gap-2 rounded-xl p-3 ${
+                                className={`mt-5 grid grid-cols-2 gap-2 rounded-rk-md p-3 ${
                                   isPopular
-                                    ? "bg-white/10"
-                                    : "border border-slate-100 bg-slate-50"
+                                    ? "bg-rk-surface/10"
+                                    : "border border-slate-100 bg-rk-soft"
                                 }`}
                               >
                                 {[
@@ -1440,7 +1439,7 @@ export default function BillingPage() {
                                   ["Crawls", plan.maxCrawlCredits],
                                 ].map(([label, value]) => (
                                   <div key={String(label)}>
-                                    <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                                    <div className="text-[10px] font-semibold uppercase tracking-wide text-rk-muted">
                                       {label}
                                     </div>
                                     <div
@@ -1455,7 +1454,7 @@ export default function BillingPage() {
                               </div>
 
                               <div className="mt-5 flex-1">
-                                <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400">
+                                <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-rk-muted">
                                   Includes
                                 </div>
                                 <ul className="mt-3 space-y-2.5">
@@ -1492,10 +1491,10 @@ export default function BillingPage() {
                                       void handleRazorpayCheckout(plan.code);
                                     }
                                   }}
-                                  className={`mt-6 w-full rounded-xl px-4 py-3 text-xs font-extrabold transition disabled:opacity-60 ${
+                                  className={`mt-6 w-full rounded-rk-md px-4 py-3 text-xs font-extrabold transition disabled:opacity-60 ${
                                     isPopular
-                                      ? "bg-white text-slate-950 hover:bg-slate-200"
-                                      : "bg-slate-950 text-white hover:bg-slate-700"
+                                      ? "bg-rk-surface text-rk-ink hover:bg-rk-soft"
+                                      : "bg-rk-ink text-white hover:opacity-90"
                                   }`}
                                 >
                                   {isBusy
@@ -1510,10 +1509,10 @@ export default function BillingPage() {
                                 </button>
                               ) : isCurrent ? (
                                 <div
-                                  className={`mt-6 flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-xs font-extrabold ${
+                                  className={`mt-6 flex items-center justify-center gap-2 rounded-rk-md px-4 py-3 text-xs font-extrabold ${
                                     isPopular
-                                      ? "bg-white/10 text-white"
-                                      : "bg-slate-100 text-slate-600"
+                                      ? "bg-rk-surface/10 text-white"
+                                      : "bg-rk-soft text-rk-secondary"
                                   }`}
                                 >
                                   <CheckCircle2 size={14} />
@@ -1521,7 +1520,7 @@ export default function BillingPage() {
                                 </div>
                               ) : action.label ? (
                                 <div
-                                  className="mt-6 w-full rounded-xl bg-slate-100 px-4 py-3 text-center text-xs font-extrabold text-slate-400"
+                                  className="mt-6 w-full rounded-rk-md bg-rk-soft px-4 py-3 text-center text-xs font-extrabold text-rk-muted"
                                   title={action.reason}
                                 >
                                   {action.label}
@@ -1531,7 +1530,7 @@ export default function BillingPage() {
                               {!isCurrent && (
                                 <div
                                   className={`mt-2 text-center text-[10px] font-semibold ${
-                                    isPopular ? "text-slate-400" : "text-slate-400"
+                                    isPopular ? "text-white/60" : "text-rk-muted"
                                   }`}
                                 >
                                   14-day trial available
@@ -1543,7 +1542,7 @@ export default function BillingPage() {
                     </div>
 
                     {plans.some((plan) => plan.code === "FREE") && (
-                      <div className="border-t border-slate-200 bg-slate-50/70 px-6 py-4">
+                      <div className="border-t border-rk-border bg-rk-soft/70 px-6 py-4">
                         {plans
                           .filter((plan) => plan.code === "FREE")
                           .map((plan) => (
@@ -1552,24 +1551,24 @@ export default function BillingPage() {
                               className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
                             >
                               <div>
-                                <div className="text-sm font-bold text-slate-900">
+                                <div className="text-sm font-bold text-rk-ink">
                                   {plan.name}
                                 </div>
-                                <p className="mt-0.5 text-xs text-slate-500">
+                                <p className="mt-0.5 text-xs text-rk-secondary">
                                   {plan.description}
                                 </p>
                               </div>
-                              <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-slate-500">
-                                <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5">
+                              <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-rk-secondary">
+                                <span className="rounded-full border border-rk-border bg-rk-surface px-3 py-1.5">
                                   {plan.maxWebsites} website
                                 </span>
-                                <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5">
+                                <span className="rounded-full border border-rk-border bg-rk-surface px-3 py-1.5">
                                   {plan.maxKeywords} keywords
                                 </span>
-                                <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5">
+                                <span className="rounded-full border border-rk-border bg-rk-surface px-3 py-1.5">
                                   {plan.maxCrawlCredits} crawl credits
                                 </span>
-                                <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5">
+                                <span className="rounded-full border border-rk-border bg-rk-surface px-3 py-1.5">
                                   No card required
                                 </span>
                               </div>
@@ -1578,12 +1577,12 @@ export default function BillingPage() {
                       </div>
                     )}
 
-                    <div className="border-t border-slate-200 px-6 py-7">
+                    <div className="border-t border-rk-border px-6 py-7">
                       <div className="mb-5">
-                        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-rk-muted">
                           Compare capacity
                         </div>
-                        <h3 className="mt-1 text-lg font-bold text-slate-950">
+                        <h3 className="mt-1 text-lg font-bold text-rk-ink">
                           More room to execute as you scale
                         </h3>
                       </div>
@@ -1591,8 +1590,8 @@ export default function BillingPage() {
                       <div className="overflow-x-auto">
                         <table className="w-full min-w-[760px] border-collapse text-left">
                           <thead>
-                            <tr className="border-b border-slate-200">
-                              <th className="px-3 py-3 text-xs font-bold text-slate-500">
+                            <tr className="border-b border-rk-border">
+                              <th className="px-3 py-3 text-xs font-bold text-rk-secondary">
                                 Capacity
                               </th>
                               {plans
@@ -1649,7 +1648,7 @@ export default function BillingPage() {
                 )}
               </div>
 
-              <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mt-6 rounded-rk-lg border border-rk-border bg-rk-surface p-6 shadow-sm">
                 <h2 className="text-lg font-bold">
                   Payment history
                 </h2>

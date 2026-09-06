@@ -64,8 +64,8 @@ export default function Topbar({
     "Account";
 
   return (
-    <header className="rk-topbar sticky top-0 z-20 border-b backdrop-blur">
-      <div className="flex h-14 items-center gap-2 px-4 sm:px-6">
+    <header className="rk-topbar sticky top-0 z-20 border-b border-rk-border bg-white/90 backdrop-blur-md">
+      <div className="flex h-[60px] items-center gap-2 px-4 sm:gap-3 sm:px-6">
         <button
           type="button"
           onClick={onMenu}
@@ -75,19 +75,21 @@ export default function Topbar({
           <Menu size={18} aria-hidden />
         </button>
 
-        <div className="hidden min-w-0 lg:block">
+        <div className="hidden min-w-0 shrink-0 xl:block">
           <p
-            className="truncate text-sm font-bold text-rk-ink"
+            className="truncate text-[13px] font-bold leading-tight text-rk-ink"
             title={organizationName}
           >
             {organizationName}
           </p>
-          <p className="truncate text-xs text-rk-secondary">
+          <p className="truncate text-[11px] leading-tight text-rk-muted">
             Workspace
           </p>
         </div>
 
-        <div className="ml-2 min-w-0">
+        <div className="hidden h-8 w-px shrink-0 bg-rk-border xl:block" aria-hidden />
+
+        <div className="min-w-0 shrink-0">
           <WebsiteSelector />
         </div>
 
@@ -95,35 +97,44 @@ export default function Topbar({
           type="button"
           onClick={onSearch}
           aria-label="Search and jump to pages (Command K)"
-          className="rk-focusable mx-auto flex h-9 w-full max-w-md items-center gap-2 rounded-rk-md border border-rk-border bg-rk-soft px-3 text-sm text-rk-muted hover:border-rk-strong hover:text-rk-secondary sm:mx-0 sm:ml-4"
+          className="rk-focusable mx-auto hidden h-10 w-full max-w-md items-center gap-2.5 rounded-rk-md border border-rk-border bg-rk-soft px-3.5 text-[13px] text-rk-muted shadow-rk-sm transition-all hover:border-rk-strong hover:bg-white hover:text-rk-secondary hover:shadow-rk-md md:flex"
         >
-          <Search size={15} aria-hidden />
+          <Search size={15} aria-hidden className="shrink-0" />
           <span className="truncate">
-            Search pages, reports, actions...
+            Search pages, reports, actions…
           </span>
 
           <kbd
             aria-hidden
-            className="ml-auto hidden shrink-0 rounded border border-rk-border bg-rk-surface px-1.5 py-0.5 text-[10px] font-bold text-rk-muted sm:block"
+            className="ml-auto hidden shrink-0 items-center gap-1 rounded-md border border-rk-border bg-rk-surface px-1.5 py-0.5 text-[10px] font-bold text-rk-muted lg:flex"
           >
             ⌘K
           </kbd>
+        </button>
+
+        <button
+          type="button"
+          onClick={onSearch}
+          aria-label="Search pages"
+          className="rk-focusable grid h-10 w-10 shrink-0 place-items-center rounded-rk-md border border-rk-border bg-rk-surface text-rk-secondary hover:bg-rk-soft md:hidden"
+        >
+          <Search size={17} aria-hidden />
         </button>
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <Link
             href="/billing"
             aria-label="Subscription"
-            className="rk-focusable hidden h-9 items-center gap-2 rounded-rk-md border border-rk-border bg-rk-surface px-3 text-xs font-semibold text-rk-ink hover:bg-rk-soft sm:flex"
+            className="rk-focusable hidden h-10 items-center gap-2 rounded-rk-md border border-rk-border bg-rk-surface px-3.5 text-[13px] font-semibold text-rk-ink shadow-rk-sm transition-all hover:border-rk-strong hover:bg-rk-soft sm:flex"
           >
-            <CreditCard size={15} aria-hidden />
+            <CreditCard size={15} aria-hidden className="text-rk-secondary" />
             Subscription
           </Link>
 
           <Link
             href="/monitoring"
             aria-label="Notifications and changes"
-            className="rk-focusable grid h-9 w-9 place-items-center rounded-rk-md text-rk-secondary hover:bg-rk-soft hover:text-rk-ink"
+            className="rk-focusable grid h-10 w-10 place-items-center rounded-rk-md text-rk-secondary transition-colors hover:bg-rk-soft hover:text-rk-ink"
           >
             <Bell size={17} aria-hidden />
           </Link>
@@ -138,16 +149,16 @@ export default function Topbar({
               aria-expanded={menuOpen}
               aria-label={`Account menu — ${userLabel}, ${PERSONA_META[effectivePersona].label} view`}
               title={`${userLabel} · ${PERSONA_META[effectivePersona].label}`}
-              className="rk-focusable flex h-9 items-center gap-2 rounded-rk-md px-2 hover:bg-rk-soft"
+              className="rk-focusable flex h-10 items-center gap-2 rounded-rk-md border border-transparent px-1.5 hover:border-rk-border hover:bg-rk-surface"
             >
               <span
                 aria-hidden
-                className="grid h-7 w-7 place-items-center rounded-full bg-rk-ink text-[11px] font-black text-white"
+                className="grid h-8 w-8 place-items-center rounded-full bg-rk-ink text-xs font-black text-white ring-2 ring-rk-border"
               >
                 {userLabel.slice(0, 1).toUpperCase()}
               </span>
 
-              <span className="hidden max-w-[140px] truncate text-xs font-semibold text-rk-ink md:block">
+              <span className="hidden max-w-[140px] truncate text-[13px] font-semibold text-rk-ink md:block">
                 {userLabel}
               </span>
             </button>
@@ -164,7 +175,7 @@ export default function Topbar({
                 <div
                   role="menu"
                   aria-label="Account"
-                  className="absolute right-0 z-40 mt-2 w-52 overflow-hidden rounded-rk-md border border-rk-border bg-rk-surface py-1.5 shadow-lg"
+                  className="rk-dropdown absolute right-0 z-40 mt-2 w-56 overflow-hidden rounded-rk-md border border-rk-border bg-rk-surface py-1.5 shadow-rk-md"
                 >
                   <p className="truncate px-3.5 pb-1.5 pt-1 text-xs text-rk-muted">
                     {userLabel}

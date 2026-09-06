@@ -119,7 +119,7 @@ export default function OnboardingPage() {
           setGoogleConnected(false);
         }
       } catch {
-        // No signal exists â€” keep Skip flow, Step-3 card
+        // No signal exists — keep Skip flow, Step-3 card
         // renders from real status only (defaults to "Connect later").
       }
     }
@@ -242,20 +242,22 @@ export default function OnboardingPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-5 py-10">
+    <main className="rk-page min-h-screen bg-rk-bg px-4 py-10 sm:px-5">
       <div className="mx-auto max-w-3xl">
 
         {/* BRAND */}
         <div className="text-center">
-          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-2xl font-black text-white">
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-[16px] bg-rk-ink text-2xl font-black text-white shadow-rk-md">
             R
           </div>
 
-          <h1 className="mt-5 text-3xl font-bold text-slate-900">
+          <p className="rk-label mt-5">Onboarding</p>
+
+          <h1 className="mx-auto mt-1 max-w-xl text-3xl font-extrabold tracking-[-0.03em] text-rk-ink">
             Set up your RENKOO workspace
           </h1>
 
-          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
+          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-rk-secondary">
             Connect your business and data so RENKOO
             can start finding growth opportunities.
           </p>
@@ -273,8 +275,8 @@ export default function OnboardingPage() {
           <div
             className={`h-px w-16 sm:w-24 ${
               step > 1
-                ? 'bg-blue-500'
-                : 'bg-slate-200'
+                ? 'bg-rk-accent'
+                : 'bg-rk-border'
             }`}
           />
 
@@ -288,8 +290,8 @@ export default function OnboardingPage() {
           <div
             className={`h-px w-16 sm:w-24 ${
               step > 2
-                ? 'bg-blue-500'
-                : 'bg-slate-200'
+                ? 'bg-rk-accent'
+                : 'bg-rk-border'
             }`}
           />
 
@@ -303,13 +305,13 @@ export default function OnboardingPage() {
 
         {/* ERROR */}
         {error && (
-          <div className="mx-auto mt-6 max-w-2xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mx-auto mt-6 max-w-2xl rounded-rk-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
           </div>
         )}
 
         {limitError ? (
-          <div className="mx-auto mt-6 max-w-2xl rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div className="mx-auto mt-6 max-w-2xl rounded-rk-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <p className="font-bold text-amber-900">
               Free plan limit reached
             </p>
@@ -325,7 +327,7 @@ export default function OnboardingPage() {
 
             <a
               href="/billing"
-              className="mt-3 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
+              className="mt-3 inline-flex items-center gap-2 rounded-rk-md bg-rk-ink px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90"
             >
               View plans
             </a>
@@ -337,19 +339,19 @@ export default function OnboardingPage() {
         {/* ================================================= */}
 
         {step === 1 && (
-          <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <section className="mt-8 rounded-rk-lg border border-rk-border bg-white p-6 shadow-sm sm:p-8">
 
-            <div className="mb-7 flex items-start gap-4 rounded-2xl bg-blue-50 p-5">
-              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white text-blue-600">
+            <div className="mb-7 flex items-start gap-4 rounded-rk-md bg-rk-infoSoft p-5">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-rk-md bg-white text-rk-accent">
                 <Globe2 size={21} />
               </div>
 
               <div>
-                <div className="font-bold text-slate-900">
+                <div className="font-bold text-rk-ink">
                   Add your first website
                 </div>
 
-                <p className="mt-1 text-xs leading-5 text-slate-500">
+                <p className="mt-1 text-xs leading-5 text-rk-secondary">
                   This becomes the primary website
                   RENKOO will analyze and grow.
                   You can add more websites later.
@@ -359,8 +361,8 @@ export default function OnboardingPage() {
 
             {existingCount !== null &&
               existingCount > 0 && (
-                <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-                  <div className="text-sm font-bold text-emerald-900">
+                <div className="mb-5 rounded-rk-md border border-rk-border bg-rk-successSoft p-5">
+                  <div className="text-sm font-bold text-rk-success">
                     You already have{' '}
                     {existingCount} website
                     {existingCount === 1
@@ -368,7 +370,7 @@ export default function OnboardingPage() {
                       : 's'}
                   </div>
 
-                  <p className="mt-1 text-xs leading-5 text-emerald-700">
+                  <p className="mt-1 text-xs leading-5 text-rk-success">
                     You can continue with your
                     existing workspace or add
                     another website below.
@@ -377,7 +379,7 @@ export default function OnboardingPage() {
                   <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                     <a
                       href="/"
-                      className="rounded-xl bg-emerald-600 px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-emerald-700"
+                      className="rounded-rk-md bg-rk-success px-5 py-3 text-center text-sm font-bold text-white transition hover:opacity-90"
                     >
                       Open Growth Command Center
                     </a>
@@ -388,7 +390,7 @@ export default function OnboardingPage() {
                         setWebsiteCreated(true);
                         setStep(2);
                       }}
-                      className="rounded-xl border border-emerald-200 bg-white px-5 py-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+                      className="rounded-rk-md border border-rk-border bg-white px-5 py-3 text-sm font-semibold text-rk-success transition hover:bg-rk-successSoft"
                     >
                       Continue
                     </button>
@@ -401,7 +403,7 @@ export default function OnboardingPage() {
               className="space-y-5"
             >
               <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-900">
+                <label className="mb-2 block text-sm font-semibold text-rk-ink">
                   Business / Website Name
                 </label>
 
@@ -413,19 +415,19 @@ export default function OnboardingPage() {
                   placeholder="Example: SmileCare Dental"
                   required
                   minLength={2}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-rk-md border border-rk-border bg-white px-4 py-3 text-sm outline-none transition focus:border-rk-ink focus:ring-2 focus:ring-rk-border"
                 />
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-900">
+                <label className="mb-2 block text-sm font-semibold text-rk-ink">
                   Website URL
                 </label>
 
                 <div className="relative">
                   <Globe2
                     size={18}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                    className="absolute left-4 top-1/2 -translate-y-1/2 text-rk-muted"
                   />
 
                   <input
@@ -436,18 +438,18 @@ export default function OnboardingPage() {
                     }
                     placeholder="https://example.com"
                     required
-                    className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-11 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    className="w-full rounded-rk-md border border-rk-border bg-white py-3 pl-11 pr-4 text-sm outline-none transition focus:border-rk-ink focus:ring-2 focus:ring-rk-border"
                   />
                 </div>
 
-                <p className="mt-2 text-xs text-slate-400">
+                <p className="mt-2 text-xs text-rk-muted">
                   Example: https://beecreativess.com
                 </p>
               </div>
 
               <div className="grid gap-5 sm:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-900">
+                  <label className="mb-2 block text-sm font-semibold text-rk-ink">
                     Industry
                   </label>
 
@@ -457,12 +459,12 @@ export default function OnboardingPage() {
                       setIndustry(event.target.value)
                     }
                     placeholder="Dental, SaaS, Restaurant..."
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    className="w-full rounded-rk-md border border-rk-border bg-white px-4 py-3 text-sm outline-none transition focus:border-rk-ink focus:ring-2 focus:ring-rk-border"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-900">
+                  <label className="mb-2 block text-sm font-semibold text-rk-ink">
                     Country
                   </label>
 
@@ -472,7 +474,7 @@ export default function OnboardingPage() {
                       setCountry(event.target.value)
                     }
                     placeholder="India"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    className="w-full rounded-rk-md border border-rk-border bg-white px-4 py-3 text-sm outline-none transition focus:border-rk-ink focus:ring-2 focus:ring-rk-border"
                   />
                 </div>
               </div>
@@ -480,7 +482,7 @@ export default function OnboardingPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex w-full items-center justify-center gap-2 rounded-rk-md bg-rk-ink px-5 py-3.5 text-sm font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading ? (
                   <>
@@ -506,46 +508,46 @@ export default function OnboardingPage() {
         {/* ================================================= */}
 
         {step === 2 && (
-          <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <section className="mt-8 rounded-rk-lg border border-rk-border bg-white p-6 shadow-sm sm:p-8">
 
             <div className="text-center">
-              <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
+              <div className="mx-auto grid h-14 w-14 place-items-center rounded-rk-md bg-rk-successSoft text-rk-success">
                 <CheckCircle2 size={28} />
               </div>
 
-              <h2 className="mt-5 text-xl font-bold text-slate-900">
+              <h2 className="mt-5 text-xl font-bold text-rk-ink">
                 Website connected
               </h2>
 
-              <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">
+              <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-rk-secondary">
                 Now connect Google Search Console to
                 bring real search performance data into
                 RENKOO.
               </p>
             </div>
 
-            <div className="mt-8 rounded-2xl border border-slate-200 p-5">
+            <div className="mt-8 rounded-rk-md border border-rk-border p-5">
               <div className="flex items-start gap-4">
-                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-rk-md bg-rk-infoSoft text-rk-accent">
                   <Search size={23} />
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <div className="font-bold text-slate-900">
+                  <div className="font-bold text-rk-ink">
                     Google Search Console
                   </div>
 
-                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                  <p className="mt-1 text-xs leading-5 text-rk-secondary">
                     RENKOO can use impressions, clicks,
                     CTR, rankings and search queries to
                     identify real growth opportunities.
                   </p>
 
-                  <div className="mt-4 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                  <div className="mt-4 grid gap-2 text-xs text-rk-secondary sm:grid-cols-2">
                     <div className="flex items-center gap-2">
                       <CheckCircle2
                         size={14}
-                        className="text-emerald-600"
+                        className="text-rk-success"
                       />
                       Search performance
                     </div>
@@ -553,7 +555,7 @@ export default function OnboardingPage() {
                     <div className="flex items-center gap-2">
                       <CheckCircle2
                         size={14}
-                        className="text-emerald-600"
+                        className="text-rk-success"
                       />
                       Keyword opportunities
                     </div>
@@ -561,7 +563,7 @@ export default function OnboardingPage() {
                     <div className="flex items-center gap-2">
                       <CheckCircle2
                         size={14}
-                        className="text-emerald-600"
+                        className="text-rk-success"
                       />
                       Ranking data
                     </div>
@@ -569,7 +571,7 @@ export default function OnboardingPage() {
                     <div className="flex items-center gap-2">
                       <CheckCircle2
                         size={14}
-                        className="text-emerald-600"
+                        className="text-rk-success"
                       />
                       Search queries
                     </div>
@@ -582,7 +584,7 @@ export default function OnboardingPage() {
               <button
                 onClick={handleGoogleConnect}
                 disabled={googleLoading}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex flex-1 items-center justify-center gap-2 rounded-rk-md bg-rk-ink px-5 py-3.5 text-sm font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {googleLoading ? (
                   <>
@@ -603,13 +605,13 @@ export default function OnboardingPage() {
               <button
                 onClick={() => setStep(3)}
                 disabled={googleLoading}
-                className="rounded-xl border border-slate-200 bg-white px-5 py-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                className="rounded-rk-md border border-rk-border bg-white px-5 py-3.5 text-sm font-semibold text-rk-secondary transition hover:bg-rk-soft disabled:opacity-50"
               >
                 Skip for now
               </button>
             </div>
 
-            <p className="mt-4 text-center text-xs text-slate-400">
+            <p className="mt-4 text-center text-xs text-rk-muted">
               You can connect Google later from
               Integrations.
             </p>
@@ -621,48 +623,48 @@ export default function OnboardingPage() {
         {/* ================================================= */}
 
         {step === 3 && (
-          <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <section className="mt-8 rounded-rk-lg border border-rk-border bg-white p-6 shadow-sm sm:p-8">
 
             {firstCrawlResult && (
-              <div className="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                <div className="border-b border-slate-200 px-5 py-4">
-                  <p className="text-xs font-bold uppercase tracking-wider text-blue-600">
+              <div className="mb-8 overflow-hidden rounded-rk-md border border-rk-border bg-rk-soft">
+                <div className="border-b border-rk-border px-5 py-4">
+                  <p className="text-xs font-bold uppercase tracking-wider text-rk-accent">
                     First crawl complete
                   </p>
-                  <h3 className="mt-1 text-xl font-bold text-slate-900">
+                  <h3 className="mt-1 text-xl font-bold text-rk-ink">
                     Your first growth snapshot
                   </h3>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="mt-1 text-sm text-rk-secondary">
                     RENKOO has analyzed your website and created your technical baseline.
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 divide-x divide-y divide-slate-200 sm:grid-cols-4 sm:divide-y-0">
-                  <div className="bg-white p-4">
-                    <p className="text-xs font-semibold text-slate-500">SEO score</p>
-                    <p className="mt-1 text-3xl font-black text-slate-900">
+                <div className="grid grid-cols-2 gap-px bg-rk-border sm:grid-cols-4">
+                  <div className="bg-rk-surface p-4">
+                    <p className="text-xs font-semibold text-rk-secondary">SEO score</p>
+                    <p className="mt-1 text-3xl font-black text-rk-ink">
                       {firstCrawlResult.summary.score}
-                      <span className="ml-1 text-sm font-semibold text-slate-400">/100</span>
+                      <span className="ml-1 text-sm font-semibold text-rk-muted">/100</span>
                     </p>
                   </div>
 
-                  <div className="bg-white p-4">
-                    <p className="text-xs font-semibold text-slate-500">Pages analyzed</p>
-                    <p className="mt-1 text-3xl font-black text-slate-900">
+                  <div className="bg-rk-surface p-4">
+                    <p className="text-xs font-semibold text-rk-secondary">Pages analyzed</p>
+                    <p className="mt-1 text-3xl font-black text-rk-ink">
                       {firstCrawlResult.pagesCrawled}
                     </p>
                   </div>
 
-                  <div className="bg-white p-4">
-                    <p className="text-xs font-semibold text-slate-500">Open issues</p>
-                    <p className="mt-1 text-3xl font-black text-slate-900">
+                  <div className="bg-rk-surface p-4">
+                    <p className="text-xs font-semibold text-rk-secondary">Open issues</p>
+                    <p className="mt-1 text-3xl font-black text-rk-ink">
                       {firstCrawlResult.summary.open}
                     </p>
                   </div>
 
-                  <div className="bg-white p-4">
-                    <p className="text-xs font-semibold text-slate-500">Critical issues</p>
-                    <p className="mt-1 text-3xl font-black text-slate-900">
+                  <div className="bg-rk-surface p-4">
+                    <p className="text-xs font-semibold text-rk-secondary">Critical issues</p>
+                    <p className="mt-1 text-3xl font-black text-rk-ink">
                       {firstCrawlResult.summary.critical}
                     </p>
                   </div>
@@ -670,15 +672,15 @@ export default function OnboardingPage() {
               </div>
             )}
             <div className="text-center">
-              <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-blue-50 to-violet-50 text-blue-600">
+              <div className="mx-auto grid h-16 w-16 place-items-center rounded-rk-md bg-rk-soft text-rk-accent">
                 <Sparkles size={30} />
               </div>
 
-              <h2 className="mt-5 text-2xl font-bold text-slate-900">
+              <h2 className="mt-5 text-2xl font-bold text-rk-ink">
                 Your RENKOO workspace is ready
               </h2>
 
-              <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
+              <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-rk-secondary">
                 Your website is connected. You can now
                 start auditing your website and building
                 your growth strategy.
@@ -709,12 +711,12 @@ export default function OnboardingPage() {
               />
             </div>
 
-            <div className="mt-4 rounded-2xl border border-slate-200 p-5">
-              <div className="font-bold text-slate-900">
+            <div className="mt-4 rounded-rk-md border border-rk-border p-5">
+              <div className="font-bold text-rk-ink">
                 Choose your role focus
               </div>
 
-              <p className="mt-1 text-xs leading-5 text-slate-500">
+              <p className="mt-1 text-xs leading-5 text-rk-secondary">
                 This only changes ordering and
                 emphasis across RENKOO. It never
                 changes what you are allowed to do.
@@ -725,23 +727,23 @@ export default function OnboardingPage() {
               </div>
             </div>
 
-            <div className="mt-4 rounded-2xl border border-slate-200 p-5">
+            <div className="mt-4 rounded-rk-md border border-rk-border p-5">
               <div className="flex items-start gap-4">
-                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-rk-md bg-rk-infoSoft text-rk-accent">
                   <ShieldCheck size={23} />
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <div className="font-bold text-slate-900">
+                  <div className="font-bold text-rk-ink">
                     What to do next
                   </div>
 
-                  <p className="mt-1 text-xs leading-5 text-slate-500">`r`n                    Your first crawl is complete. Use your snapshot above to decide what to improve first.`r`n                  </p>
+                  <p className="mt-1 text-xs leading-5 text-rk-secondary">Your first crawl is complete. Use your snapshot above to decide what to improve first.</p>
 
                   <div className="mt-4 grid gap-2">
                     <a
                       href="/"
-                      className="flex items-center justify-between gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
+                      className="flex items-center justify-between gap-2 rounded-rk-md bg-rk-ink px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90"
                     >
                       Open Growth Command Center
                       <ArrowRight size={16} />
@@ -749,7 +751,7 @@ export default function OnboardingPage() {
 
                     <a
                       href="/technical-seo"
-                      className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+                      className="flex items-center justify-between gap-2 rounded-rk-md border border-rk-border bg-white px-4 py-3 text-sm font-semibold text-rk-ink transition hover:bg-rk-soft"
                     >
                       View your technical findings
                       Technical SEO
@@ -758,7 +760,7 @@ export default function OnboardingPage() {
 
                     <a
                       href="/opportunities"
-                      className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+                      className="flex items-center justify-between gap-2 rounded-rk-md border border-rk-border bg-white px-4 py-3 text-sm font-semibold text-rk-ink transition hover:bg-rk-soft"
                     >
                       See first opportunities
                       <ArrowRight size={16} />
@@ -770,7 +772,7 @@ export default function OnboardingPage() {
 
             <button
               onClick={finishSetup}
-              className="mt-8 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3.5 text-sm font-bold text-white transition hover:bg-blue-700"
+              className="mt-8 flex w-full items-center justify-center gap-2 rounded-rk-md bg-rk-ink px-5 py-3.5 text-sm font-bold text-white transition hover:opacity-90"
             >
               Go to RENKOO
               <ArrowRight size={18} />
@@ -778,7 +780,7 @@ export default function OnboardingPage() {
           </section>
         )}
 
-        <p className="mt-6 text-center text-xs text-slate-400">
+        <p className="mt-6 text-center text-xs text-rk-muted">
           You can change your website and connections
           later from your RENKOO workspace.
         </p>
@@ -803,10 +805,10 @@ function StepIndicator({
       <div
         className={`grid h-9 w-9 place-items-center rounded-full text-xs font-bold ${
           completed
-            ? 'bg-emerald-500 text-white'
+            ? 'bg-rk-success text-white'
             : active
-              ? 'bg-blue-600 text-white'
-              : 'bg-slate-100 text-slate-400'
+              ? 'bg-rk-ink text-white'
+              : 'bg-rk-soft text-rk-muted'
         }`}
       >
         {completed ? (
@@ -819,8 +821,8 @@ function StepIndicator({
       <span
         className={`text-[10px] font-semibold ${
           active
-            ? 'text-slate-900'
-            : 'text-slate-400'
+            ? 'text-rk-ink'
+            : 'text-rk-muted'
         }`}
       >
         {label}
@@ -839,16 +841,16 @@ function SetupCard({
   description: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-      <div className="grid h-10 w-10 place-items-center rounded-xl bg-white text-blue-600">
+    <div className="rounded-rk-md border border-rk-border bg-rk-soft p-4">
+      <div className="grid h-10 w-10 place-items-center rounded-rk-md bg-white text-rk-accent">
         {icon}
       </div>
 
-      <div className="mt-3 text-sm font-bold text-slate-900">
+      <div className="mt-3 text-sm font-bold text-rk-ink">
         {title}
       </div>
 
-      <div className="mt-1 text-xs text-slate-500">
+      <div className="mt-1 text-xs text-rk-secondary">
         {description}
       </div>
     </div>

@@ -269,18 +269,18 @@ export default function WebsitesPage() {
       mobileOpen={false}
       onClose={() => undefined}
     >
-      <div className="space-y-6">
-        <section className="flex flex-col gap-4 border-b border-rk-border pb-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
+      <div className="rk-page space-y-6">
+        <section className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <p className="rk-label">Workspace</p>
 
-            <h1 className="mt-1 text-2xl font-bold tracking-tight text-rk-ink">
+            <h1 className="mt-1.5 text-[26px] font-extrabold leading-[1.15] tracking-[-0.03em] text-rk-ink sm:text-[30px]">
               Websites
             </h1>
 
-            <p className="mt-1 max-w-2xl text-sm text-rk-secondary">
-              Manage the websites connected to this workspace and choose which
-              one RENKOO should analyze.
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-rk-secondary">
+              Manage the websites connected to this workspace
+              and choose which one RENKOO should analyze.
             </p>
           </div>
 
@@ -291,7 +291,7 @@ export default function WebsitesPage() {
               setLimitError(null);
               setAddOpen(true);
             }}
-            className="rk-focusable inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-rk-md bg-rk-ink px-4 text-sm font-semibold text-white hover:opacity-90"
+            className="rk-focusable inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-rk-md bg-rk-ink px-4 text-[13px] font-bold text-white shadow-rk-sm transition-all hover:opacity-90 hover:shadow-rk-md"
           >
             <Plus size={16} aria-hidden />
             Add website
@@ -316,32 +316,35 @@ export default function WebsitesPage() {
         ) : null}
 
         <section className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-rk-md border border-rk-border bg-rk-surface p-4">
-            <p className="text-xs font-semibold text-rk-muted">
-              Websites
-            </p>
-            <p className="mt-1 text-2xl font-bold text-rk-ink">
+          <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+            <p className="rk-label">Websites</p>
+            <p className="rk-number mt-2 text-[26px] font-extrabold leading-none">
               {websiteCount}
             </p>
+            <p className="rk-metadata mt-1.5">
+              Connected to this workspace
+            </p>
           </div>
 
-          <div className="rounded-rk-md border border-rk-border bg-rk-surface p-4">
-            <p className="text-xs font-semibold text-rk-muted">
-              Active
-            </p>
-            <p className="mt-1 text-2xl font-bold text-rk-ink">
+          <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+            <p className="rk-label">Active</p>
+            <p className="rk-number mt-2 text-[26px] font-extrabold leading-none">
               {activeCount}
             </p>
+            <p className="rk-metadata mt-1.5">
+              Ready for analysis
+            </p>
           </div>
 
-          <div className="rounded-rk-md border border-rk-border bg-rk-surface p-4">
-            <p className="text-xs font-semibold text-rk-muted">
-              Selected website
-            </p>
-            <p className="mt-1 truncate text-sm font-bold text-rk-ink">
+          <div className="rounded-rk-lg border border-rk-border bg-rk-surface p-4 shadow-rk-sm sm:p-5">
+            <p className="rk-label">Selected website</p>
+            <p className="mt-2 truncate text-[15px] font-extrabold tracking-tight text-rk-ink">
               {selectedWebsite
                 ? domainLabel(selectedWebsite.url)
                 : "None"}
+            </p>
+            <p className="rk-metadata mt-1.5 truncate">
+              {selectedWebsite ? selectedWebsite.name : "—"}
             </p>
           </div>
         </section>
@@ -668,12 +671,12 @@ export default function WebsitesPage() {
       </div>
 
       {addOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="rk-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center px-4">
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="add-website-title"
-            className="w-full max-w-md rounded-rk-lg border border-rk-border bg-rk-surface p-6 shadow-2xl"
+            className="rk-dialog w-full max-w-md rounded-rk-lg border border-rk-border bg-rk-surface p-6"
           >
             <div className="flex items-start justify-between">
               <div>
@@ -794,12 +797,12 @@ export default function WebsitesPage() {
       ) : null}
 
       {editWebsite ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="rk-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center px-4">
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-website-title"
-            className="w-full max-w-md rounded-rk-lg border border-rk-border bg-rk-surface p-6 shadow-2xl"
+            className="rk-dialog w-full max-w-md rounded-rk-lg border border-rk-border bg-rk-surface p-6"
           >
             <div className="flex items-start justify-between">
               <div>
@@ -887,12 +890,12 @@ export default function WebsitesPage() {
       ) : null}
 
       {deleteTarget ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="rk-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center px-4">
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-website-title"
-            className="w-full max-w-md rounded-rk-lg border border-rk-border bg-rk-surface p-6 shadow-2xl"
+            className="rk-dialog w-full max-w-md rounded-rk-lg border border-rk-border bg-rk-surface p-6"
           >
             <p className="rk-label">Permanent action</p>
 
