@@ -1,4 +1,5 @@
 ﻿import {
+  BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -102,6 +103,14 @@ export class RevenueService {
   ) {
     await this.getWebsite(organizationId, websiteId);
 
+    const amount = Number(data.amount);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException(
+        'Revenue amount must be greater than 0',
+      );
+    }
+
     if (data.leadId) {
       const lead = await this.prisma.lead.findFirst({
         where: {
@@ -130,7 +139,7 @@ export class RevenueService {
       data: {
         websiteId,
         leadId: data.leadId,
-        amount: data.amount,
+        amount,
         currency: data.currency ?? 'INR',
         source: data.source,
         sourceDetail: data.sourceDetail,

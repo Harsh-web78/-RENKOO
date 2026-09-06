@@ -1,4 +1,5 @@
 ﻿import {
+  BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -1390,6 +1391,12 @@ export class RecommendationsService {
     organizationId: string,
     websiteId: string,
   ) {
+    if (!websiteId?.trim()) {
+      throw new BadRequestException(
+        'websiteId is required',
+      );
+    }
+
     const website =
       await this.prisma.website.findFirst({
         where: {

@@ -6,7 +6,6 @@
   Injectable,
   Logger,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 
 import { GoogleService } from '../google/google.service';
@@ -205,7 +204,7 @@ export class ContentService {
     websiteId?: string,
   ) {
     if (!startDate || !endDate) {
-      throw new UnauthorizedException(
+      throw new BadRequestException(
         'startDate and endDate are required',
       );
     }
@@ -2824,6 +2823,15 @@ export class ContentService {
     websiteId: string,
     pageUrl: string,
   ) {
+    if (
+      !websiteId?.trim() ||
+      !pageUrl?.trim()
+    ) {
+      throw new BadRequestException(
+        'websiteId and pageUrl are required',
+      );
+    }
+
     await this.verifyWebsite(
       organizationId,
       websiteId,

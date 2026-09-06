@@ -1,4 +1,8 @@
-﻿import { Injectable, NotFoundException } from '@nestjs/common';
+﻿import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -64,6 +68,12 @@ export class GeoService {
     organizationId: string,
     websiteId: string,
   ) {
+    if (!websiteId?.trim()) {
+      throw new BadRequestException(
+        'websiteId is required',
+      );
+    }
+
     const website = await this.getWebsite(
       organizationId,
       websiteId,
