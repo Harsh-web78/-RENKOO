@@ -20,6 +20,7 @@ import {
   Target,
   TrendingUp,
   Users,
+  X,
 } from 'lucide-react';
 import { getCurrentAccount, type CurrentAccount } from '@/lib/api';
 import {
@@ -48,7 +49,6 @@ const nav = [
   ['Intelligence', '/agents', Bot],
   ['Workers', '/workers', Bot],
   ['Clients', '/clients', Users],
-  ['Reports', '/reports', FileText],
   ['Integrations', '/integrations', Globe2],
   ['Settings', '/settings', Settings],
   ['Billing', '/billing', CreditCard],
@@ -143,7 +143,7 @@ export default function Sidebar({
             onClick={onClose}
             aria-label="Close menu"
           >
-            ×
+            <X size={18} aria-hidden />
           </button>
         </div>
 
@@ -188,20 +188,24 @@ export default function Sidebar({
             const active =
               href === '/'
                 ? pathname === '/'
-                : pathname.startsWith(href);
+                : pathname === href ||
+                  pathname.startsWith(`${href}/`);
 
             return (
               <Link
                 key={name}
                 href={href}
                 onClick={onClose}
+                aria-current={
+                  active ? 'page' : undefined
+                }
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
                   active
-                    ? 'bg-blue-50 font-semibold text-blue-600'
+                    ? 'bg-rk-ink font-semibold text-white'
                     : 'text-slate-600 hover:bg-slate-50'
                 }`}
               >
-                <Icon size={17} />
+                <Icon size={17} aria-hidden />
                 <span>{name}</span>
               </Link>
             );
