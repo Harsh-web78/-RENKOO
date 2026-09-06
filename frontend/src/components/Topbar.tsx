@@ -16,6 +16,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Bell,
+  CreditCard,
   LogOut,
   Menu,
   Search,
@@ -128,6 +129,15 @@ export default function Topbar({
         </button>
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          <Link
+            href="/billing"
+            aria-label="Subscription"
+            className="rk-focusable hidden h-9 items-center gap-2 rounded-rk-md border border-rk-border bg-rk-surface px-3 text-xs font-semibold text-rk-ink hover:bg-rk-soft sm:flex"
+          >
+            <CreditCard size={15} aria-hidden />
+            Subscription
+          </Link>
+
           <Link
             href="/monitoring"
             aria-label="Notifications and changes"
