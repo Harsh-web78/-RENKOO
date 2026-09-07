@@ -333,21 +333,32 @@ export class MonitoringService {
           },
         });
 
-      for (const alert of activeTechnicalAlerts) {
-        if (!currentKeys.has(alert.deduplicationKey)) {
-          await this.prisma.monitoringAlert.update({
-            where: {
-              id: alert.id,
-            },
-            data: {
-              status: 'RESOLVED',
-              resolvedAt: new Date(),
-              active: false,
-            },
-          });
+      /*
+       * One batched write for every stale alert
+       * instead of one round trip per alert.
+       */
+      const staleAlertIds = activeTechnicalAlerts
+        .filter(
+          (alert) =>
+            !currentKeys.has(
+              alert.deduplicationKey,
+            ),
+        )
+        .map((alert) => alert.id);
 
-          alertsResolved += 1;
-        }
+      if (staleAlertIds.length > 0) {
+        await this.prisma.monitoringAlert.updateMany({
+          where: {
+            id: { in: staleAlertIds },
+          },
+          data: {
+            status: 'RESOLVED',
+            resolvedAt: new Date(),
+            active: false,
+          },
+        });
+
+        alertsResolved += staleAlertIds.length;
       }
 
       return {
@@ -1196,10 +1207,14 @@ export class MonitoringService {
         ...(websiteId ? { websiteId } : {}),
       };
 
+      /*
+       * `unread` and `detected` are the same DETECTED
+       * count by contract — one query feeds both
+       * fields so the response shape never changes.
+       */
       const [
         total,
         unread,
-        detected,
         acknowledged,
         resolved,
         critical,
@@ -1208,9 +1223,6 @@ export class MonitoringService {
         low,
       ] = await Promise.all([
         this.prisma.monitoringAlert.count({ where: baseWhere }),
-        this.prisma.monitoringAlert.count({
-          where: { ...baseWhere, status: 'DETECTED' },
-        }),
         this.prisma.monitoringAlert.count({
           where: { ...baseWhere, status: 'DETECTED' },
         }),
@@ -1238,7 +1250,7 @@ export class MonitoringService {
         websiteId: websiteId ?? null,
         total,
         unread,
-        detected,
+        detected: unread,
         acknowledged,
         resolved,
         bySeverity: { critical, high, medium, low },

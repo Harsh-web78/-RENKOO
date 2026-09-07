@@ -16,6 +16,17 @@ export class DashboardController {
     private readonly dashboardService: DashboardService,
   ) {}
 
+  @Get('bootstrap')
+  getBootstrap(
+    @Req() req: any,
+    @Query('websiteId') websiteId?: string,
+  ): Promise<any> {
+    return this.dashboardService.getBootstrap(
+      req.user.organizationId,
+      websiteId,
+    );
+  }
+
   @Get()
   getDashboard(
     @Req() req: any,

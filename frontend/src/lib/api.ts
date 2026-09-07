@@ -622,6 +622,27 @@ export function invalidateSessionCache(
   }
 }
 
+/*
+ * Prime one session entry with data already in
+ * hand (e.g. from the dashboard bootstrap, which
+ * returns the exact payloads these endpoints
+ * serve). Entries are token-scoped with the same
+ * TTL as fetched reads, so mutation invalidation
+ * and sign-out semantics are unchanged — this
+ * only skips a duplicate network round trip.
+ */
+export function primeSessionCache<T>(
+  key: string,
+  value: T,
+) {
+  sessionCache.set(key, {
+    token: getToken(),
+    expiresAt:
+      Date.now() + SESSION_CACHE_TTL_MS,
+    value,
+  });
+}
+
 async function doRequest<T>(
   path: string,
   options: RequestInit = {},
@@ -1149,8 +1170,18 @@ export async function reopenSeoIssue(
  */
 
 export async function getGoogleConnectionStatus() {
-  return request<GoogleConnectionStatus>(
-    '/google/status',
+  /*
+   * Read on nearly every dashboard mount. Short
+   * token-scoped cache; cleared by disconnect and
+   * property selection below so connection changes
+   * are never served stale.
+   */
+  return cachedSessionRead<GoogleConnectionStatus>(
+    'google-status',
+    () =>
+      request<GoogleConnectionStatus>(
+        '/google/status',
+      ),
   );
 }
 
@@ -1217,9 +1248,13 @@ export async function disconnectGoogle(): Promise<{
   message?: string;
   [key: string]: any;
 }> {
-  return request('/google/disconnect', {
-    method: 'POST',
-  });
+  try {
+    return request('/google/disconnect', {
+      method: 'POST',
+    });
+  } finally {
+    invalidateSessionCache('google-status');
+  }
 }
 
 export interface BusinessLocation {
@@ -1495,9 +1530,13 @@ export async function getGoogleProperties() {
 export async function selectGoogleProperty(
   siteUrl: string,
 ) {
-  return request<GoogleConnection>(
-    `/google/select-property?siteUrl=${encodeURIComponent(siteUrl)}`,
-  );
+  try {
+    return request<GoogleConnection>(
+      `/google/select-property?siteUrl=${encodeURIComponent(siteUrl)}`,
+    );
+  } finally {
+    invalidateSessionCache('google-status');
+  }
 }
 
 /*
@@ -2190,20 +2229,32 @@ export interface UnifiedOpportunitiesResponse {
 /* ACTIONS */
 
 export async function getActions(): Promise<ActionsResponse> {
-  return request<ActionsResponse>('/actions');
+  /*
+   * Mounted on dashboard + actions page. Short
+   * token-scoped cache; every action mutation in
+   * this file invalidates it.
+   */
+  return cachedSessionRead<ActionsResponse>(
+    'actions',
+    () => request<ActionsResponse>('/actions'),
+  );
 }
 
 export async function updateActionStatus(
   actionId: string,
   status: RenkooAction['status'],
 ): Promise<RenkooAction> {
-  return request<RenkooAction>(
-    `/actions/${encodeURIComponent(actionId)}/status`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify({ status }),
-    },
-  );
+  try {
+    return request<RenkooAction>(
+      `/actions/${encodeURIComponent(actionId)}/status`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      },
+    );
+  } finally {
+    invalidateSessionCache('actions');
+  }
 }
 
 export async function createAction(data: {
@@ -2216,10 +2267,14 @@ export async function createAction(data: {
   priority?: string;
   metadata?: any;
 }): Promise<RenkooAction> {
-  return request<RenkooAction>('/actions', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
+  try {
+    return request<RenkooAction>('/actions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  } finally {
+    invalidateSessionCache('actions');
+  }
 }
 
 /* AI VISIBILITY */
@@ -3429,22 +3484,34 @@ export async function updateBusinessBrain(
   websiteId: string,
   data: Record<string, any>,
 ) {
-  return request<BusinessBrain>(
-    `/business-brain/${encodeURIComponent(websiteId)}`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    },
-  );
+  try {
+    return request<BusinessBrain>(
+      `/business-brain/${encodeURIComponent(websiteId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      },
+    );
+  } finally {
+    invalidateSessionCache(
+      `business-context:${websiteId}`,
+    );
+  }
 }
 
 export async function analyzeBusinessBrain(
   websiteId: string,
 ) {
-  return request<any>(
-    `/business-brain/${encodeURIComponent(websiteId)}/analyze`,
-    { method: 'POST' },
-  );
+  try {
+    return request<any>(
+      `/business-brain/${encodeURIComponent(websiteId)}/analyze`,
+      { method: 'POST' },
+    );
+  } finally {
+    invalidateSessionCache(
+      `business-context:${websiteId}`,
+    );
+  }
 }
 
 export async function getBusinessBrainRecommendations(
@@ -3458,16 +3525,28 @@ export async function getBusinessBrainRecommendations(
 export async function createActionFromRecommendation(
   recommendationId: string,
 ): Promise<RenkooAction> {
-  return request<RenkooAction>(
-    `/recommendations/${encodeURIComponent(recommendationId)}/action`,
-    { method: 'POST' },
-  );
+  try {
+    return request<RenkooAction>(
+      `/recommendations/${encodeURIComponent(recommendationId)}/action`,
+      { method: 'POST' },
+    );
+  } finally {
+    invalidateSessionCache('actions');
+  }
 }
 
 /* COMPETITORS */
 
 export async function getCompetitors() {
-  return request<Competitor[]>('/competitors');
+  /*
+   * Mounted on dashboard + competitors views. Short
+   * token-scoped cache; competitor mutations below
+   * invalidate it.
+   */
+  return cachedSessionRead<Competitor[]>(
+    'competitors',
+    () => request<Competitor[]>('/competitors'),
+  );
 }
 
 export async function createCompetitor(data: {
@@ -3475,17 +3554,25 @@ export async function createCompetitor(data: {
   url: string;
   websiteId: string;
 }) {
-  return request<Competitor>('/competitors', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
+  try {
+    return request<Competitor>('/competitors', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  } finally {
+    invalidateSessionCache('competitors');
+  }
 }
 
 export async function deleteCompetitor(id: string) {
-  return request(
-    `/competitors/${encodeURIComponent(id)}`,
-    { method: 'DELETE' },
-  );
+  try {
+    return request(
+      `/competitors/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    );
+  } finally {
+    invalidateSessionCache('competitors');
+  }
 }
 
 export async function crawlCompetitor(id: string) {
@@ -3702,12 +3789,17 @@ export interface CurrentAccount {
 }
 
 export async function getCurrentAccount(): Promise<CurrentAccount> {
-  // Same endpoint as getMe but a richer shape for the
-  // shell; cached for the same reason (every mount).
-  return cachedSessionRead<CurrentAccount>(
-    'account',
-    () => request<CurrentAccount>('/auth/me'),
+  /*
+   * Same GET /auth/me payload as getMe — shares the
+   * 'me' session entry instead of fetching and
+   * storing a second copy on every shell mount.
+   */
+  const data = await cachedSessionRead<any>(
+    'me',
+    () => request('/auth/me'),
   );
+
+  return data as CurrentAccount;
 }
 
 export async function updateProfile(name: string) {
@@ -3717,7 +3809,7 @@ export async function updateProfile(name: string) {
       body: JSON.stringify({ name }),
     });
   } finally {
-    invalidateSessionCache('account');
+    invalidateSessionCache('me');
   }
 }
 
@@ -4276,8 +4368,17 @@ export interface BusinessContext {
 export async function getBusinessContext(
   websiteId: string,
 ): Promise<BusinessContext> {
-  return request<BusinessContext>(
-    `/business-brain/${encodeURIComponent(websiteId)}/context`,
+  /*
+   * Fetched on every dashboard mount by
+   * PersonaHomeStrip. Per-website short cache;
+   * brain edits/analysis invalidate it.
+   */
+  return cachedSessionRead<BusinessContext>(
+    `business-context:${websiteId}`,
+    () =>
+      request<BusinessContext>(
+        `/business-brain/${encodeURIComponent(websiteId)}/context`,
+      ),
   );
 }
 
@@ -4356,5 +4457,48 @@ export async function getMonitoringChanges(
 ): Promise<MonitoringChangesResponse> {
   return request<MonitoringChangesResponse>(
     `/monitoring/changes?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+/*
+ * =========================================================
+ * DASHBOARD BOOTSTRAP — first-paint payload
+ * =========================================================
+ *
+ * One authenticated request returning the cheap reads
+ * every dashboard mount needs (websites + selection,
+ * actions summary, competitors, monitoring summary,
+ * Google status). Heavy sections (SEO, opportunities,
+ * monitoring changes, AI intel, outcome, GSC/GA4 live
+ * data, comparison, business context) keep loading
+ * separately and progressively.
+ */
+
+export interface DashboardBootstrap {
+  websites: Website[];
+  selectedWebsite: Website | null;
+  actionsSummary: {
+    high: number;
+    medium: number;
+    low: number;
+    todo: number;
+    inProgress: number;
+    done: number;
+  };
+  competitors: Competitor[];
+  monitoringSummary: MonitoringSummary | null;
+  googleStatus: GoogleConnectionStatus;
+  generatedAt: string;
+}
+
+export async function getDashboardBootstrap(
+  websiteId?: string,
+): Promise<DashboardBootstrap> {
+  const query = websiteId
+    ? `?websiteId=${encodeURIComponent(websiteId)}`
+    : '';
+
+  return request<DashboardBootstrap>(
+    `/dashboard/bootstrap${query}`,
   );
 }

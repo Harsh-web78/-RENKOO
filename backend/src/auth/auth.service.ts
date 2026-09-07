@@ -229,16 +229,27 @@ export class AuthService {
     const email =
       dto.email.trim().toLowerCase();
 
+    /*
+     * Only the first membership's organization is
+     * ever used below — fetch one membership id
+     * instead of every membership with its full
+     * organization record.
+     */
     const user =
       await this.prisma.user.findUnique({
         where: {
           email,
         },
-        include: {
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          passwordHash: true,
           memberships: {
-            include: {
-              organization: true,
+            select: {
+              organizationId: true,
             },
+            take: 1,
           },
         },
       });
@@ -283,23 +294,30 @@ export class AuthService {
     userId: string,
     organizationId: string,
   ) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        emailVerifiedAt: true,
-        createdAt: true,
-      },
-    });
+    /*
+     * Four independent lookups — one round trip
+     * instead of four sequential ones. Error
+     * precedence is preserved below so callers
+     * see the exact same errors as before.
+     */
+    const [
+      user,
+      organization,
+      membership,
+      website,
+    ] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          emailVerifiedAt: true,
+          createdAt: true,
+        },
+      }),
 
-    if (!user) {
-      throw new UnauthorizedException('User not found');
-    }
-
-    const organization =
-      await this.prisma.organization.findUnique({
+      this.prisma.organization.findUnique({
         where: { id: organizationId },
         select: {
           id: true,
@@ -307,16 +325,9 @@ export class AuthService {
           slug: true,
           createdAt: true,
         },
-      });
+      }),
 
-    if (!organization) {
-      throw new UnauthorizedException(
-        'Organization not found',
-      );
-    }
-
-    const membership =
-      await this.prisma.organizationMember.findUnique({
+      this.prisma.organizationMember.findUnique({
         where: {
           userId_organizationId: {
             userId,
@@ -326,16 +337,9 @@ export class AuthService {
         select: {
           role: true,
         },
-      });
+      }),
 
-    if (!membership) {
-      throw new UnauthorizedException(
-        'You no longer have access to this workspace',
-      );
-    }
-
-    const website =
-      await this.prisma.website.findFirst({
+      this.prisma.website.findFirst({
         where: {
           organizationId,
           isActive: true,
@@ -351,7 +355,24 @@ export class AuthService {
           country: true,
           isActive: true,
         },
-      });
+      }),
+    ]);
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    if (!organization) {
+      throw new UnauthorizedException(
+        'Organization not found',
+      );
+    }
+
+    if (!membership) {
+      throw new UnauthorizedException(
+        'You no longer have access to this workspace',
+      );
+    }
 
     return {
       user: {

@@ -19,8 +19,8 @@ secrets in the provider dashboards only.
 | `NODE_ENV` | `production` (enables boot fail-fast on missing `JWT_ACCESS_SECRET`) |
 | `PORT` | Set by Render automatically; code defaults to `4000` locally |
 | `DATABASE_URL` | Render Postgres connection string + `?sslmode=require` |
-| `FRONTEND_URL` | `https://renkoo.vercel.app` (CORS allowlist; comma-separate if more origins) |
-| `APP_PUBLIC_URL` | `https://renkoo.vercel.app` (links inside emails) |
+| `FRONTEND_URL` | `https://renkoo.online,http://localhost:3000` (CORS allowlist; comma-separate if more origins — keep `http://localhost:3000` so local dev against the prod API keeps working; retain `https://renkoo.vercel.app` as an extra entry only while the old deployment still serves traffic) |
+| `APP_PUBLIC_URL` | `https://renkoo.online` (single canonical URL — links inside emails; never a comma list) |
 | `JWT_ACCESS_SECRET` | Strong random 256-bit value; boot fails without it in production |
 | `TOKEN_ENCRYPTION_KEY` | Strong random value; without it Google OAuth tokens store as plaintext |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | `GOOGLE_REDIRECT_URI=https://renkoo-backend.onrender.com/api/google/callback` (must match Google Cloud console exactly) |
@@ -94,7 +94,7 @@ international-cards activation (`RAZORPAY_INTERNATIONAL_CARDS=AVAILABLE`).
 
 - Set `EMAIL_FROM` to a domain-verified sender. Without it, mail falls back
   to Resend's test sender (`onboarding@resend.dev`), which is delivery-limited.
-- `APP_PUBLIC_URL=https://renkoo.vercel.app` so email links point at production.
+- `APP_PUBLIC_URL=https://renkoo.online` so email links point at production.
 - Scheduled report delivery is NOT implemented (`supported:false`); do not
   promise it to customers.
 
@@ -110,7 +110,7 @@ international-cards activation (`RAZORPAY_INTERNATIONAL_CARDS=AVAILABLE`).
 
 1. `GET /api/health` → `200`, `ok:true`, `database.status:"UP"`.
 2. `GET /api/health/live` → `200`.
-3. Load `https://renkoo.vercel.app`, log in, open the dashboard.
+3. Load `https://renkoo.online`, log in, open the dashboard.
 4. Create a website, run a crawl, check opportunities render.
 5. Connect Google (Search Console) and confirm property selection.
 6. Trigger a test email (invite/verify) and confirm sender + links.

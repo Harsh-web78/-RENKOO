@@ -97,9 +97,16 @@ async function bootstrap() {
   app.useGlobalFilters(new GlobalExceptionFilter());
 
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  /*
+   * Exact-match allowlist driven by FRONTEND_URL (comma-separated).
+   * Trailing slashes are stripped because the Origin header never
+   * carries one — without this, a dashboard value like
+   * "https://renkoo.online/" would fail-closed with 403.
+   * No wildcards, no `origin: true`, credentials stay enabled.
+   */
   const allowedOrigins = frontendUrl
     .split(',')
-    .map((origin) => origin.trim())
+    .map((origin) => origin.trim().replace(/\/+$/, ''))
     .filter(Boolean);
 
   app.enableCors({

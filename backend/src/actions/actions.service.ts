@@ -24,16 +24,32 @@ export class ActionsService {
       },
     });
 
+    /*
+     * Single pass over the already-fetched rows
+     * instead of six full scans.
+     */
+    const summary = {
+      high: 0,
+      medium: 0,
+      low: 0,
+      todo: 0,
+      inProgress: 0,
+      done: 0,
+    };
+
+    for (const action of actions) {
+      if (action.priority === 'HIGH') summary.high += 1;
+      else if (action.priority === 'MEDIUM') summary.medium += 1;
+      else if (action.priority === 'LOW') summary.low += 1;
+
+      if (action.status === 'TODO') summary.todo += 1;
+      else if (action.status === 'IN_PROGRESS') summary.inProgress += 1;
+      else if (action.status === 'DONE') summary.done += 1;
+    }
+
     return {
       total: actions.length,
-      summary: {
-        high: actions.filter(a => a.priority === 'HIGH').length,
-        medium: actions.filter(a => a.priority === 'MEDIUM').length,
-        low: actions.filter(a => a.priority === 'LOW').length,
-        todo: actions.filter(a => a.status === 'TODO').length,
-        inProgress: actions.filter(a => a.status === 'IN_PROGRESS').length,
-        done: actions.filter(a => a.status === 'DONE').length,
-      },
+      summary,
       actions,
     };
   }

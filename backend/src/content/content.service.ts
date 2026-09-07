@@ -218,44 +218,36 @@ export class ContentService {
     }
 
     /*
-     * Get real Google Search Console query data.
+     * Three independent reads: two live Google Search
+     * Console calls plus the website list. None feeds
+     * the others, so they run together.
      */
 
-    const queries =
-      await this.googleService.getSearchQueries(
-        organizationId,
-        startDate,
-        endDate,
-      );
-
-    /*
-     * Get query -> page mapping.
-     */
-
-    const queryPages =
-      await this.googleService.getQueryPages(
-        organizationId,
-        startDate,
-        endDate,
-      );
-
-    /*
-     * Get active websites belonging to this organization.
-     */
-
-    const websites =
-      await this.prisma.website.findMany({
-        where: {
+    const [queries, queryPages, websites] =
+      await Promise.all([
+        this.googleService.getSearchQueries(
           organizationId,
-          isActive: true,
-        },
+          startDate,
+          endDate,
+        ),
+        this.googleService.getQueryPages(
+          organizationId,
+          startDate,
+          endDate,
+        ),
+        this.prisma.website.findMany({
+          where: {
+            organizationId,
+            isActive: true,
+          },
 
-        select: {
-          id: true,
-          name: true,
-          url: true,
-        },
-      });
+          select: {
+            id: true,
+            name: true,
+            url: true,
+          },
+        }),
+      ]);
 
     /*
      * =======================================================

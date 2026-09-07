@@ -78,8 +78,20 @@ export class AiVisibilityService {
       websiteId,
     );
 
-    const queries =
-      await this.prisma.aiVisibilityQuery.findMany({
+    /*
+     * Five independent reads for one website —
+     * one wave instead of five sequential round
+     * trips. The existence check above stays
+     * first so unknown websites still 404.
+     */
+    const [
+      queries,
+      checks,
+      latestSummary,
+      latestAeoAudit,
+      latestGeoAudit,
+    ] = await Promise.all([
+      this.prisma.aiVisibilityQuery.findMany({
         where: {
           websiteId,
           isActive: true,
@@ -87,10 +99,9 @@ export class AiVisibilityService {
         orderBy: {
           createdAt: 'desc',
         },
-      });
+      }),
 
-    const checks =
-      await this.prisma.aiVisibilityCheck.findMany({
+      this.prisma.aiVisibilityCheck.findMany({
         where: {
           websiteId,
         },
@@ -98,37 +109,35 @@ export class AiVisibilityService {
           checkedAt: 'desc',
         },
         take: 100,
-      });
+      }),
 
-    const latestSummary =
-      await this.prisma.aiVisibilitySummary.findFirst({
+      this.prisma.aiVisibilitySummary.findFirst({
         where: {
           websiteId,
         },
         orderBy: {
           date: 'desc',
         },
-      });
+      }),
 
-    const latestAeoAudit =
-      await this.prisma.aeoAudit.findFirst({
+      this.prisma.aeoAudit.findFirst({
         where: {
           websiteId,
         },
         orderBy: {
           createdAt: 'desc',
         },
-      });
+      }),
 
-    const latestGeoAudit =
-      await this.prisma.geoAudit.findFirst({
+      this.prisma.geoAudit.findFirst({
         where: {
           websiteId,
         },
         orderBy: {
           createdAt: 'desc',
         },
-      });
+      }),
+    ]);
 
     const completedChecks = checks.filter(
       (check) => check.status === 'COMPLETED',
@@ -204,10 +213,32 @@ export class AiVisibilityService {
       platformStats.set(platform, current);
     }
 
-    const queryPerformance = queries.map((query) => {
-      const queryChecks = completedChecks.filter(
-        (check) => check.query === query.query,
+    /*
+     * Group once (O(Q + C)) instead of scanning all
+     * completed checks per query (O(Q x C)).
+     */
+    const checksByQuery = new Map<
+      string,
+      typeof completedChecks
+    >();
+
+    for (const check of completedChecks) {
+      const group = checksByQuery.get(
+        check.query,
       );
+
+      if (group) {
+        group.push(check);
+      } else {
+        checksByQuery.set(check.query, [
+          check,
+        ]);
+      }
+    }
+
+    const queryPerformance = queries.map((query) => {
+      const queryChecks =
+        checksByQuery.get(query.query) ?? [];
 
       const mentioned = queryChecks.filter(
         (check) => check.mentioned,

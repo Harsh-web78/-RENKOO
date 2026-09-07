@@ -88,6 +88,7 @@ import {
   getAiVisibilityIntelligence,
   getCompetitorComparison,
   getCompetitors,
+  getDashboardBootstrap,
   getGoogleAnalytics,
   getGoogleAnalyticsReport,
   getGoogleConnectionStatus,
@@ -99,6 +100,8 @@ import {
   getTechnicalSeoLatest,
   getUnifiedOpportunities,
   getWebsites,
+  invalidateSessionCache,
+  primeSessionCache,
   type AiIntelligence,
   type Competitor,
   type CrawlSummary,
@@ -169,6 +172,15 @@ export default function Home() {
 
   const [loadingWebsites, setLoadingWebsites] = useState(true);
   const [websiteError, setWebsiteError] = useState('');
+
+  /*
+   * Bootstrap gate: the Google stage waits for the
+   * one-request bootstrap (which already carries the
+   * connection status) instead of firing its own
+   * status request in parallel with it.
+   */
+  const [bootstrapReady, setBootstrapReady] =
+    useState(false);
 
   const [seoSummary, setSeoSummary] =
     useState<CrawlSummary | null>(null);
@@ -808,10 +820,135 @@ export default function Home() {
    * =========================================================
    */
 
+  /*
+   * =========================================================
+   * INITIAL — one-request bootstrap, legacy fallback
+   * =========================================================
+   *
+   * First paint needs websites + selection, actions
+   * summary, competitors, monitoring summary and the
+   * Google connection state. GET /dashboard/bootstrap
+   * returns all of those in one authenticated round
+   * trip (one guard check, one website resolution).
+   * Entries are primed into the shared session cache
+   * with their exact endpoint payloads, so the shell,
+   * selector, persona strip and status readers below
+   * hit cache instead of duplicating requests.
+   *
+   * If bootstrap fails, the individual loaders run
+   * instead — same states, same errors as before.
+   */
+
   useEffect(() => {
-    loadWebsites();
-    loadActions();
-    loadCompetitors();
+    let cancelled = false;
+
+    async function init() {
+      const token = localStorage.getItem(
+        'renkoo_access_token',
+      );
+
+      if (!token) {
+        setWebsiteError(
+          'Please login to RENKOO first.',
+        );
+        setWebsites([]);
+        setSelectedWebsite(null);
+        setLoadingWebsites(false);
+        setBootstrapReady(true);
+        return;
+      }
+
+      try {
+        const stored =
+          typeof window !== 'undefined'
+            ? window.localStorage.getItem(
+                'renkoo_website_id',
+              )
+            : null;
+
+        const boot =
+          await getDashboardBootstrap(
+            stored ?? undefined,
+          );
+
+        if (cancelled) return;
+
+        primeSessionCache(
+          'websites',
+          boot.websites,
+        );
+        primeSessionCache(
+          'competitors',
+          boot.competitors,
+        );
+        primeSessionCache(
+          'google-status',
+          boot.googleStatus,
+        );
+
+        setWebsites(
+          Array.isArray(boot.websites)
+            ? boot.websites
+            : [],
+        );
+        setSelectedWebsite(
+          boot.selectedWebsite ?? null,
+        );
+        setWebsiteError('');
+
+        setActionsSummary({
+          high: boot.actionsSummary?.high ?? 0,
+          medium:
+            boot.actionsSummary?.medium ?? 0,
+          low: boot.actionsSummary?.low ?? 0,
+          todo: boot.actionsSummary?.todo ?? 0,
+          inProgress:
+            boot.actionsSummary?.inProgress ??
+            0,
+          done: boot.actionsSummary?.done ?? 0,
+        });
+
+        setCompetitors(
+          Array.isArray(boot.competitors)
+            ? boot.competitors
+            : [],
+        );
+        setCompetitorsError('');
+
+        setMonitoringSummary(
+          boot.monitoringSummary ?? null,
+        );
+      } catch (error) {
+        console.error(
+          'Failed to load dashboard bootstrap:',
+          error,
+        );
+
+        if (cancelled) return;
+
+        await Promise.all([
+          loadWebsites(),
+          loadActions(),
+          loadCompetitors(),
+        ]);
+
+        if (cancelled) return;
+      } finally {
+        if (!cancelled) {
+          setLoadingWebsites(false);
+          setActionsLoading(false);
+          setCompetitorsLoading(false);
+          setBootstrapReady(true);
+        }
+      }
+    }
+
+    void init();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /*
@@ -848,6 +985,15 @@ export default function Home() {
    */
 
   useEffect(() => {
+    /*
+     * Waits for bootstrap: the connection status it
+     * carries is already primed into cache, so the
+     * status read below never costs a round trip on
+     * the happy path — and the analytics wave keeps
+     * its honest gated behavior when Google is off.
+     */
+    if (!bootstrapReady) return;
+
     async function initializeGoogle() {
       const connection = await loadGoogleStatus();
 
@@ -869,7 +1015,7 @@ export default function Home() {
 
     initializeGoogle();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [bootstrapReady]);
 
   /*
    * =========================================================
@@ -903,6 +1049,17 @@ export default function Home() {
 
   async function refreshDashboard() {
     setRefreshing(true);
+
+    /*
+     * Manual refresh must bypass the 60s session
+     * entries — the user explicitly asked for fresh
+     * data. Mutation invalidation already keeps
+     * caches honest at all other times.
+     */
+    invalidateSessionCache('websites');
+    invalidateSessionCache('actions');
+    invalidateSessionCache('competitors');
+    invalidateSessionCache('google-status');
 
     try {
       const connection = await loadGoogleStatus();

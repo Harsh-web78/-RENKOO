@@ -767,7 +767,7 @@ export class BillingService {
       stripeSubscriptionId
     ) {
       const byStripe =
-        await this.prisma.subscription.findFirst(
+        await this.prisma.subscription.findUnique(
           {
             where: {
               stripeSubscriptionId,

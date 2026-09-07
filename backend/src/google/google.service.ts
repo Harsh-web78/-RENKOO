@@ -2221,19 +2221,24 @@ export class GoogleService {
     startDate: string,
     endDate: string,
   ) {
-    const queryData =
-      await this.getSearchQueries(
-        organizationId,
-        startDate,
-        endDate,
-      );
-
-    const queryPages =
-      await this.getQueryPages(
-        organizationId,
-        startDate,
-        endDate,
-      );
+    /*
+     * Two independent Search Console reads over the
+     * same date range — run together instead of
+     * sequentially.
+     */
+    const [queryData, queryPages] =
+      await Promise.all([
+        this.getSearchQueries(
+          organizationId,
+          startDate,
+          endDate,
+        ),
+        this.getQueryPages(
+          organizationId,
+          startDate,
+          endDate,
+        ),
+      ]);
 
     const rows =
       queryData.rows;
@@ -2555,19 +2560,24 @@ export class GoogleService {
       );
     }
 
-    const queryData =
-      await this.getSearchQueries(
-        organizationId,
-        startDate,
-        endDate,
-      );
-
-    const queryPages =
-      await this.getQueryPages(
-        organizationId,
-        startDate,
-        endDate,
-      );
+    /*
+     * Two independent Search Console reads over the
+     * same date range — run together instead of
+     * sequentially.
+     */
+    const [queryData, queryPages] =
+      await Promise.all([
+        this.getSearchQueries(
+          organizationId,
+          startDate,
+          endDate,
+        ),
+        this.getQueryPages(
+          organizationId,
+          startDate,
+          endDate,
+        ),
+      ]);
 
     const normalizedQuery =
       query
