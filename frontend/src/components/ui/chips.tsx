@@ -42,7 +42,7 @@ const SEVERITY_STYLE: Record<
 > = {
   CRITICAL: {
     className:
-      'border-rk-border bg-rk-dangerSoft text-rk-danger',
+      'border-rk-danger bg-rk-danger text-white',
     icon: <AlertOctagon size={11} />,
   },
   HIGH: {

@@ -58,14 +58,14 @@ export default function AuthShell({
       <div className="rk-auth-panel hidden lg:flex lg:flex-col lg:justify-between lg:px-12 lg:py-10">
         <div className="relative z-10">
           <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-[12px] bg-white text-[17px] font-black text-rk-ink">
+            <div className="grid h-10 w-10 place-items-center rounded-rk-md bg-white text-[17px] font-black text-rk-ink">
               R
             </div>
             <div>
               <p className="text-[17px] font-extrabold leading-none tracking-[-0.02em]">
                 RENKOO
               </p>
-              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/60">
+              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/70">
                 Growth OS
               </p>
             </div>
@@ -74,7 +74,7 @@ export default function AuthShell({
           <h2 className="mt-12 max-w-md text-[32px] font-extrabold leading-[1.15] tracking-[-0.03em]">
             Turn growth data into actions.
           </h2>
-          <p className="mt-3 max-w-md text-[15px] leading-6 text-white/70">
+          <p className="mt-3 max-w-md text-[15px] leading-6 text-white/75">
             One operating system for search visibility, AI
             visibility, execution and revenue impact.
           </p>
@@ -96,7 +96,7 @@ export default function AuthShell({
                     <span className="block text-sm font-bold">
                       {title}
                     </span>
-                    <span className="mt-0.5 block text-[13px] leading-5 text-white/65">
+                      <span className="mt-0.5 block text-[13px] leading-5 text-white/75">
                       {description}
                     </span>
                   </span>
@@ -106,7 +106,7 @@ export default function AuthShell({
           </ul>
         </div>
 
-        <p className="relative z-10 mt-10 text-xs leading-5 text-white/50">
+        <p className="relative z-10 mt-10 text-xs leading-5 text-white/70">
           Real data only. No vanity metrics, no invented
           scores — every insight links to its evidence.
         </p>
@@ -117,7 +117,7 @@ export default function AuthShell({
         <div className="w-full max-w-[440px]">
           {/* Mobile brand */}
           <div className="mb-6 flex items-center gap-2.5 lg:hidden">
-            <div className="grid h-9 w-9 place-items-center rounded-[10px] bg-rk-ink text-base font-black text-white">
+            <div className="grid h-9 w-9 place-items-center rounded-rk-md bg-rk-ink text-base font-black text-white">
               R
             </div>
             <div>

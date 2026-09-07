@@ -92,7 +92,7 @@ export default function ConfirmDialog({
             ? `${descriptionId} ${errorId}`
             : descriptionId
         }
-        className="relative w-full max-w-md rounded-rk-lg border border-rk-border bg-rk-surface p-6 shadow-rk-md"
+        className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-rk-lg border border-rk-border bg-rk-surface p-6 shadow-rk-md"
       >
         <div className="flex items-start gap-3">
           <div

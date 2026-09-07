@@ -48,6 +48,18 @@ const config: Config = {
           dangerSoft:
             'var(--rk-danger-soft)',
           infoSoft: 'var(--rk-info-soft)',
+          /* Kebab-case aliases for legacy class names
+             (bg-rk-danger-soft, decoration-rk-border-strong).
+             Same tokens, no new colors. */
+          'success-soft':
+            'var(--rk-success-soft)',
+          'warning-soft':
+            'var(--rk-warning-soft)',
+          'danger-soft':
+            'var(--rk-danger-soft)',
+          'info-soft': 'var(--rk-info-soft)',
+          'border-strong':
+            'var(--rk-border-strong)',
           scrim: 'var(--rk-scrim)',
           focus: 'var(--rk-focus, var(--rk-text))',
           disabledBg: 'var(--rk-disabled-bg)',

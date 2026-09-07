@@ -209,6 +209,11 @@ export default function SignupPage() {
               required
               autoComplete="new-password"
               aria-invalid={passwordMismatch}
+              aria-describedby={
+                passwordMismatch
+                  ? 'signup-password-error'
+                  : 'signup-password-hint'
+              }
               className="rk-input"
             />
           </div>
@@ -218,7 +223,7 @@ export default function SignupPage() {
               htmlFor="signup-confirm"
               className="rk-field-label mb-1.5 block"
             >
-              Confirm
+              Confirm password
             </label>
 
             <input
@@ -233,17 +238,29 @@ export default function SignupPage() {
               required
               autoComplete="new-password"
               aria-invalid={passwordMismatch}
+              aria-describedby={
+                passwordMismatch
+                  ? 'signup-password-error'
+                  : 'signup-password-hint'
+              }
               className="rk-input"
             />
           </div>
         </div>
 
         {passwordMismatch ? (
-          <p role="alert" className="rk-error-text">
+          <p
+            role="alert"
+            id="signup-password-error"
+            className="rk-error-text"
+          >
             Passwords do not match.
           </p>
         ) : (
-          <p className="rk-helper">
+          <p
+            id="signup-password-hint"
+            className="rk-helper"
+          >
             Use at least 8 characters. You&apos;ll sign in
             right after creating your workspace.
           </p>

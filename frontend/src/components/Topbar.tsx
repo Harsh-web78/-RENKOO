@@ -55,9 +55,6 @@ export default function Topbar({
     router.refresh();
   }
 
-  const organizationName =
-    account?.organization?.name || "Workspace";
-
   const userLabel =
     account?.user?.name ||
     account?.user?.email ||
@@ -75,20 +72,12 @@ export default function Topbar({
           <Menu size={18} aria-hidden />
         </button>
 
-        <div className="hidden min-w-0 shrink-0 xl:block">
-          <p
-            className="truncate text-[13px] font-bold leading-tight text-rk-ink"
-            title={organizationName}
-          >
-            {organizationName}
-          </p>
-          <p className="truncate text-[11px] leading-tight text-rk-muted">
-            Workspace
-          </p>
-        </div>
-
-        <div className="hidden h-8 w-px shrink-0 bg-rk-border xl:block" aria-hidden />
-
+        {/*
+         * Workspace identity lives in one place: the
+         * sidebar card (org + site) and the website
+         * selector (site + domain). A third org label
+         * here only repeats them, so it stays out.
+         */}
         <div className="min-w-0 shrink-0">
           <WebsiteSelector />
         </div>

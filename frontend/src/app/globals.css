@@ -10,7 +10,7 @@
   --rk-border-strong: #d8d5cd;
   --rk-text: #131316;
   --rk-text-secondary: #5d5d67;
-  --rk-text-muted: #8e8e99;
+  --rk-text-muted: #6f6f7a;
   --rk-primary: #131316;
   --rk-success: #16794f;
   --rk-warning: #a86a12;
@@ -28,7 +28,13 @@
 }
 
 html {
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
 html,
@@ -66,7 +72,7 @@ button {
 }
 
 ::selection {
-  background: rgba(17,19,24,.12);
+  background: var(--rk-focus-ring);
   color: var(--rk-text);
 }
 
@@ -80,12 +86,12 @@ button {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cfd3da;
+  background: var(--rk-border-strong);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #aeb4be;
+  background: var(--rk-text-muted);
 }
 
 /* RENKOO premium surfaces */
@@ -631,7 +637,7 @@ select.input:disabled {
 }
 
 .rk-auth-panel {
-  background: #131316;
+  background: var(--rk-ink);
   color: #fff;
   position: relative;
   overflow: hidden;

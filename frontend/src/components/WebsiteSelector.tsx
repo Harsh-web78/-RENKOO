@@ -337,9 +337,9 @@ export default function WebsiteSelector() {
         }}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="rk-focusable flex min-w-0 max-w-[300px] items-center gap-2.5 rounded-rk-md border border-rk-border bg-rk-surface py-[7px] pl-2 pr-2.5 text-left shadow-rk-sm transition-all hover:border-rk-strong hover:bg-white hover:shadow-rk-md"
+        className="rk-focusable flex min-w-0 max-w-[180px] items-center gap-2.5 rounded-rk-md border border-rk-border bg-rk-surface py-[7px] pl-2 pr-2.5 text-left shadow-rk-sm transition-all hover:border-rk-strong hover:bg-white hover:shadow-rk-md sm:max-w-[220px] md:max-w-[300px]"
       >
-        <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-[8px] border border-rk-border bg-rk-soft">
+        <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-rk-sm border border-rk-border bg-rk-soft">
           {selectedWebsite ? (
             <img
               src={faviconUrl(selectedWebsite.url)}
@@ -356,7 +356,7 @@ export default function WebsiteSelector() {
         </span>
 
         <span className="min-w-0">
-          <span className="block max-w-[150px] truncate text-[13px] font-bold leading-tight text-rk-ink sm:max-w-[180px]">
+          <span className="block max-w-[104px] truncate text-[13px] font-bold leading-tight text-rk-ink sm:max-w-[150px] md:max-w-[180px]">
             {loading
               ? "Loading…"
               : selectedWebsite
@@ -365,7 +365,7 @@ export default function WebsiteSelector() {
           </span>
 
           {selectedWebsite ? (
-            <span className="block max-w-[150px] truncate text-[11px] leading-tight text-rk-muted sm:max-w-[180px]">
+            <span className="block max-w-[104px] truncate text-[11px] leading-tight text-rk-muted sm:max-w-[150px] md:max-w-[180px]">
               {domainLabel(selectedWebsite.url)}
             </span>
           ) : null}

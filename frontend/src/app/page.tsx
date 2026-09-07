@@ -243,7 +243,7 @@ export default function PublicHomePage() {
           className="border-b border-rk-border bg-rk-bg"
         >
           <div className="mx-auto grid max-w-[1100px] items-center gap-10 px-5 pb-14 pt-12 sm:pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:pb-20 lg:pt-20">
-            <div>
+            <div className="min-w-0">
               <p className="inline-flex items-center gap-2 rounded-full border border-rk-border bg-rk-surface px-3 py-1.5 text-xs font-bold text-rk-secondary shadow-rk-sm">
                 <Sparkles size={13} aria-hidden />
                 RENKOO · AI Growth Operating System
@@ -319,7 +319,7 @@ export default function PublicHomePage() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 p-5">
+              <div className="grid grid-cols-2 gap-2.5 p-4 sm:gap-3 sm:p-5">
                 {[
                   {
                     label: 'Search visibility',
@@ -344,12 +344,12 @@ export default function PublicHomePage() {
                 ].map((metric) => (
                   <div
                     key={metric.label}
-                    className="rounded-rk-md border border-rk-border bg-rk-surface p-3.5"
+                    className="min-w-0 rounded-rk-md border border-rk-border bg-rk-surface p-3.5"
                   >
                     <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-rk-muted">
                       {metric.label}
                     </p>
-                    <p className="rk-metric-number mt-1 text-[22px]">
+                    <p className="rk-metric-number mt-1 break-words text-[20px] sm:text-[22px]">
                       {metric.value}
                     </p>
                     <p className="rk-metadata mt-0.5">

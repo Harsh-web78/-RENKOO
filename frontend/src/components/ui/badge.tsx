@@ -54,6 +54,9 @@ const TONES: Record<string, string> = {
     'border-rk-border bg-rk-warningSoft text-rk-warning',
   danger:
     'border-rk-border bg-rk-dangerSoft text-rk-danger',
+  /* Solid for CRITICAL only — the single highest
+     severity must never blend in with HIGH. */
+  critical: 'border-rk-danger bg-rk-danger text-white',
 };
 
 export function Badge({
@@ -67,7 +70,8 @@ export function Badge({
     | 'info'
     | 'positive'
     | 'warning'
-    | 'danger';
+    | 'danger'
+    | 'critical';
   icon?: ReactNode;
 }) {
   return (
@@ -79,7 +83,7 @@ export function Badge({
   );
 }
 
-const STATUS_TONE: Record<string, 'neutral' | 'info' | 'positive' | 'warning' | 'danger'> = {
+const STATUS_TONE: Record<string, 'neutral' | 'info' | 'positive' | 'warning' | 'danger' | 'critical'> = {
   TODO: 'neutral',
   OPEN: 'neutral',
   PROPOSED: 'neutral',
@@ -97,7 +101,7 @@ const STATUS_TONE: Record<string, 'neutral' | 'info' | 'positive' | 'warning' | 
   ACTIVE: 'positive',
   FAILED: 'danger',
   ERROR: 'danger',
-  CRITICAL: 'danger',
+  CRITICAL: 'critical',
 };
 
 export function StatusBadge({

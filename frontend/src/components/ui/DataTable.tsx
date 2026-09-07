@@ -374,7 +374,18 @@ export default function DataTable<T>({
         </div>
       ) : null}
 
-      <div className="overflow-x-auto rounded-rk-lg border border-rk-border bg-rk-surface shadow-rk-sm">
+      {/*
+       * Wide tables scroll horizontally on small screens
+       * by design (no columns are dropped). The region
+       * is keyboard-focusable with an honest hint so the
+       * scroll is discoverable, not accidental.
+       */}
+      <div
+        tabIndex={0}
+        role="region"
+        aria-label={`${caption} — scroll sideways for more columns`}
+        className="rk-focusable overflow-x-auto rounded-rk-lg border border-rk-border bg-rk-surface shadow-rk-sm"
+      >
         <table className="rk-table-text w-full min-w-[640px] border-collapse text-left">
           <caption className="sr-only">
             {caption}
@@ -543,8 +554,8 @@ export default function DataTable<T>({
                       onRowClick
                         ? 'rk-focusable rk-table-row cursor-pointer hover:bg-rk-soft'
                         : selected
-                          ? 'rk-table-row bg-rk-soft/70'
-                          : 'rk-table-row hover:bg-rk-soft/50'
+                          ? 'rk-table-row bg-rk-soft shadow-[inset_2px_0_0_var(--rk-text)]'
+                          : 'rk-table-row hover:bg-rk-soft'
                     }
                   >
                     {expandable ? (
@@ -570,7 +581,7 @@ export default function DataTable<T>({
                           }}
                           aria-expanded={expanded}
                           aria-label={`${expanded ? 'Collapse' : 'Expand'} details for row ${index + 1}`}
-                          className="rk-focusable grid h-6 w-6 place-items-center rounded text-rk-secondary hover:text-rk-ink"
+                          className="rk-focusable grid h-8 w-8 place-items-center rounded text-rk-secondary hover:text-rk-ink"
                         >
                           <ChevronDown
                             size={15}
@@ -643,7 +654,7 @@ export default function DataTable<T>({
                                 onClick={
                                   action.onSelect
                                 }
-                                className="rk-focusable rounded-rk-sm border border-rk-border bg-rk-surface px-2 py-1 text-[11px] font-bold text-rk-ink hover:bg-rk-soft"
+                                className="rk-focusable rounded-rk-sm border border-rk-border bg-rk-surface px-2.5 py-1.5 text-xs font-bold text-rk-ink hover:bg-rk-soft"
                               >
                                 {action.label}
                               </button>
@@ -690,6 +701,10 @@ export default function DataTable<T>({
           </tbody>
         </table>
       </div>
+
+      <p aria-hidden className="rk-metadata mt-2 md:hidden">
+        Scroll sideways for more columns →
+      </p>
 
       {selectable &&
       (selectedKeys as string[]).length > 0 ? (

@@ -230,7 +230,7 @@ export function TrendChart({
           <YAxis
             tickLine={false}
             axisLine={false}
-            width={48}
+            width={56}
             tick={{ fill: CHART_MUTED }}
             tickFormatter={
               formatValue as any
@@ -373,7 +373,7 @@ export function BarList({
             dataKey="label"
             tickLine={false}
             axisLine={false}
-            width={120}
+            width={140}
             tick={{ fill: CHART_MUTED }}
           />
 

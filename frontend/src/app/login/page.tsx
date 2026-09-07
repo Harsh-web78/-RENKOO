@@ -166,23 +166,12 @@ export default function LoginPage() {
         </div>
 
         <div>
-          <div className="mb-1.5 flex items-center justify-between">
-            <label
-              htmlFor="login-password"
-              className="rk-field-label"
-            >
-              Password
-            </label>
-            <button
-              type="button"
-              onClick={() =>
-                router.push('/reset-password')
-              }
-              className="rk-focusable text-xs font-semibold text-rk-secondary hover:text-rk-ink"
-            >
-              Forgot?
-            </button>
-          </div>
+          <label
+            htmlFor="login-password"
+            className="rk-field-label mb-1.5 block"
+          >
+            Password
+          </label>
 
           <input
             id="login-password"

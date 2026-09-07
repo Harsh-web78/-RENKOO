@@ -27,14 +27,15 @@ export const CHART_BAD = '#c24141';
 export const CHART_CAUTION = '#b7791f';
 
 /** Restrained categorical ramp for contribution charts.
- *  Ink-first; grays after; semantic tones never included. */
+ *  Ink-first; grays after; semantic tones never included.
+ *  Tail values stay legible on white (never near-invisible). */
 export const CHART_RAMP = [
   '#111318',
   '#3d4451',
   '#6b7280',
   '#9aa1ad',
-  '#c3c8d1',
-  '#dfe2e7',
+  '#aeb4be',
+  '#c9ced6',
 ];
 
 /** Shared margins — compact, no chart junk. */

@@ -5,7 +5,9 @@
  *
  * Narrative order:
  *   1. Header / context
- *   2. Growth Pulse
+ *   2. Growth Pulse (4 primary signals: search,
+ *      technical, AI, traffic — outcomes live in
+ *      their own sections below, not duplicated here)
  *   3. What Changed (monitoring)
  *   4. Why It Matters (correlation-only)
  *   5. Today's Growth Plan (ranked opportunities)
@@ -137,6 +139,17 @@ function getDateRange() {
 function formatNumber(value: number | null | undefined) {
   if (value === null || value === undefined) return '—';
   return sharedNumberFormat.format(value);
+}
+
+/*
+ * Single CTR voice for every dashboard metric —
+ * same digits everywhere instead of scattered
+ * toFixed() calls. Presentation only; no
+ * calculation changes.
+ */
+function formatCtr(ratio: number | null | undefined) {
+  if (ratio === null || ratio === undefined) return '—';
+  return `${(ratio * 100).toFixed(2)}%`;
 }
 
 // Module-level: one formatter for the whole dashboard
@@ -1322,17 +1335,6 @@ export default function Home() {
     [rankedOpportunities],
   );
 
-  const highPriorityOpen = useMemo(
-    () =>
-      opportunities.filter(
-        (o) =>
-          o.priority === 'HIGH' &&
-          o.status !== 'DISMISSED' &&
-          o.status !== 'COMPLETED',
-      ).length,
-    [opportunities],
-  );
-
   /*
    * =========================================================
    * WHAT CHANGED — derived
@@ -1665,7 +1667,7 @@ export default function Home() {
               loadingSearchAnalytics
                 ? 'Loading Search Console'
                 : hasSearchData
-                  ? `${formatNumber(searchImpressions)} impressions · ${(searchCtr * 100).toFixed(2)}% CTR`
+                  ? `${formatNumber(searchImpressions)} impressions · ${formatCtr(searchCtr)} CTR`
                   : 'Search Console not connected'
             }
             source="GSC"
@@ -1739,77 +1741,14 @@ export default function Home() {
             source="GA4"
             connected={Boolean(ga4Report)}
           />
-
-          <PulseSignal
-            label="Leads"
-            value={
-              roiLoading
-                ? '…'
-                : roiOutcome
-                  ? formatNumber(roiOutcome.funnel?.leads)
-                  : '—'
-            }
-            detail={
-              roiLoading
-                ? 'Loading outcome'
-                : roiOutcome
-                  ? `${formatNumber(roiOutcome.funnel?.conversions)} conversions`
-                  : 'No lead data'
-            }
-            source="ROI"
-            connected={Boolean(roiOutcome)}
-          />
-
-          <PulseSignal
-            label="Revenue"
-            value={
-              roiLoading
-                ? '…'
-                : roiOutcome
-                  ? `${roiOutcome.currency ?? ''} ${formatNumber(roiOutcome.funnel?.revenue)}`.trim()
-                  : '—'
-            }
-            detail={
-              roiLoading
-                ? 'Loading outcome'
-                : roiOutcome
-                  ? 'Revenue not measurable beyond recorded transactions'
-                  : 'Revenue not measurable'
-            }
-            source="ROI"
-            connected={Boolean(roiOutcome)}
-          />
-
-          <PulseSignal
-            label="High-priority opportunities"
-            value={
-              opportunitiesLoading ? '…' : String(highPriorityOpen)
-            }
-            detail={
-              opportunitiesLoading
-                ? 'Loading opportunities'
-                : `${opportunities.length} open total`
-            }
-            source="Opportunities"
-            connected={opportunities.length > 0}
-          />
-
-          <PulseSignal
-            label="Active actions"
-            value={
-              actionsLoading
-                ? '…'
-                : String(actionsSummary.inProgress)
-            }
-            detail={
-              actionsLoading
-                ? 'Loading actions'
-                : `${actionsSummary.todo} to do · ${actionsSummary.done} done`
-            }
-            source="Actions"
-            connected={totalActions > 0}
-          />
         </div>
+
+        {/*
+         * Outcomes (leads, revenue), opportunities and
+         * actions are NOT duplicated here — they render
+         * with full context in the outcome loop, growth
+         * plan and action progress sections below.
+         */}
 
         {googleConnected && (
           <p className="rk-metadata mt-2">
@@ -2458,7 +2397,7 @@ export default function Home() {
                 <SearchMetric
                   icon={<Target size={14} />}
                   label="CTR"
-                  value={`${(searchCtr * 100).toFixed(2)}%`}
+                  value={formatCtr(searchCtr)}
                 />
                 <SearchMetric
                   icon={<TrendingUp size={14} />}

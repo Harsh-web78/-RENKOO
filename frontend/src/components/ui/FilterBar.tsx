@@ -371,7 +371,7 @@ export default function FilterBar({
           {count > 0 ? (
             <span
               aria-hidden
-              className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-rk-ink px-1 text-[10px] font-bold text-white"
+              className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-rk-ink px-1 text-[11px] font-bold text-white"
             >
               {count}
             </span>
@@ -416,7 +416,7 @@ export default function FilterBar({
             role="dialog"
             aria-modal="true"
             aria-label="Filters"
-            className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-rk-border bg-rk-surface p-5"
+            className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-rk-lg border-t border-rk-border bg-rk-surface p-5"
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="rk-panel-title">
@@ -427,7 +427,7 @@ export default function FilterBar({
                 type="button"
                 onClick={() => setSheetOpen(false)}
                 aria-label="Close filters"
-                className="rk-focusable grid h-9 w-9 place-items-center rounded-rk-md border border-rk-border text-rk-secondary"
+                className="rk-focusable grid h-10 w-10 place-items-center rounded-rk-md border border-rk-border text-rk-secondary"
               >
                 <X size={16} aria-hidden />
               </button>
