@@ -15,6 +15,10 @@ import {
 
 import AppShell from "@/components/AppShell";
 import {
+  clearStoredWebsiteId,
+  setStoredWebsiteId,
+} from "@/components/WebsiteSelector";
+import {
   createWebsite,
   deleteWebsite,
   getWebsites,
@@ -140,7 +144,7 @@ export default function WebsitesPage() {
     setSelectedId(id);
 
     if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, id);
+      setStoredWebsiteId(id);
     }
 
     setMenuOpen(null);
@@ -171,7 +175,7 @@ export default function WebsitesPage() {
       }
 
       if (typeof window !== "undefined") {
-        localStorage.setItem(STORAGE_KEY, created.id);
+        setStoredWebsiteId(created.id);
       }
 
       setWebsites((current) => [...current, created]);
@@ -248,9 +252,9 @@ export default function WebsitesPage() {
 
       if (typeof window !== "undefined") {
         if (nextId) {
-          localStorage.setItem(STORAGE_KEY, nextId);
+          setStoredWebsiteId(nextId);
         } else {
-          localStorage.removeItem(STORAGE_KEY);
+          clearStoredWebsiteId();
         }
       }
     } catch (err: any) {

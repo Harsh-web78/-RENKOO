@@ -21,6 +21,55 @@ import {
 
 const STORAGE_KEY = "renkoo_website_id";
 
+/*
+ * Website switches propagate via event + storage so
+ * pages reload their website-scoped data without a
+ * full-page reload. AppShell remounts page content on
+ * this event; WebsiteSelector re-syncs its own
+ * selection when another surface (e.g. the dashboard
+ * picker) changes the stored id.
+ */
+export const WEBSITE_EVENT =
+  "renkoo:website-changed";
+
+export function getStoredWebsiteId():
+  | string
+  | null {
+  try {
+    return typeof window !== "undefined"
+      ? window.localStorage.getItem(STORAGE_KEY)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredWebsiteId(id: string) {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, id);
+  } catch {
+    // Selection persistence is best-effort only.
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(WEBSITE_EVENT, { detail: id }),
+  );
+}
+
+export function clearStoredWebsiteId() {
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Selection persistence is best-effort only.
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(WEBSITE_EVENT, {
+      detail: null,
+    }),
+  );
+}
+
 function domainLabel(url: string) {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -51,6 +100,14 @@ export default function WebsiteSelector() {
   const [limitError, setLimitError] = useState<unknown>(null);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
+
+  /*
+   * Latest list for validating ids that arrive via
+   * WEBSITE_EVENT from another surface. Assignment
+   * during render is idempotent and safe.
+   */
+  const websitesRef = useRef<Website[]>([]);
+  websitesRef.current = websites;
 
   useEffect(() => {
     let cancelled = false;
@@ -93,6 +150,55 @@ export default function WebsiteSelector() {
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  /*
+   * Re-sync when the stored selection changes
+   * elsewhere (dashboard picker, another tab).
+   */
+  useEffect(() => {
+    function syncSelection() {
+      const id = getStoredWebsiteId();
+
+      if (!id) return;
+
+      setSelectedId((current) => {
+        if (current === id) return current;
+
+        const list = websitesRef.current;
+
+        if (
+          list.length > 0 &&
+          !list.some((site) => site.id === id)
+        ) {
+          return current;
+        }
+
+        return id;
+      });
+    }
+
+    window.addEventListener(
+      WEBSITE_EVENT,
+      syncSelection,
+    );
+
+    window.addEventListener(
+      "storage",
+      syncSelection,
+    );
+
+    return () => {
+      window.removeEventListener(
+        WEBSITE_EVENT,
+        syncSelection,
+      );
+
+      window.removeEventListener(
+        "storage",
+        syncSelection,
+      );
     };
   }, []);
 
@@ -150,8 +256,13 @@ export default function WebsiteSelector() {
     setSearch("");
 
     if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, id);
-      window.location.reload();
+      /*
+       * Persist + notify. AppShell remounts page
+       * content on WEBSITE_EVENT, so every surface
+       * reloads website-scoped data with no
+       * full-page reload.
+       */
+      setStoredWebsiteId(id);
     }
   }
 
@@ -195,7 +306,7 @@ export default function WebsiteSelector() {
       }
 
       if (typeof window !== "undefined") {
-        localStorage.setItem(STORAGE_KEY, created.id);
+        setStoredWebsiteId(created.id);
       }
 
       setWebsites((current) => [...current, created]);
@@ -203,8 +314,6 @@ export default function WebsiteSelector() {
       setAddOpen(false);
       setOpen(false);
       setSearch("");
-
-      window.location.reload();
     } catch (err: any) {
       if (isLimitError(err)) {
         setLimitError(err);

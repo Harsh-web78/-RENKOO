@@ -30,7 +30,7 @@ import {
 } from '@/lib/persona';
 
 const nav = [
-  ['Dashboard', '/', LayoutDashboard],
+  ['Dashboard', '/dashboard', LayoutDashboard],
   ['Business Brain', '/business-brain', Sparkles],
   ['Search Visibility', '/search-visibility', Search],
   ['Traffic & Analytics', '/analytics', BarChart3],
@@ -186,8 +186,8 @@ export default function Sidebar({
 
           {orderedNav.map(({ name, href, Icon }) => {
             const active =
-              href === '/'
-                ? pathname === '/'
+              href === '/dashboard'
+                ? pathname === '/dashboard'
                 : pathname === href ||
                   pathname.startsWith(`${href}/`);
 

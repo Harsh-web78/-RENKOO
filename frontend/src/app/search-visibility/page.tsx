@@ -133,7 +133,15 @@ export default function SearchVisibilityPage() {
   const load = useCallback(async () => {
     try {
       setError('');
-      const status = await getGoogleConnectionStatus();
+      /*
+       * Status gates the data calls below, but the
+       * property list is independent of it — fetch
+       * both at once instead of in sequence.
+       */
+      const [status, props] = await Promise.all([
+        getGoogleConnectionStatus(),
+        getGoogleProperties().catch(() => []),
+      ]);
       const isConnected = Boolean(
         (status as any)?.connected,
       );
@@ -142,7 +150,6 @@ export default function SearchVisibilityPage() {
         setLoading(false);
         return;
       }
-      const props = await getGoogleProperties();
       const list = Array.isArray(props) ? props : [];
       setProperties(list);
       const selected =

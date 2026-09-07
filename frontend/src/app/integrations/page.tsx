@@ -249,8 +249,24 @@ export default function IntegrationsPage() {
       setLoadingConnection(true);
       setError('');
 
-      const connection =
-        await getGoogleConnectionStatus();
+      /*
+       * Status gates the property lists below, but
+       * health and GBP state are independent of it —
+       * fetch all three at once instead of in sequence.
+       */
+      const [
+        connection,
+        healthData,
+        gbpData,
+      ] = await Promise.all([
+        getGoogleConnectionStatus(),
+        getGoogleHealth().catch(
+          () => null,
+        ),
+        getGbpStatus().catch(
+          () => null,
+        ),
+      ]);
 
       setConnected(
         Boolean(connection.connected),
@@ -265,16 +281,6 @@ export default function IntegrationsPage() {
         connection.selectedAnalyticsProperty ??
           null,
       );
-
-      const [healthData, gbpData] =
-        await Promise.all([
-          getGoogleHealth().catch(
-            () => null,
-          ),
-          getGbpStatus().catch(
-            () => null,
-          ),
-        ]);
 
       setHealth(healthData);
       setGbpStatus(gbpData);

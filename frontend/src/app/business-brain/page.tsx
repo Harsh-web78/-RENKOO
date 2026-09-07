@@ -320,7 +320,27 @@ export default function BusinessBrainPage() {
       setWebsites(safeWebsites);
 
       if (safeWebsites.length > 0) {
-        setWebsiteId(safeWebsites[0].id);
+        /*
+         * Honor the workspace-wide selection (Topbar
+         * WebsiteSelector) instead of always resetting
+         * to the first site.
+         */
+        const stored =
+          typeof window !== 'undefined'
+            ? window.localStorage.getItem(
+                'renkoo_website_id',
+              )
+            : null;
+
+        const match = stored
+          ? safeWebsites.find(
+              (site) => site.id === stored,
+            )
+          : undefined;
+
+        setWebsiteId(
+          match?.id ?? safeWebsites[0].id,
+        );
       }
     } catch (err: any) {
       setError(

@@ -151,6 +151,22 @@ export default function AuthShell({
             Protected by workspace isolation. Your sites,
             data and reports stay inside your workspace.
           </p>
+
+          <p className="mt-3 text-center text-xs leading-5 text-rk-muted">
+            <a
+              href="/privacy"
+              className="rk-focusable font-semibold hover:text-rk-ink"
+            >
+              Privacy Policy
+            </a>
+            <span aria-hidden> · </span>
+            <a
+              href="/terms"
+              className="rk-focusable font-semibold hover:text-rk-ink"
+            >
+              Terms of Service
+            </a>
+          </p>
         </div>
       </div>
     </main>

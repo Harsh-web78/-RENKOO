@@ -77,16 +77,29 @@ const FEATURE_LABELS: Record<string, string> = {
   advancedMonitoring: "Advanced monitoring",
 };
 
+const moneyFormatters = new Map<string, Intl.NumberFormat>();
+
 function money(value: number, currency = "INR"): string {
   try {
-    return new Intl.NumberFormat(
-      currency === "INR" ? "en-IN" : "en-US",
-      {
-        style: "currency",
-        currency,
-        maximumFractionDigits: 0,
-      },
-    ).format(value);
+    const key =
+      currency === "INR" ? "en-IN:INR" : `en-US:${currency}`;
+
+    let formatter = moneyFormatters.get(key);
+
+    if (!formatter) {
+      formatter = new Intl.NumberFormat(
+        currency === "INR" ? "en-IN" : "en-US",
+        {
+          style: "currency",
+          currency,
+          maximumFractionDigits: 0,
+        },
+      );
+
+      moneyFormatters.set(key, formatter);
+    }
+
+    return formatter.format(value);
   } catch {
     return `${currency} ${value}`;
   }

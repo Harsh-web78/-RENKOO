@@ -12,10 +12,13 @@
  *
  * Behavior:
  * - Public routes render immediately, no checks:
- *   /login, /signup, /verify-email,
- *   /reset-password, /invite/*, /share/*.
- * - Unauthenticated visitors at `/` are sent to
- *   /signup because `/` is the product entry point.
+ *   `/` (public landing page), /login, /signup,
+ *   /verify-email, /reset-password, /privacy,
+ *   /terms, /invite/*, /share/*.
+ * - Signed-in visitors at `/` are redirected to
+ *   `/dashboard` by <HomeRedirect /> (see
+ *   components/HomeRedirect), after the token is
+ *   validated via GET /auth/me.
  * - Protected routes with no token redirect to
  *   /login?next=<path>, preserving return URL.
  * - Protected routes with a token validate it
@@ -40,10 +43,13 @@ import {
 } from '@/lib/api';
 
 const PUBLIC_PATHS = new Set([
+  '/',
   '/login',
   '/signup',
   '/verify-email',
   '/reset-password',
+  '/privacy',
+  '/terms',
 ]);
 
 const PUBLIC_PREFIXES = ['/invite/', '/share/'];
@@ -81,13 +87,9 @@ export default function AuthGate({
       }
 
       if (!isAuthenticated()) {
-        if (pathname === '/') {
-          router.replace('/signup');
-        } else {
-          router.replace(
-            `/login?next=${encodeURIComponent(pathname)}`,
-          );
-        }
+        router.replace(
+          `/login?next=${encodeURIComponent(pathname)}`,
+        );
         return;
       }
 

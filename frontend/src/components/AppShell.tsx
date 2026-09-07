@@ -21,6 +21,7 @@
  */
 
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
@@ -60,7 +61,20 @@ import {
   usePersona,
 } from '@/lib/persona';
 import Topbar from './Topbar';
-import CommandPalette from './CommandPalette';
+import {
+  WEBSITE_EVENT,
+  getStoredWebsiteId,
+} from './WebsiteSelector';
+
+/*
+ * CommandPalette is interaction-deferred (it opens
+ * only on Cmd+K / search click), so it loads lazily
+ * and never competes with first paint.
+ */
+const CommandPalette = dynamic(
+  () => import('./CommandPalette'),
+  { ssr: false },
+);
 
 interface NavItem {
   name: string;
@@ -79,7 +93,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         name: 'Dashboard',
-        href: '/',
+        href: '/dashboard',
         Icon: LayoutDashboard,
       },
       {
@@ -247,6 +261,47 @@ export default function AppShell({
     useState<CurrentAccount | null>(null);
   const [paletteOpen, setPaletteOpen] =
     useState(false);
+
+  /*
+   * Website switches remount page content (key on
+   * <main> below) so every surface reloads its
+   * website-scoped data with no full-page reload.
+   * Shell chrome (nav, account, Topbar) persists.
+   * Isolation is unchanged: pages re-resolve the
+   * stored website id on mount, exactly as they did
+   * after a reload.
+   */
+  const [siteKey, setSiteKey] = useState<
+    string | null
+  >(() => getStoredWebsiteId());
+
+  useEffect(() => {
+    function syncSiteKey() {
+      setSiteKey(getStoredWebsiteId());
+    }
+
+    window.addEventListener(
+      WEBSITE_EVENT,
+      syncSiteKey,
+    );
+
+    window.addEventListener(
+      'storage',
+      syncSiteKey,
+    );
+
+    return () => {
+      window.removeEventListener(
+        WEBSITE_EVENT,
+        syncSiteKey,
+      );
+
+      window.removeEventListener(
+        'storage',
+        syncSiteKey,
+      );
+    };
+  }, []);
 
   const { effectivePersona, source } =
     usePersona();
@@ -429,8 +484,8 @@ export default function AppShell({
                 {group.items.map(
                   ({ name, href, Icon }) => {
                     const active =
-                      href === '/'
-                        ? pathname === '/'
+                      href === '/dashboard'
+                        ? pathname === '/dashboard'
                         : pathname === href ||
                           pathname.startsWith(
                             `${href}/`,
@@ -504,6 +559,7 @@ export default function AppShell({
 
         <main
           id="rk-main"
+          key={siteKey ?? 'none'}
           className="rk-main min-w-0 overflow-x-clip px-4 py-6 sm:px-6"
         >
           <div className="mx-auto w-full max-w-6xl">

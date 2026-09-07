@@ -120,7 +120,7 @@ export const NAV_ORDER: Record<
   string[]
 > = {
   BUSINESS_OWNER: [
-    '/',
+    '/dashboard',
     '/opportunities',
     '/leads',
     '/business-brain',
@@ -137,7 +137,7 @@ export const NAV_ORDER: Record<
     '/settings',
   ],
   SEO_SPECIALIST: [
-    '/',
+    '/dashboard',
     '/search-visibility',
     '/technical-seo',
     '/keywords',
@@ -154,7 +154,7 @@ export const NAV_ORDER: Record<
     '/settings',
   ],
   CONTENT_MARKETER: [
-    '/',
+    '/dashboard',
     '/content',
     '/opportunities',
     '/ai-visibility',
@@ -168,7 +168,7 @@ export const NAV_ORDER: Record<
     '/settings',
   ],
   MARKETING_MANAGER: [
-    '/',
+    '/dashboard',
     '/analytics',
     '/search-visibility',
     '/ai-visibility',
@@ -185,7 +185,7 @@ export const NAV_ORDER: Record<
   ],
   AGENCY: [
     '/clients',
-    '/',
+    '/dashboard',
     '/opportunities',
     '/actions',
     '/reports',
@@ -200,7 +200,7 @@ export const NAV_ORDER: Record<
     '/billing',
   ],
   ADMIN: [
-    '/',
+    '/dashboard',
     '/settings',
     '/integrations',
     '/billing',

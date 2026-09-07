@@ -16,15 +16,21 @@ function safeNextPath(value: string | null) {
     value.startsWith('/') &&
     !value.startsWith('//')
   ) {
+    // `/` is the public landing page; signed-in
+    // users belong on the Growth Command Center.
+    if (value === '/') {
+      return '/dashboard';
+    }
+
     return value;
   }
 
-  return '/';
+  return '/dashboard';
 }
 
 function readNext() {
   if (typeof window === 'undefined') {
-    return '/';
+    return '/dashboard';
   }
 
   return safeNextPath(

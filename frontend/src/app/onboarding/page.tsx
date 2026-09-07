@@ -237,7 +237,7 @@ export default function OnboardingPage() {
   }
 
   function finishSetup() {
-    router.push('/');
+    router.push('/dashboard');
     router.refresh();
   }
 
@@ -378,7 +378,7 @@ export default function OnboardingPage() {
 
                   <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                     <a
-                      href="/"
+                      href="/dashboard"
                       className="rounded-rk-md bg-rk-success px-5 py-3 text-center text-sm font-bold text-white transition hover:opacity-90"
                     >
                       Open Growth Command Center
@@ -742,7 +742,7 @@ export default function OnboardingPage() {
 
                   <div className="mt-4 grid gap-2">
                     <a
-                      href="/"
+                      href="/dashboard"
                       className="flex items-center justify-between gap-2 rounded-rk-md bg-rk-ink px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90"
                     >
                       Open Growth Command Center

@@ -34,7 +34,7 @@ import {
   ErrorState,
   LoadingBlock,
 } from "@/components/ui/states";
-import { FunnelStages } from "@/components/charts/RenkooCharts";
+import { FunnelStages } from "@/components/charts/primitives";
 import Link from "next/link";
 import {
   createMarketingSpend,
@@ -51,12 +51,22 @@ import {
 
 const STORAGE_KEY = "renkoo_website_id";
 
+const moneyFormatters = new Map<string, Intl.NumberFormat>();
+
 function money(value: number, currency = "INR") {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 0,
-  }).format(value || 0);
+  let formatter = moneyFormatters.get(currency);
+
+  if (!formatter) {
+    formatter = new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    });
+
+    moneyFormatters.set(currency, formatter);
+  }
+
+  return formatter.format(value || 0);
 }
 
 function percent(value: number | null) {

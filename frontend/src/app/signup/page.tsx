@@ -24,7 +24,7 @@ export default function SignupPage() {
   const [error, setError] = useState('');
 
   // Already signed in: new accounts start at
-  // onboarding, existing sessions go home.
+  // onboarding, existing sessions go to the dashboard.
   useEffect(() => {
     if (!isAuthenticated()) {
       return;
@@ -35,7 +35,7 @@ export default function SignupPage() {
     getMe()
       .then(() => {
         if (!cancelled) {
-          router.replace('/');
+          router.replace('/dashboard');
         }
       })
       .catch(() => {

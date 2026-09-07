@@ -133,16 +133,29 @@ export default function KeywordsPage() {
   const load = useCallback(async () => {
     try {
       setError('');
-      const status = await getGoogleConnectionStatus();
+      let queriesError: unknown = null;
+      /*
+       * Status gates rendering below, but the query
+       * rows are independent of it — fetch both at
+       * once instead of in sequence. Rows fetched
+       * while unconnected are discarded, never shown.
+       */
+      const [status, res] = await Promise.all([
+        getGoogleConnectionStatus(),
+        getGoogleQueries(
+          startDate,
+          endDate,
+        ).catch((err) => {
+          queriesError = err;
+          return null;
+        }),
+      ]);
       const isConnected = Boolean(
         (status as any)?.connected,
       );
       setConnected(isConnected);
       if (!isConnected) return;
-      const res = await getGoogleQueries(
-        startDate,
-        endDate,
-      );
+      if (!res) throw queriesError;
       setRows(
         Array.isArray((res as any)?.rows)
           ? (res as any).rows

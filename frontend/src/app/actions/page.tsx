@@ -208,16 +208,39 @@ export default function ActionsPage() {
       .map((key) => ({ status: key, items: groups[key] }));
   }, [filtered]);
 
-  const todo = actions.filter((a) => a.status === 'TODO').length;
-  const inProgress = actions.filter(
-    (a) => a.status === 'IN_PROGRESS',
-  ).length;
-  const done = actions.filter((a) => a.status === 'DONE').length;
-  const high = actions.filter(
-    (a) =>
-      String(a.priority || '').toUpperCase() === 'HIGH' &&
-      (a.status === 'TODO' || a.status === 'IN_PROGRESS'),
-  ).length;
+  /*
+   * One memoized pass instead of four full-array
+   * filters on every render.
+   */
+  const { todo, inProgress, done, high } = useMemo(() => {
+    let todoCount = 0;
+    let inProgressCount = 0;
+    let doneCount = 0;
+    let highCount = 0;
+
+    for (const action of actions) {
+      if (action.status === 'TODO') todoCount += 1;
+      else if (action.status === 'IN_PROGRESS')
+        inProgressCount += 1;
+      else if (action.status === 'DONE') doneCount += 1;
+
+      if (
+        String(action.priority || '').toUpperCase() ===
+          'HIGH' &&
+        (action.status === 'TODO' ||
+          action.status === 'IN_PROGRESS')
+      ) {
+        highCount += 1;
+      }
+    }
+
+    return {
+      todo: todoCount,
+      inProgress: inProgressCount,
+      done: doneCount,
+      high: highCount,
+    };
+  }, [actions]);
 
   if (loading) {
     return <LoadingState />;

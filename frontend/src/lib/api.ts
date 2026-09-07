@@ -376,6 +376,7 @@ export function clearToken() {
   }
 
   localStorage.removeItem('renkoo_access_token');
+  invalidateSessionCache();
 }
 
 /*
@@ -399,6 +400,7 @@ export function logout() {
   localStorage.removeItem(
     'renkoo_persona_effective',
   );
+  invalidateSessionCache();
 }
 
 export interface LimitDetails {
@@ -490,7 +492,137 @@ export function limitUsageText(
  * =========================================================
  */
 
+/*
+ * In-flight GET deduplication. When several mounted
+ * components request the same resource concurrently
+ * (e.g. AuthGate + AppShell both validating the
+ * session, or a page + WebsiteSelector both listing
+ * websites), they share one network call instead of
+ * firing duplicates.
+ *
+ * Safety: entries live only while the request is in
+ * flight and are deleted the moment it settles, so
+ * sequential navigations always revalidate. Only GET
+ * is deduplicated — mutations always hit the network.
+ *
+ * The token-scoped cached reads below (getMe,
+ * getPersona, getWebsites, getCurrentAccount) route
+ * through request() rather than doRequest() so that
+ * concurrent cache misses for the same path — e.g.
+ * AuthGate + AppShell both validating the session on
+ * one mount, or a page + WebsiteSelector both listing
+ * websites — share a single flight.
+ */
+const inflightRequests = new Map<
+  string,
+  Promise<unknown>
+>();
+
 async function request<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const method = (
+    options.method || 'GET'
+  ).toUpperCase();
+
+  if (method !== 'GET') {
+    return doRequest<T>(path, options);
+  }
+
+  const key = `GET ${path}`;
+  const pending = inflightRequests.get(key);
+
+  if (pending) {
+    return pending as Promise<T>;
+  }
+
+  const promise = doRequest<T>(
+    path,
+    options,
+  ).finally(() => {
+    if (inflightRequests.get(key) === promise) {
+      inflightRequests.delete(key);
+    }
+  });
+
+  inflightRequests.set(key, promise);
+
+  return promise;
+}
+
+/*
+ * Short-lived, token-scoped session cache for a
+ * small set of slow-changing reads (session
+ * validation, persona preference, website list,
+ * account identity). Every entry records the token
+ * it was fetched with: signing out, switching
+ * account, or clearing the token can never serve
+ * another session's data.
+ *
+ * Invalidation is wired into the matching mutations
+ * in this same file (logout/clearToken clear
+ * everything; login/register store a new token,
+ * which mismatches older entries; create/update/
+ * deleteWebsite drop the website list; setPersona
+ * drops the persona; updateProfile drops the
+ * account), so same-tab flows always read fresh
+ * data after a change. Cross-tab staleness is
+ * bounded by the TTL.
+ */
+interface SessionCacheEntry {
+  token: string | null;
+  expiresAt: number;
+  value: unknown;
+}
+
+const sessionCache = new Map<
+  string,
+  SessionCacheEntry
+>();
+
+const SESSION_CACHE_TTL_MS = 60_000;
+
+function cachedSessionRead<T>(
+  key: string,
+  loader: () => Promise<T>,
+): Promise<T> {
+  const token = getToken();
+  const entry = sessionCache.get(key);
+
+  if (
+    entry &&
+    entry.token === token &&
+    Date.now() < entry.expiresAt
+  ) {
+    return Promise.resolve(
+      entry.value as T,
+    );
+  }
+
+  return loader().then((value) => {
+    sessionCache.set(key, {
+      token: getToken(),
+      expiresAt:
+        Date.now() + SESSION_CACHE_TTL_MS,
+      value,
+    });
+
+    return value;
+  });
+}
+
+export function invalidateSessionCache(
+  key?: string,
+) {
+  if (key) {
+    sessionCache.delete(key);
+  } else {
+    sessionCache.clear();
+  }
+}
+
+async function doRequest<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
@@ -676,7 +808,16 @@ export async function login(
 }
 
 export async function getMe() {
-  return request<User>('/auth/me');
+  /*
+   * Validated on every route change by AuthGate, so a
+   * short token-scoped cache keeps navigation fast.
+   * Revocation is still detected on revalidation
+   * (≤60s) and immediately on any failed request.
+   */
+  return cachedSessionRead<User>(
+    'me',
+    () => request<User>('/auth/me'),
+  );
 }
 
 /*
@@ -752,21 +893,30 @@ export interface PersonaResponse {
 }
 
 export async function getPersona(): Promise<PersonaResponse> {
-  return request<PersonaResponse>(
-    '/auth/persona',
+  // Read on nearly every page mount via usePersona.
+  return cachedSessionRead<PersonaResponse>(
+    'persona',
+    () =>
+      request<PersonaResponse>(
+        '/auth/persona',
+      ),
   );
 }
 
 export async function setPersona(
   persona: string | null,
 ): Promise<PersonaResponse> {
-  return request<PersonaResponse>(
-    '/auth/persona',
-    {
-      method: 'POST',
-      body: JSON.stringify({ persona }),
-    },
-  );
+  try {
+    return await request<PersonaResponse>(
+      '/auth/persona',
+      {
+        method: 'POST',
+        body: JSON.stringify({ persona }),
+      },
+    );
+  } finally {
+    invalidateSessionCache('persona');
+  }
 }
 
 /*
@@ -776,7 +926,15 @@ export async function setPersona(
  */
 
 export async function getWebsites() {
-  return request<Website[]>('/websites');
+  /*
+   * Requested by ~20 pages plus WebsiteSelector on
+   * every mount. The list only changes through the
+   * mutations below, which invalidate it.
+   */
+  return cachedSessionRead<Website[]>(
+    'websites',
+    () => request<Website[]>('/websites'),
+  );
 }
 
 export async function createWebsite(
@@ -787,13 +945,17 @@ export async function createWebsite(
     country?: string;
   },
 ) {
-  return request<Website>(
-    '/websites',
-    {
-      method: 'POST',
-      body: JSON.stringify(data),
-    },
-  );
+  try {
+    return await request<Website>(
+      '/websites',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+    );
+  } finally {
+    invalidateSessionCache('websites');
+  }
 }
 
 export async function updateWebsite(
@@ -806,24 +968,32 @@ export async function updateWebsite(
     isActive?: boolean;
   },
 ) {
-  return request<Website>(
-    `/websites/${encodeURIComponent(id)}`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    },
-  );
+  try {
+    return await request<Website>(
+      `/websites/${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      },
+    );
+  } finally {
+    invalidateSessionCache('websites');
+  }
 }
 
 export async function deleteWebsite(
   id: string,
 ) {
-  return request(
-    `/websites/${encodeURIComponent(id)}`,
-    {
-      method: 'DELETE',
-    },
-  );
+  try {
+    return await request(
+      `/websites/${encodeURIComponent(id)}`,
+      {
+        method: 'DELETE',
+      },
+    );
+  } finally {
+    invalidateSessionCache('websites');
+  }
 }
 
 /*
@@ -3532,14 +3702,23 @@ export interface CurrentAccount {
 }
 
 export async function getCurrentAccount(): Promise<CurrentAccount> {
-  return request<CurrentAccount>('/auth/me');
+  // Same endpoint as getMe but a richer shape for the
+  // shell; cached for the same reason (every mount).
+  return cachedSessionRead<CurrentAccount>(
+    'account',
+    () => request<CurrentAccount>('/auth/me'),
+  );
 }
 
 export async function updateProfile(name: string) {
-  return request<CurrentAccount['user']>('/auth/profile', {
-    method: 'PATCH',
-    body: JSON.stringify({ name }),
-  });
+  try {
+    return await request<CurrentAccount['user']>('/auth/profile', {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    });
+  } finally {
+    invalidateSessionCache('account');
+  }
 }
 
 export async function updatePassword(

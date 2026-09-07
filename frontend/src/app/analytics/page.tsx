@@ -61,15 +61,32 @@ function fmtInt(value: unknown) {
   return num(value).toLocaleString('en-US');
 }
 
+const moneyFormatters = new Map<
+  string,
+  Intl.NumberFormat
+>();
+
+function moneyFormatter(currency: string) {
+  let formatter = moneyFormatters.get(currency);
+
+  if (!formatter) {
+    formatter = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 0,
+    });
+
+    moneyFormatters.set(currency, formatter);
+  }
+
+  return formatter;
+}
+
 function fmtMoney(value: unknown, currency?: string) {
   const n = num(value, NaN);
   if (!Number.isFinite(n)) return '—';
   try {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency || 'USD',
-      maximumFractionDigits: 0,
-    }).format(n);
+    return moneyFormatter(currency || 'USD').format(n);
   } catch {
     return String(Math.round(n));
   }
