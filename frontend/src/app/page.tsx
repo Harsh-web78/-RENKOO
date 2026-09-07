@@ -44,6 +44,9 @@ export const metadata: Metadata = {
   title: 'RENKOO — The AI Growth Operating System',
   description:
     'RENKOO is the AI Growth Operating System: connect your website, search and revenue data to find what is hurting growth, understand why, decide what matters, execute improvements, and prove the revenue impact.',
+  verification: {
+    google: 'TGVerD5TpgTalkvB79iTOf04w7ZqLf4pMhoY5g3SkOQ',
+  },
 };
 
 const CORE_LOOP: { title: string; description: string }[] = [
