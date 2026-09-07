@@ -102,8 +102,8 @@ export default function TermsPage() {
           lawyer.
         </p>
         <p className="rk-metadata mt-3">
-          Last updated: [EFFECTIVE DATE] · Operated by
-          [LEGAL COMPANY NAME]
+          Last updated: September 7, 2026 · Operated by
+          Harsh Sharad Patil
         </p>
 
         <nav
@@ -301,8 +301,9 @@ export default function TermsPage() {
             </h2>
             <p className="rk-body">
               RENKOO, its interface, and its underlying
-              software remain the property of [LEGAL COMPANY
-              NAME] and its licensors. These terms do not
+              software remain the property of RENKOO
+              (operated by Harsh Sharad Patil) and its
+              licensors. These terms do not
               grant you ownership of the service — only the
               limited right to use it as described here.
             </p>
@@ -356,7 +357,8 @@ export default function TermsPage() {
             </h2>
             <p className="rk-body">
               To the maximum extent permitted by applicable
-              law, [LEGAL COMPANY NAME] is not liable for
+              law, the operator of RENKOO (Harsh Sharad Patil)
+              is not liable for
               indirect, incidental, or consequential damages
               arising from your use of RENKOO. Specific
               liability terms, if any, are as agreed in a
@@ -399,8 +401,8 @@ export default function TermsPage() {
             </h2>
             <p className="rk-body">
               These terms are governed by the laws of
-              [GOVERNING JURISDICTION]. Questions about these
-              terms: [LEGAL CONTACT EMAIL].
+              Maharashtra, India. Questions about these
+              terms: harshpatil53342@gmail.com.
             </p>
             <p className="mt-4">
               <Link

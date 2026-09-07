@@ -99,8 +99,8 @@ export default function PrivacyPage() {
           information RENKOO collects and how it is used.
         </p>
         <p className="rk-metadata mt-3">
-          Last updated: [EFFECTIVE DATE] · Operated by
-          [LEGAL COMPANY NAME]
+          Last updated: September 7, 2026 · Operated by
+          Harsh Sharad Patil
         </p>
 
         <nav
@@ -128,8 +128,8 @@ export default function PrivacyPage() {
               1. Introduction
             </h2>
             <p className="rk-body">
-              This Privacy Policy describes how [LEGAL COMPANY
-              NAME] (&ldquo;RENKOO&rdquo;, &ldquo;we&rdquo;)
+              This Privacy Policy describes how Harsh Sharad
+              Patil (&ldquo;RENKOO&rdquo;, &ldquo;we&rdquo;)
               collects, uses, stores, and protects information
               when you use the RENKOO application and related
               services. By using RENKOO, you agree to the
@@ -342,7 +342,7 @@ export default function PrivacyPage() {
               to access, correct, export, or delete your
               personal information, and to object to certain
               processing. To exercise these rights, contact
-              [LEGAL CONTACT EMAIL]. RENKOO responds to
+              harshpatil53342@gmail.com. RENKOO responds to
               verified requests as required by applicable law.
             </p>
           </section>
@@ -356,7 +356,7 @@ export default function PrivacyPage() {
               at children. RENKOO does not knowingly collect
               personal information from children. If you
               believe a child has provided information, contact
-              [LEGAL CONTACT EMAIL] so it can be removed.
+              harshpatil53342@gmail.com so it can be removed.
             </p>
           </section>
 
@@ -380,8 +380,8 @@ export default function PrivacyPage() {
             </h2>
             <p className="rk-body">
               For privacy questions or requests, contact
-              [LEGAL CONTACT EMAIL]. Postal inquiries:
-              [BUSINESS ADDRESS].
+              harshpatil53342@gmail.com. Postal inquiries:
+              Pune, Maharashtra, India.
             </p>
             <p className="mt-4">
               <Link
