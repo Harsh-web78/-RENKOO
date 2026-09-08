@@ -942,6 +942,18 @@ export class AiVisibilityService {
   private async consumeAiScanAllowance(
     organizationId: string,
   ): Promise<void> {
+    /*
+     * Internal test workspaces never meter AI scans.
+     * No counter is written and no subscription is required.
+     */
+    if (
+      await this.billingService.isInternalTestOrg(
+        organizationId,
+      )
+    ) {
+      return;
+    }
+
     const subscription =
       await this.billingService.getSubscription(
         organizationId,

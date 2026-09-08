@@ -1027,8 +1027,15 @@ export default function BillingPage() {
                   <div className="text-xs font-semibold uppercase tracking-wider text-rk-muted">
                     Current plan
                   </div>
-                  <div className="mt-2 text-2xl font-bold">
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-2xl font-bold">
                     {entitlements?.planName || "Free"}
+                    {(entitlements?.isInternal ||
+                      entitlements?.planCode ===
+                        "INTERNAL") && (
+                      <span className="rounded-full border border-dashed border-slate-300 bg-slate-50 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                        Internal Test
+                      </span>
+                    )}
                   </div>
                   <div className="mt-1 text-xs text-rk-secondary">
                     Status:{" "}
@@ -1154,10 +1161,13 @@ export default function BillingPage() {
                               <span className="text-xs font-bold tabular-nums text-slate-900">
                                 {item.used === null
                                   ? "—"
-                                  : `${item.used}/${item.limit}`}
+                                  : item.limit === null
+                                    ? `${item.used} · Unlimited`
+                                    : `${item.used}/${item.limit}`}
                               </span>
                             </div>
-                            {item.used !== null ? (
+                            {item.used !== null &&
+                            item.limit !== null ? (
                               <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
                                 <div
                                   className={`h-full rounded-full ${
@@ -1179,6 +1189,12 @@ export default function BillingPage() {
                                     )}%`,
                                   }}
                                 />
+                              </div>
+                            ) : item.used !== null &&
+                              item.limit === null ? (
+                              <div className="mt-2 text-[11px] text-rk-muted">
+                                Unlimited on this plan —
+                                usage is not metered.
                               </div>
                             ) : (
                               <div className="mt-2 text-[11px] text-rk-muted">

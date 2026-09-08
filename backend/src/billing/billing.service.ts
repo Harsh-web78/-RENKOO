@@ -16,6 +16,10 @@ import {
 } from './plans.config';
 import { billingError } from './billing.errors';
 import {
+  internalTestEmailConfigured,
+  isInternalTestEmail,
+} from './internal-test';
+import {
   effectiveEntitlementState,
   hasPaidLimits,
   mapRazorpayPaymentStatus,
@@ -144,6 +148,37 @@ export class BillingService {
   async requireActiveSubscription(
     organizationId: string,
   ) {
+    /*
+     * Internal test workspaces never hold a commercial
+     * subscription. Recognize them before the commercial
+     * requirement so metered paths resolve to unlimited
+     * via the INTERNAL short-circuits below. No provider
+     * state is created, read, or modified here.
+     */
+    if (
+      await this.isInternalTestOrg(organizationId)
+    ) {
+      const now = new Date();
+      return {
+        id: `internal:${organizationId}`,
+        organizationId,
+        planId: 'internal',
+        plan: { code: 'INTERNAL' },
+        provider: 'INTERNAL',
+        status: SubscriptionStatus.ACTIVE,
+        trialEnd: null,
+        currentPeriodStart: now,
+        currentPeriodEnd: null,
+        createdAt: now,
+      } as unknown as NonNullable<
+        Awaited<
+          ReturnType<
+            BillingService['getSubscription']
+          >
+        >
+      >;
+    }
+
     const subscription =
       await this.getSubscription(
         organizationId,
@@ -224,6 +259,26 @@ export class BillingService {
   ) {
     const subscription =
       await this.requireActiveSubscription(organizationId);
+
+    // Internal test workspaces: unlimited, nothing metered.
+    if (subscription.plan.code === 'INTERNAL') {
+      const now = new Date();
+      return {
+        metric,
+        used: 0,
+        limit: null,
+        remaining: null,
+        allowed: true,
+        periodStart:
+          subscription.currentPeriodStart ||
+          subscription.createdAt,
+        periodEnd:
+          subscription.currentPeriodEnd ||
+          new Date(
+            now.getTime() + 30 * 24 * 60 * 60 * 1000,
+          ),
+      };
+    }
 
     /*
      * AI_GROWTH_ACTIONS has no Plan column; its
@@ -324,6 +379,18 @@ export class BillingService {
 
     const subscription =
       await this.requireActiveSubscription(organizationId);
+
+    // Internal test workspaces: unlimited, nothing recorded.
+    if (subscription.plan.code === 'INTERNAL') {
+      return {
+        metric,
+        used: 0,
+        limit: null,
+        remaining: null,
+        allowed: true,
+        unlimited: true,
+      };
+    }
 
     /*
      * AI_GROWTH_ACTIONS resolves from commercial
@@ -992,9 +1059,90 @@ export class BillingService {
    * PENDING / CANCELLED / EXPIRED / COMPLETED / INCOMPLETE -> Free limits,
    * informative status. Frontend never decides this.
    */
+  /*
+   * Internal test override: the workspace qualifies ONLY when
+   * one of its CURRENT members exactly matches the server-side
+   * INTERNAL_TEST_EMAIL (normalized). Env missing/disabled ->
+   * false, production behavior unchanged. Current DB emails
+   * are read on every evaluation, so changing the address
+   * revokes the previous account immediately.
+   */
+  async isInternalTestOrg(
+    organizationId: string,
+  ): Promise<boolean> {
+    const configured =
+      internalTestEmailConfigured();
+    if (!configured) return false;
+
+    const members =
+      await this.prisma.organizationMember.findMany(
+        {
+          where: { organizationId },
+          select: {
+            user: {
+              select: { email: true },
+            },
+          },
+        },
+      );
+
+    return members.some((member) =>
+      isInternalTestEmail(
+        configured,
+        member.user.email,
+      ),
+    );
+  }
+
+  private internalEntitlements() {
+    const unlimited: Record<string, null> = {
+      WEBSITES: null,
+      KEYWORDS: null,
+      COMPETITORS: null,
+      AI_PROMPTS: null,
+      AI_SCANS: null,
+      USERS: null,
+      CLIENTS: null,
+      REPORTS: null,
+      CRAWL_CREDITS: null,
+      API_CALLS: null,
+      AI_CREDITS: null,
+      AI_GROWTH_ACTIONS: null,
+    };
+
+    return {
+      planCode: 'INTERNAL',
+      planName: 'Internal Test',
+      tier: 'INTERNAL',
+      status: 'INTERNAL_ACTIVE',
+      isFree: false,
+      isInternal: true,
+      customPricing: false,
+      provider: 'INTERNAL',
+      interval: null,
+      currency: null,
+      trialEnd: null,
+      trialDaysLeft: null,
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      limits: unlimited,
+      features: {
+        whiteLabel: true,
+        scheduledReports: true,
+        agency: true,
+        api: true,
+        advancedMonitoring: true,
+      },
+    };
+  }
+
   async getEntitlements(
     organizationId: string,
   ) {
+    if (await this.isInternalTestOrg(organizationId)) {
+      return this.internalEntitlements();
+    }
+
     const subscription =
       await this.prisma.subscription.findUnique(
         {
@@ -1342,6 +1490,20 @@ export class BillingService {
   async checkCrawlAllowance(
     organizationId: string,
   ) {
+    // Internal test workspaces never meter crawls.
+    if (
+      await this.isInternalTestOrg(organizationId)
+    ) {
+      return {
+        metric: 'CRAWL_CREDITS',
+        used: 0,
+        limit: null,
+        remaining: null,
+        allowed: true,
+        planCode: 'INTERNAL',
+      };
+    }
+
     const subscription =
       await this.prisma.subscription.findUnique(
         {
@@ -1466,10 +1628,27 @@ export class BillingService {
       await this.getEntitlements(
         organizationId,
       );
-    const limit =
+    const rawLimit =
       entitlements.limits[
         'AI_GROWTH_ACTIONS'
-      ] ?? 0;
+      ];
+
+    // Unlimited (internal test): creation never gated.
+    // Internal entitlements carry explicit null and return
+    // here; commercial plans always resolve a number below.
+    if (rawLimit === null) {
+      return {
+        metric: 'AI_GROWTH_ACTIONS',
+        used: 0,
+        limit: null,
+        remaining: null,
+        allowed: true,
+        planCode:
+          entitlements.planCode,
+      };
+    }
+
+    const limit = rawLimit ?? 0;
 
     const monthStart = new Date();
     monthStart.setDate(1);

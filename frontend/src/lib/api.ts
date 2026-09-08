@@ -3145,6 +3145,7 @@ export interface BillingEntitlements {
   tier: string;
   status: string;
   isFree: boolean;
+  isInternal?: boolean;
   customPricing: boolean;
   provider?: string | null;
   interval?: string | null;
@@ -3152,7 +3153,7 @@ export interface BillingEntitlements {
   trialEnd?: string | null;
   currentPeriodEnd?: string | null;
   cancelAtPeriodEnd?: boolean;
-  limits: Record<string, number>;
+  limits: Record<string, number | null>;
   features: Record<string, boolean>;
 }
 
@@ -3164,7 +3165,7 @@ export interface BillingUsage {
     string,
     {
       used: number | null;
-      limit: number;
+      limit: number | null;
       remaining: number | null;
       measurable: boolean;
     }
