@@ -719,6 +719,87 @@ select.input:disabled {
   color: var(--rk-text-muted);
 }
 
+/* =========================================================
+   RENKOO billing — restrained premium motion (additive).
+   Price swap 150–250ms, badge entrance, comparison reveal,
+   card hover. Transform/opacity only. Reduced-motion safe.
+   ========================================================= */
+
+.rk-plan-card {
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease,
+    background-color 160ms ease;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rk-plan-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--rk-shadow-md);
+  }
+
+  .rk-price-swap {
+    animation: rk-price-in 200ms ease-out;
+  }
+
+  .rk-badge-in {
+    animation: rk-pop-in 180ms ease-out;
+  }
+
+  .rk-compare-reveal {
+    animation: rk-fade-in 220ms ease-out;
+  }
+}
+
+@keyframes rk-price-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rk-price-swap,
+  .rk-badge-in,
+  .rk-compare-reveal,
+  .rk-plan-card,
+  .rk-plan-card:hover {
+    animation: none;
+    transform: none;
+  }
+}
+
+.rk-plan-popular {
+  border-color: #c7d4f5;
+  box-shadow:
+    0 0 0 1px #c7d4f5,
+    0 8px 28px rgba(36, 86, 196, 0.1);
+}
+
+.rk-plan-popular:hover {
+  border-color: var(--rk-accent);
+}
+
+.rk-scroll-region:focus-visible {
+  outline: 2px solid var(--rk-text);
+  outline-offset: -2px;
+}
+
+.rk-usage-bar {
+  transition: width 240ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rk-usage-bar {
+    transition: none;
+  }
+}
+
 /* Responsive content rhythm */
 .rk-page {
   animation: rk-page-in 240ms ease-out;
