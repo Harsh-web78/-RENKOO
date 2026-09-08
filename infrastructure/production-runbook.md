@@ -60,10 +60,38 @@ running anything, so existing rows are never touched.
 ## 4. Build command (Render)
 
 ```sh
-npm install && npx prisma generate && npm run build
+npm install && npx playwright install --with-deps chromium && npx prisma generate && npm run build
 ```
 
 (Root directory: `backend`. `npm run build` already runs `prisma generate`.)
+
+Why the Playwright step is load-bearing:
+
+- The website crawler and competitor crawler launch
+  `chromium.launch({ headless: true })`, which requires the
+  `chromium_headless_shell-<rev>/` binary from the EXACT installed
+  Playwright version (today: Playwright 1.62.1 → revision 1234).
+- Without it every crawl fails with
+  `browserType.launch: Executable doesn't exist at
+  /opt/render/.cache/ms-playwright/chromium_headless_shell-1234/...`.
+- `npm install` also runs the repo `postinstall` script
+  (`npx playwright install chromium`), which covers the binary on
+  any host — but on Render the `--with-deps` flag in the build
+  command is additionally required so the OS shared libraries
+  Chromium needs (libnss3, libatk, libdrm, …) are present.
+  The browsers persist on the same disk the service boots from,
+  so no runtime install or `PLAYWRIGHT_BROWSERS_PATH` override is
+  needed (default `~/.cache/ms-playwright` resolves to
+  `/opt/render/.cache/ms-playwright`).
+- After changing the `playwright` version in
+  `backend/package.json`, redeploy so the matching browser
+  revision is installed; a version/binary mismatch fails the
+  same way.
+- Verify in a Render shell AFTER deploy:
+  `node scripts/verify-playwright.mjs https://example.com`
+  (exit 0, prints executable path + 200 + title). A crawl that
+  still fails surfaces an actionable message naming the missing
+  binary instead of a generic error.
 
 ## 5. Start command (Render)
 

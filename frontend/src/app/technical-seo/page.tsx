@@ -212,8 +212,23 @@ export default function TechnicalSeoPage() {
           : null,
       );
 
+      /*
+       * Real crawl counts from the backend response —
+       * never invented. pagesFailed is present only
+       * when at least one page could not be fetched;
+       * those pages carry a PAGE_FETCH_FAILED issue
+       * with the URL and error as evidence.
+       */
+      const crawled = num(result?.pagesCrawled);
+      const failed = num(result?.pagesFailed);
+      const discovered = num(
+        result?.pagesDiscovered,
+      );
+
       setRunMsg(
-        'Audit complete — results refreshed below.',
+        failed > 0
+          ? `Audit complete — ${crawled} of ${discovered} pages checked, ${failed} page${failed === 1 ? '' : 's'} could not be fetched (listed below with evidence).`
+          : `Audit complete — ${crawled} page${crawled === 1 ? '' : 's'} checked, results refreshed below.`,
       );
     } catch (err: any) {
       if (isLimitError(err)) {
@@ -546,6 +561,15 @@ export default function TechnicalSeoPage() {
                 setStatusFilter('OPEN');
               }}
             />
+            {running ? (
+              <p className="rk-body mt-2">
+                Audit running — pages are being
+                crawled and checked now. Larger
+                sites take a few minutes; results
+                appear automatically when it
+                finishes.
+              </p>
+            ) : null}
             {runMsg ? (
               <p className="rk-body mt-2">{runMsg}</p>
             ) : null}

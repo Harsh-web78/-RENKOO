@@ -15,12 +15,61 @@ import {
   Page,
 } from 'playwright';
 
+import {
+  SeoIssueSeverity,
+  SeoIssueStatus,
+} from '@prisma/client';
+
 import * as cheerio from 'cheerio';
 
 @Injectable()
 export class CrawlService {
-  private readonly MAX_PAGES = 50;
-  private readonly PAGE_TIMEOUT = 30000;
+  /*
+   * Bounded crawl tuning. Defaults preserve the
+   * long-standing production behavior; operators
+   * may override via environment (values are
+   * clamped to the safe ranges below).
+   */
+  private static readIntEnv(
+    name: string,
+    fallback: number,
+    min: number,
+    max: number,
+  ): number {
+    const raw = process.env[name];
+
+    if (!raw) {
+      return fallback;
+    }
+
+    const parsed =
+      Number.parseInt(raw, 10);
+
+    if (!Number.isFinite(parsed)) {
+      return fallback;
+    }
+
+    return Math.min(
+      max,
+      Math.max(min, parsed),
+    );
+  }
+
+  private readonly MAX_PAGES =
+    CrawlService.readIntEnv(
+      'CRAWL_MAX_PAGES',
+      50,
+      1,
+      200,
+    );
+
+  private readonly PAGE_TIMEOUT =
+    CrawlService.readIntEnv(
+      'CRAWL_PAGE_TIMEOUT_MS',
+      30000,
+      5000,
+      120000,
+    );
 
   /*
    * Bounded concurrency for independent page
@@ -34,7 +83,28 @@ export class CrawlService {
    * and timeouts/limits/tenant checks are
    * unchanged.
    */
-  private readonly PAGE_CONCURRENCY = 5;
+  private readonly PAGE_CONCURRENCY =
+    CrawlService.readIntEnv(
+      'CRAWL_PAGE_CONCURRENCY',
+      5,
+      1,
+      10,
+    );
+
+  /*
+   * Absolute safety limit for one crawl.
+   * Prevents a pathological site (or a stalled
+   * worker pool) from leaving the crawl row in
+   * RUNNING forever and holding the HTTP
+   * request open indefinitely.
+   */
+  private readonly MAX_CRAWL_TIME_MS =
+    CrawlService.readIntEnv(
+      'CRAWL_MAX_TIME_MS',
+      8 * 60 * 1000,
+      60 * 1000,
+      30 * 60 * 1000,
+    );
 
   constructor(
     private readonly prisma: PrismaService,
@@ -92,16 +162,129 @@ export class CrawlService {
        * =======================================================
        */
 
-      browser =
-        await chromium.launch({
-          headless: true,
-        });
+      /*
+       * Production-hardened launch flags (same set
+       * the competitor crawler already uses):
+       * --no-sandbox and --disable-dev-shm-usage
+       * are required inside minimal containers
+       * such as Render's native Node runtime.
+       * They are harmless on developer machines.
+       */
+      try {
+        browser =
+          await chromium.launch({
+            headless: true,
+
+            args: [
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-dev-shm-usage',
+              '--disable-gpu',
+            ],
+          });
+      } catch (launchError) {
+        const message =
+          launchError instanceof
+          Error
+            ? launchError.message
+            : 'Unknown error';
+
+        const missingBinary =
+          /executable doesn'?t exist/i.test(
+            message,
+          );
+
+        throw new BadRequestException(
+          missingBinary
+            ? `Website crawl could not start: the server browser runtime is not installed (${message}). Deployment step required: run \`npx playwright install chromium\` for the installed Playwright version, then restart the backend.`
+            : `Website crawl could not start: browser launch failed (${message}).`,
+        );
+      }
 
       const context =
         await browser.newContext({
           userAgent:
             'Mozilla/5.0 (compatible; RENKOOBot/1.0; +https://renkoo.ai)',
         });
+
+      context.setDefaultNavigationTimeout(
+        this.PAGE_TIMEOUT,
+      );
+
+      /*
+       * Resource blocking (same policy the
+       * competitor crawler already uses).
+       * SEO extraction reads the DOM, never the
+       * bytes of images/fonts/media — blocking
+       * them only removes network wait, never
+       * evidence (img counts and alt attributes
+       * come from the HTML markup itself).
+       */
+      await context.route(
+        '**/*',
+        async (route) => {
+          try {
+            const request =
+              route.request();
+
+            const resourceType =
+              request.resourceType();
+
+            if (
+              resourceType ===
+                'image' ||
+              resourceType ===
+                'media' ||
+              resourceType ===
+                'font'
+            ) {
+              await route.abort();
+              return;
+            }
+
+            const requestUrl =
+              request
+                .url()
+                .toLowerCase();
+
+            const blockedHosts = [
+              'google-analytics.com',
+              'googletagmanager.com',
+              'doubleclick.net',
+              'facebook.net',
+              'connect.facebook.net',
+              'hotjar.com',
+              'clarity.ms',
+              'segment.io',
+              'analytics.twitter.com',
+              'bat.bing.com',
+              'googlesyndication.com',
+              'adservice.google.com',
+              'amazon-adsystem.com',
+            ];
+
+            if (
+              blockedHosts.some(
+                (host) =>
+                  requestUrl.includes(
+                    host,
+                  ),
+              )
+            ) {
+              await route.abort();
+              return;
+            }
+
+            await route.continue();
+          } catch {
+            try {
+              await route.continue();
+            } catch {
+              // Ignore routing teardown races.
+            }
+          }
+        },
+      );
 
       /*
        * =======================================================
@@ -331,9 +514,25 @@ export class CrawlService {
         }
       };
 
+      /*
+       * A single un-fetchable page must never fail
+       * the whole crawl. Failed pages are persisted
+       * with a PAGE_FETCH_FAILED issue (real
+       * evidence: URL + error) and the crawl
+       * continues. Only a dead browser — or the
+       * absolute crawl timeout — fails the run.
+       */
+      let pagesFailed = 0;
+
+      const crawlStartedAt =
+        Date.now();
+
       const crawlOneUrl = async (
         currentUrl: string,
-      ) => {
+      ): Promise<{
+        crawlPageUrl: string;
+        internalUrls: string[];
+      } | null> => {
         let page:
           | Page
           | undefined;
@@ -350,56 +549,89 @@ export class CrawlService {
               crawl.id,
             );
 
-          /*
-           * Count successfully saved pages.
-           */
-
-          if (
-            !saved.has(
+          return {
+            crawlPageUrl:
               result.crawlPage.url,
-            )
-          ) {
-            saved.add(
-              result.crawlPage.url,
-            );
 
-            pagesCrawled++;
-          }
-
-          enqueueInternalLinks(
-            result.internalUrls,
-          );
+            internalUrls:
+              result.internalUrls,
+          };
         } catch (error) {
-          console.error(
-            `\n========== CRAWL PAGE FAILED ==========\n`,
-          );
+          const browserAlive =
+            !!browser &&
+            browser.isConnected();
 
-          console.error(
-            `URL: ${currentUrl}`,
-          );
-
-          console.error(
-            `ERROR:`,
-            error,
-          );
-
-          if (error instanceof Error) {
+          if (!browserAlive) {
+            // eslint-disable-next-line no-console
             console.error(
-              `MESSAGE:`,
-              error.message,
+              `[RENKOO] Crawl ${crawl.id} aborted: browser disconnected during ${currentUrl}`,
             );
 
-            console.error(
-              `STACK:`,
-              error.stack,
-            );
+            throw error;
           }
 
+          const reason =
+            error instanceof
+            Error
+              ? error.message
+              : 'Unknown error';
+
+          // eslint-disable-next-line no-console
           console.error(
-            `=======================================\n`,
+            `[RENKOO] Crawl ${crawl.id} page failed (continuing): ${currentUrl} — ${reason}`,
           );
 
-          throw error;
+          try {
+            const failedPage =
+              await this.prisma.crawlPage.create(
+                {
+                  data: {
+                    crawlId:
+                      crawl.id,
+
+                    url: currentUrl,
+                  },
+                },
+              );
+
+            await this.prisma.seoIssue.create(
+              {
+                data: {
+                  crawlPageId:
+                    failedPage.id,
+
+                  code: 'PAGE_FETCH_FAILED',
+
+                  category:
+                    'TECHNICAL',
+
+                  severity:
+                    SeoIssueSeverity.HIGH,
+
+                  title:
+                    'Page could not be fetched',
+
+                  description:
+                    `RENKOO could not load ${currentUrl}: ${reason}`.slice(
+                      0,
+                      500,
+                    ),
+
+                  recommendation:
+                    'Check that the URL loads in a browser, fix redirects, DNS or server errors, then run the crawl again. The remaining pages in this crawl were still checked.',
+
+                  status:
+                    SeoIssueStatus.OPEN,
+                },
+              },
+            );
+          } catch {
+            // Failure evidence must never fail the crawl itself.
+          }
+
+          pagesFailed++;
+
+          return null;
         } finally {
           if (page) {
             try {
@@ -419,6 +651,16 @@ export class CrawlService {
               this.MAX_PAGES
           ) {
             return;
+          }
+
+          if (
+            Date.now() -
+              crawlStartedAt >
+            this.MAX_CRAWL_TIME_MS
+          ) {
+            throw new Error(
+              `Website crawl timed out after ${Math.round(this.MAX_CRAWL_TIME_MS / 60000)} minutes.`,
+            );
           }
 
           const currentUrl =
@@ -461,8 +703,33 @@ export class CrawlService {
           activeWorkers++;
 
           try {
-            await crawlOneUrl(
-              currentUrl,
+            const outcome =
+              await crawlOneUrl(
+                currentUrl,
+              );
+
+            if (!outcome) {
+              continue;
+            }
+
+            /*
+             * Count successfully saved pages.
+             */
+
+            if (
+              !saved.has(
+                outcome.crawlPageUrl,
+              )
+            ) {
+              saved.add(
+                outcome.crawlPageUrl,
+              );
+
+              pagesCrawled++;
+            }
+
+            enqueueInternalLinks(
+              outcome.internalUrls,
             );
           } catch (error) {
             crawlFailed = true;
@@ -560,6 +827,8 @@ export class CrawlService {
           completedCrawl,
 
         pagesCrawled,
+
+        pagesFailed,
 
         pagesDiscovered:
           discovered.size,

@@ -90,6 +90,12 @@ export interface StartCrawlResponse {
   crawl: Crawl;
   pagesCrawled: number;
   pagesDiscovered: number;
+  /*
+   * Present on backends with per-page crawl
+   * resilience. Optional to stay compatible
+   * with responses from older deployments.
+   */
+  pagesFailed?: number;
   summary: CrawlSummary;
 }
 
