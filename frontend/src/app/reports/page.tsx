@@ -18,6 +18,7 @@ import {
   getReportScheduling,
   getWebsites,
   isLimitError,
+  limitDetails,
   limitUsageText,
   listClients,
   listReports,
@@ -30,6 +31,7 @@ import {
   ReportType,
   Website,
 } from '@/lib/api';
+import { limitTitle } from '@/lib/plans';
 
 const REPORT_TYPES: Array<{
   value: ReportType;
@@ -512,7 +514,9 @@ export default function ReportsPage() {
           {generateLimit ? (
             <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
               <p className="font-bold text-amber-900">
-                Free plan limit reached
+                {limitTitle(
+                  limitDetails(generateLimit)?.planCode,
+                )}
               </p>
 
               <p className="mt-1">

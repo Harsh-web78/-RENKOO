@@ -303,7 +303,13 @@ export default function PublicHomePage() {
 
               <p className="rk-metadata mt-4">
                 Set up your first website in minutes. Your
-                data stays inside your workspace.
+                data stays inside your workspace.{' '}
+                <Link
+                  href="/snapshot"
+                  className="rk-focusable font-bold text-rk-ink underline decoration-rk-border-strong underline-offset-4 hover:decoration-rk-ink"
+                >
+                  See your AI visibility — free
+                </Link>
               </p>
             </div>
 

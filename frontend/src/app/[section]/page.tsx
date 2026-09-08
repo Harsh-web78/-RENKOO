@@ -16,11 +16,13 @@ import {
 import AppShell from '../../components/AppShell';
 
 import { useElapsed } from '../../lib/useElapsed';
+import { limitTitle } from '../../lib/plans';
 
 import {
   getCrawlAnalysis,
   getWebsites,
   isLimitError,
+  limitDetails,
   limitUsageText,
   startCrawl,
   Website,
@@ -622,7 +624,9 @@ export default function TechnicalSeoPage() {
           {limitError ? (
             <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
               <div className="text-sm font-bold text-amber-900">
-                Free plan limit reached
+                {limitTitle(
+                  limitDetails(limitError)?.planCode,
+                )}
               </div>
 
               <div className="mt-1 text-sm leading-6 text-amber-800">

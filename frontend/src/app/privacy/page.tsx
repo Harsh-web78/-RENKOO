@@ -4,9 +4,9 @@ import PublicFooter from '../../components/PublicFooter';
 
 /*
  * RENKOO — Privacy Policy (public, no authentication required).
- * Product content preparation, not legal advice. Company and
- * legal-identity details that are not defined in the project
- * use clearly marked editable placeholders — no facts invented.
+ * Legal contact is configurable via NEXT_PUBLIC_LEGAL_CONTACT_EMAIL.
+ * Fallback is the existing project contact; no placeholder is
+ * rendered in production and no email is invented here.
  */
 
 export const metadata: Metadata = {
@@ -14,6 +14,15 @@ export const metadata: Metadata = {
   description:
     'How RENKOO collects, uses, stores and protects account, website and Google-connected data.',
 };
+
+/*
+ * Legal contact: env-configurable, fallback is the existing
+ * project contact already used elsewhere on this page.
+ * Set NEXT_PUBLIC_LEGAL_CONTACT_EMAIL to override without code changes.
+ */
+const LEGAL_CONTACT_EMAIL =
+  process.env.NEXT_PUBLIC_LEGAL_CONTACT_EMAIL ||
+  'harshpatil53342@gmail.com';
 
 const SECTIONS = [
   { id: 'introduction', n: '1', title: 'Introduction' },
@@ -311,8 +320,8 @@ export default function PrivacyPage() {
             </h2>
             <p className="rk-body">
               You may request deletion of your account and
-              associated workspace data by contacting [LEGAL
-              CONTACT EMAIL]. RENKOO will process verified
+              associated workspace data by contacting{' '}
+              {LEGAL_CONTACT_EMAIL}. RENKOO will process verified
               deletion requests subject to legal retention
               obligations.
             </p>

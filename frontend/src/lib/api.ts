@@ -686,6 +686,14 @@ async function doRequest<T>(
       },
     );
 
+    // Lightweight monitoring: sanitized, no-op without DSN. Never throws.
+    try {
+      const { captureApiError } = await import('./monitoring');
+      captureApiError({ url, method: options.method || 'GET' });
+    } catch {
+      // monitoring must never break API calls
+    }
+
     throw new Error(
       `Cannot connect to RENKOO backend at ${API_URL}. Make sure NestJS is running on port 4000 and CORS is enabled.`,
     );
@@ -737,6 +745,22 @@ async function doRequest<T>(
         data,
       },
     );
+
+    // Important API failures are also forwarded to lightweight monitoring
+    // (sanitized path/method/status only; no bodies, tokens, or PII).
+    // Only 5xx and network-level failures are reported to avoid noise.
+    if (response.status >= 500) {
+      try {
+        const { captureApiError } = await import('./monitoring');
+        captureApiError({
+          url,
+          method: options.method || 'GET',
+          status: response.status,
+        });
+      } catch {
+        // monitoring must never break API calls
+      }
+    }
 
     /*
      * Preserve machine-readable billing/limit
@@ -2275,6 +2299,91 @@ export async function createAction(data: {
   } finally {
     invalidateSessionCache('actions');
   }
+}
+
+/* PROOF CARDS — proof of impact (read-only, always fresh) */
+
+export type ProofState =
+  | 'WAITING_FOR_DATA'
+  | 'EARLY_SIGNAL'
+  | 'MEASURABLE_IMPACT'
+  | 'MIXED_RESULTS'
+  | 'NO_CLEAR_CHANGE'
+  | 'INSUFFICIENT_DATA';
+
+export interface ProofMetric {
+  key: string;
+  label: string;
+  before: number | null;
+  after: number | null;
+  delta: number | null;
+  pct: number | null;
+  direction: 'up' | 'down' | 'flat';
+  improved: boolean;
+  declined: boolean;
+  lowerBetter: boolean;
+  evidence: string;
+}
+
+export interface ProofCard {
+  actionId: string;
+  websiteId: string | null;
+  websiteName: string | null;
+  websiteUrl: string | null;
+  title: string;
+  type: string;
+  priority: string;
+  createdAt: string;
+  completedAt: string | null;
+  recommendationId: string | null;
+  recommendationTitle: string | null;
+  windows: {
+    beforeStart: string;
+    beforeEnd: string;
+    afterStart: string;
+    afterEnd: string;
+    afterDaysAvailable: number;
+    windowDays: number;
+  } | null;
+  state: ProofState;
+  stateReason: string;
+  metrics: ProofMetric[];
+  evidence: {
+    crawl: { state: string; beforeCrawlAt?: string | null; afterCrawlAt?: string | null };
+    leads: { state: string };
+    revenue: { state: string; currencies?: string[] };
+    aiVisibility: { state: string; checksBefore?: number; checksAfter?: number };
+    monitoring: { state: string };
+    searchTraffic: { state: string; gscConnected: boolean; ga4Connected: boolean };
+  };
+  revenueNote: string | null;
+}
+
+export interface ProofCardsResponse {
+  cards: ProofCard[];
+  nextCursorId: string | null;
+}
+
+export async function getProofCards(params?: {
+  websiteId?: string;
+  take?: number;
+  cursorId?: string;
+}): Promise<ProofCardsResponse> {
+  const query = new URLSearchParams();
+  if (params?.websiteId) query.set('websiteId', params.websiteId);
+  if (params?.take) query.set('take', String(params.take));
+  if (params?.cursorId) query.set('cursorId', params.cursorId);
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  // Intentionally uncached: proof reflects the latest stored evidence.
+  return request<ProofCardsResponse>(`/proof-cards${suffix}`);
+}
+
+export async function getProofCard(
+  actionId: string,
+): Promise<ProofCard> {
+  return request<ProofCard>(
+    `/proof-cards/${encodeURIComponent(actionId)}`,
+  );
 }
 
 /* AI VISIBILITY */

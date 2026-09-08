@@ -4,6 +4,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { randomUUID } from 'crypto';
 import {
   json,
@@ -16,8 +17,12 @@ import helmet from 'helmet';
 import compression from 'compression';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { installBackendErrorHandlers } from './common/error-monitoring/error-monitoring';
+import { isTrustedProxyPeer } from './common/proxy/trust-proxy';
 
 async function bootstrap() {
+  // Lightweight production error monitoring: no-op without SENTRY_DSN.
+  installBackendErrorHandlers();
   /*
    * Fail fast in production: without a signing secret
    * every authenticated request would fail at the guard
@@ -33,9 +38,22 @@ async function bootstrap() {
     );
   }
 
-  const app = await NestFactory.create(
-    AppModule,
-    { bodyParser: false },
+  const app =
+    await NestFactory.create<NestExpressApplication>(
+      AppModule,
+      { bodyParser: false },
+    );
+
+  /*
+   * Proxy-aware client IPs behind the platform load balancer.
+   * Express follows X-Forwarded-For ONLY when the direct peer
+   * is the LB itself (loopback/private) — direct internet peers
+   * are never trusted, so forged headers cannot spoof req.ip.
+   * Authenticated throttling behavior is unchanged (same req.ip
+   * contract, now correct behind the LB).
+   */
+  app.set('trust proxy', (addr: string) =>
+    isTrustedProxyPeer(addr),
   );
 
   /*

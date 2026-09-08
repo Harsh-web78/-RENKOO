@@ -2,6 +2,7 @@
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
+import { COMMERCIAL_PLANS } from './plans.config';
 
 @Injectable()
 export class StripeService {
@@ -25,79 +26,211 @@ export class StripeService {
     return this.stripe;
   }
 
-  async syncPlansToStripe() {
+  /*
+   * Stripe price synchronization — currency-safe, idempotent, auditable.
+   *
+   * SOURCE OF TRUTH: backend/src/billing/plans.config.ts `usd` book.
+   * - USD unit_amount is derived ONLY from the explicit USD commercial
+   *   price (dollars -> cents). INR values are NEVER used here, so
+   *   Rs 1,999 can never become $1,999.
+   * - DB Plan rows stay canonical in INR (`currency` is never overwritten).
+   *   Only `stripeMonthlyPriceId / stripeYearlyPriceId` are stored.
+   * - Existing matching Stripe prices are reused (matched on product
+   *   metadata + currency + unit_amount + interval). Nothing is created
+   *   when a match already exists, and production prices are never
+   *   overwritten or deleted by this routine.
+   * - Pass `{ dryRun: true }` to inspect the mapping without any
+   *   Stripe writes or DB updates. Never run against production without
+   *   verified credentials and an explicit review of the dry-run output.
+   */
+  async syncPlansToStripe(options?: { dryRun?: boolean }) {
     const stripe = this.requireStripe();
+    const dryRun = options?.dryRun === true;
 
-    const plans = await this.prisma.plan.findMany({
-      where: { active: true },
-      orderBy: { monthlyPrice: 'asc' },
-    });
+    const results: Array<{
+      code: string;
+      productId: string | null;
+      monthlyPriceId: string | null;
+      yearlyPriceId: string | null;
+      monthlyUnitAmount: number;
+      yearlyUnitAmount: number;
+      currency: 'usd';
+      reusedMonthly: boolean;
+      reusedYearly: boolean;
+      dryRun: boolean;
+    }> = [];
 
-    const results: any[] = [];
+    for (const commercial of COMMERCIAL_PLANS) {
+      if (commercial.code === 'FREE') {
+        continue;
+      }
 
-    for (const plan of plans) {
+      const monthlyUnitAmount = Math.round(commercial.usd.monthly * 100);
+      const yearlyUnitAmount = Math.round(commercial.usd.yearlyTotal * 100);
+
+      if (
+        !Number.isFinite(monthlyUnitAmount) ||
+        monthlyUnitAmount <= 0 ||
+        !Number.isFinite(yearlyUnitAmount) ||
+        yearlyUnitAmount <= 0
+      ) {
+        throw new BadRequestException(
+          `No valid USD price configured for plan ${commercial.code}`,
+        );
+      }
+
+      const dbPlan = await this.prisma.plan.findUnique({
+        where: { code: commercial.code },
+      });
+
+      if (dryRun) {
+        results.push({
+          code: commercial.code,
+          productId: null,
+          monthlyPriceId: dbPlan?.stripeMonthlyPriceId ?? null,
+          yearlyPriceId: dbPlan?.stripeYearlyPriceId ?? null,
+          monthlyUnitAmount,
+          yearlyUnitAmount,
+          currency: 'usd',
+          reusedMonthly: Boolean(dbPlan?.stripeMonthlyPriceId),
+          reusedYearly: Boolean(dbPlan?.stripeYearlyPriceId),
+          dryRun: true,
+        });
+        continue;
+      }
+
       let product: Stripe.Product;
 
       const existingProducts = await stripe.products.search({
-        query: `metadata['renkoo_plan_code']:'${plan.code}'`,
+        query: `metadata['renkoo_plan_code']:'${commercial.code}'`,
       });
 
       if (existingProducts.data.length > 0) {
         product = existingProducts.data[0];
       } else {
+        const planName =
+          commercial.code.charAt(0) +
+          commercial.code.slice(1).toLowerCase();
         product = await stripe.products.create({
-          name: `RENKOO ${plan.name}`,
-          description: plan.description || undefined,
+          name: `RENKOO ${planName}`,
+          description: commercial.description || undefined,
           metadata: {
-            renkoo_plan_code: plan.code,
+            renkoo_plan_code: commercial.code,
           },
         });
       }
 
-      const monthly = await this.stripe!.prices.create({
-        product: product.id,
-        currency: 'usd',
-        unit_amount: Math.round(plan.monthlyPrice * 100),
-        recurring: {
-          interval: 'month',
-        },
-        metadata: {
-          renkoo_plan_code: plan.code,
-          billing_cycle: 'monthly',
-        },
+      const monthly = await this.findOrCreatePrice(stripe, {
+        productId: product.id,
+        planCode: commercial.code,
+        cycle: 'monthly',
+        interval: 'month',
+        unitAmount: monthlyUnitAmount,
       });
 
-      const yearly = await this.stripe!.prices.create({
-        product: product.id,
-        currency: 'usd',
-        unit_amount: Math.round(plan.yearlyPrice * 100),
-        recurring: {
-          interval: 'year',
-        },
-        metadata: {
-          renkoo_plan_code: plan.code,
-          billing_cycle: 'yearly',
-        },
+      const yearly = await this.findOrCreatePrice(stripe, {
+        productId: product.id,
+        planCode: commercial.code,
+        cycle: 'yearly',
+        interval: 'year',
+        unitAmount: yearlyUnitAmount,
       });
 
-      await this.prisma.plan.update({
-        where: { id: plan.id },
-        data: {
-          currency: 'USD',
-          stripeMonthlyPriceId: monthly.id,
-          stripeYearlyPriceId: yearly.id,
-        },
-      });
+      if (dbPlan) {
+        await this.prisma.plan.update({
+          where: { id: dbPlan.id },
+          data: {
+            stripeMonthlyPriceId: monthly.id,
+            stripeYearlyPriceId: yearly.id,
+          },
+        });
+      }
 
       results.push({
-        code: plan.code,
+        code: commercial.code,
         productId: product.id,
         monthlyPriceId: monthly.id,
         yearlyPriceId: yearly.id,
+        monthlyUnitAmount,
+        yearlyUnitAmount,
+        currency: 'usd',
+        reusedMonthly: monthly.reused,
+        reusedYearly: yearly.reused,
+        dryRun: false,
       });
     }
 
     return results;
+  }
+
+  private async findOrCreatePrice(
+    stripe: Stripe,
+    input: {
+      productId: string;
+      planCode: string;
+      cycle: 'monthly' | 'yearly';
+      interval: 'month' | 'year';
+      unitAmount: number;
+    },
+  ): Promise<{ id: string; reused: boolean }> {
+    const existing = await stripe.prices.list({
+      product: input.productId,
+      active: true,
+      limit: 100,
+    });
+
+    const match = existing.data.find(
+      (price) =>
+        (price.currency || '').toLowerCase() === 'usd' &&
+        (price.unit_amount ?? -1) === input.unitAmount &&
+        price.recurring?.interval === input.interval &&
+        price.metadata?.renkoo_plan_code === input.planCode &&
+        price.metadata?.billing_cycle === input.cycle,
+    );
+
+    if (match) {
+      return { id: match.id, reused: true };
+    }
+
+    const created = await stripe.prices.create({
+      product: input.productId,
+      currency: 'usd',
+      unit_amount: input.unitAmount,
+      recurring: {
+        interval: input.interval,
+      },
+      metadata: {
+        renkoo_plan_code: input.planCode,
+        billing_cycle: input.cycle,
+      },
+    });
+
+    return { id: created.id, reused: false };
+  }
+
+  /*
+   * Explicit PLAN -> USD -> Stripe mapping for auditability.
+   * No DB reads, no Stripe calls, no currency inference.
+   */
+  static stripeUnitAmounts(): Record<
+    string,
+    { monthlyCents: number; yearlyCents: number; currency: 'usd' }
+  > {
+    const map: Record<
+      string,
+      { monthlyCents: number; yearlyCents: number; currency: 'usd' }
+    > = {};
+
+    for (const plan of COMMERCIAL_PLANS) {
+      if (plan.code === 'FREE') continue;
+      map[plan.code] = {
+        monthlyCents: Math.round(plan.usd.monthly * 100),
+        yearlyCents: Math.round(plan.usd.yearlyTotal * 100),
+        currency: 'usd',
+      };
+    }
+
+    return map;
   }
 
   providerConfigured(): boolean {

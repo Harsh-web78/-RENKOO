@@ -19,8 +19,11 @@ import {
   getGoogleConnectionStatus,
   getWebsites,
   isLimitError,
+  limitDetails,
   limitUsageText,
 } from '../../lib/api';
+import { limitTitle } from '../../lib/plans';
+import { readRememberedSnapshotDomain } from '../../lib/snapshot';
 import PersonaSelector from '../../components/PersonaSelector';
 
 type Step = 1 | 2 | 3;
@@ -56,6 +59,28 @@ export default function OnboardingPage() {
   const [error, setError] = useState('');
   const [limitError, setLimitError] =
     useState<unknown>(null);
+
+  /*
+   * Snapshot handoff endpoint: prefill the website URL field
+   * from a remembered, validated snapshot domain — only when
+   * the field is still empty. Nothing is created automatically;
+   * the normal website-creation flow stays authoritative.
+   */
+  useEffect(() => {
+    try {
+      const remembered =
+        readRememberedSnapshotDomain();
+      if (remembered) {
+        setUrl((current) =>
+          current.trim()
+            ? current
+            : `https://${remembered}`,
+        );
+      }
+    } catch {
+      // prefill must never break onboarding
+    }
+  }, []);
 
   // Honest OAuth-return + existing-website handling.
   // Reads only real signals: URL params from the Google redirect
@@ -313,7 +338,9 @@ export default function OnboardingPage() {
         {limitError ? (
           <div className="mx-auto mt-6 max-w-2xl rounded-rk-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <p className="font-bold text-amber-900">
-              Free plan limit reached
+              {limitTitle(
+                limitDetails(limitError)?.planCode,
+              )}
             </p>
 
             <p className="mt-1">

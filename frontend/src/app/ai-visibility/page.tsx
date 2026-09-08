@@ -24,9 +24,11 @@ import {
   runAiVisibilityCheck,
   createActionFromRecommendation,
   isLimitError,
+  limitDetails,
   limitUsageText,
   type Website,
 } from '@/lib/api';
+import { limitTitle } from '@/lib/plans';
 import AppShell from '@/components/AppShell';
 import {
   PageHeader,
@@ -1013,7 +1015,9 @@ export default function AiVisibilityPage() {
                   ) : null}
                   {runLimit ? (
                     <LimitReachedState
-                      title="Free plan limit reached"
+                      title={limitTitle(
+                        limitDetails(runLimit)?.planCode,
+                      )}
                       description="This check could not run because the workspace hit its AI scan allowance. Existing data is untouched."
                       detail={limitUsageText(
                         runLimit,

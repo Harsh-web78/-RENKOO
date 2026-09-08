@@ -137,3 +137,26 @@ international-cards activation (`RAZORPAY_INTERNATIONAL_CARDS=AVAILABLE`).
 - [ ] `TOKEN_ENCRYPTION_KEY` set before any Google connection in production
 - [ ] Baseline migration tested on scratch DB; `migrate deploy` wired as release step
 - [ ] `NEXT_PUBLIC_API_URL` set on Vercel before frontend deploy
+- [ ] At least one of `OPENAI_API_KEY` / `GEMINI_API_KEY` set for the public snapshot (see §14)
+- [ ] One controlled production snapshot run against `example.com` verified after deploy
+
+## 14. Public AI Visibility Snapshot (`/snapshot`)
+
+Anonymous marketing endpoint (`POST /snapshot/ai-visibility`, cache read
+`GET /snapshot/ai-visibility?domain=`). No auth, no workspace I/O, no
+billing, no Prisma writes.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `OPENAI_API_KEY` / `GEMINI_API_KEY` | (unset) | At least one required; without either the endpoint returns 503 honestly |
+| `OPENAI_MODEL` / `GEMINI_MODEL` | `gpt-4o-mini` / `gemini-3.6-flash` | Existing provider defaults |
+| `SNAPSHOT_MAX_CALLS_PER_RUN` | `6` | Hard cap, never raised above 6 in code |
+| `SNAPSHOT_DOMAIN_CACHE_TTL_HOURS` | `24` | Successful-result cache by normalized domain |
+| `SNAPSHOT_MAX_REQUESTS_PER_IP_PER_HOUR` | `5` | Per-instance, proxy-aware (trusts LB peers only) |
+| `SNAPSHOT_MAX_REQUESTS_PER_DOMAIN_PER_DAY` | `3` | Per-instance |
+| `SNAPSHOT_MONTHLY_CALL_BUDGET` | `500` | Fail-closed monthly provider-call guard, per-instance |
+
+- OpenAI quota/billing must be active for OpenAI testing (a 429 surfaces as an honest per-engine miss, not a snapshot failure). Gemini operates independently.
+- Limits are **in-memory, per-instance, reset on process restart**. Do NOT claim globally distributed rate limiting.
+- Production instance topology: **UNKNOWN** (not declared in this repo; Render default is a single instance unless autoscaling was enabled in the dashboard). If autoscaling is ever enabled, budget/cache become per-instance and the monthly guard under-counts — revisit with a shared store then.
+- Post-deploy smoke test: one `POST /snapshot/ai-visibility {"domain":"example.com"}` (≤6 provider calls), then repeat to confirm `cached:true` with zero new provider spend.

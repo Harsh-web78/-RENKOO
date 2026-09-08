@@ -1,7 +1,12 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import {
+  normalizeSnapshotDomain,
+  rememberSnapshotDomain,
+} from '@/lib/snapshot';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import {
   getMe,
@@ -22,6 +27,30 @@ export default function SignupPage() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [snapshotDomain, setSnapshotDomain] =
+    useState('');
+
+  /*
+   * Snapshot handoff: ?domain= is validated client-side and
+   * remembered for onboarding prefill. Invalid values are
+   * dropped silently — signup never depends on them and no
+   * workspace is created from anonymous traffic.
+   */
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(
+        window.location.search,
+      );
+      const raw = params.get('domain') ?? '';
+      const clean = normalizeSnapshotDomain(raw);
+      if (clean) {
+        setSnapshotDomain(clean);
+        rememberSnapshotDomain(clean);
+      }
+    } catch {
+      // handoff must never break signup
+    }
+  }, []);
 
   // Already signed in: new accounts start at
   // onboarding, existing sessions go to the dashboard.
@@ -121,6 +150,16 @@ export default function SignupPage() {
           />
           <span>{error}</span>
         </div>
+      ) : null}
+
+      {snapshotDomain ? (
+        <p className="mb-5 rounded-rk-md border border-rk-border bg-rk-soft px-3.5 py-3 text-sm font-medium leading-5 text-rk-secondary">
+          Continuing your free snapshot for{' '}
+          <strong className="text-rk-ink">
+            {snapshotDomain}
+          </strong>
+          . Add it as your first website after signup.
+        </p>
       ) : null}
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -284,6 +323,15 @@ export default function SignupPage() {
             'Create account'
           )}
         </button>
+        <p className="mt-4 text-center text-[13px] font-medium text-rk-secondary">
+          <Link
+            href="/pricing"
+            className="rk-focusable font-bold text-rk-ink underline decoration-rk-border-strong underline-offset-4 hover:decoration-rk-ink"
+          >
+            Compare plans
+          </Link>{' '}
+          before you start — free, no card required.
+        </p>
       </form>
     </AuthShell>
   );

@@ -54,6 +54,11 @@ import {
   RazorpayCurrency,
   RazorpayProviderStatus,
 } from "@/lib/api";
+import {
+  TRIAL_DAYS,
+  coreLimitBullets,
+  getCatalogPlan,
+} from "@/lib/plans";
 
 const USAGE_LABELS: Record<string, string> = {
   WEBSITES: "Websites",
@@ -1317,57 +1322,47 @@ export default function BillingPage() {
                           const price = yearly ? plan.yearlyPrice : plan.monthlyPrice;
                           const action = planAction(plan);
                           const isBusy = busy === plan.code;
-                          const isPopular = plan.code === "GROWTH";
+                          const catalog = getCatalogPlan(plan.code);
+                          const isPopular = catalog?.popular ?? false;
                           const isAgency = plan.code === "AGENCY";
 
+                          /*
+                           * Card bullets are generated, never hardcoded:
+                           * capacity numbers come from the live backend
+                           * plan row; capability names come from the
+                           * plan catalog mirror. Unknown plan codes fall
+                           * back to live numbers only.
+                           */
+                          const paidOrder = [
+                            "STARTER",
+                            "GROWTH",
+                            "SCALE",
+                            "AGENCY",
+                          ];
+                          const prevCode =
+                            paidOrder[paidOrder.indexOf(plan.code) - 1];
+                          const prevCapabilities = new Set(
+                            getCatalogPlan(prevCode)?.capabilities ?? [],
+                          );
+                          const deltaCapabilities = (
+                            catalog?.capabilities ?? []
+                          ).filter(
+                            (capability) =>
+                              !prevCapabilities.has(capability) &&
+                              !/team seat|client workspace/i.test(capability),
+                          );
+
                           const features =
-                            plan.code === "STARTER"
+                            prevCode && catalog
                               ? [
-                                  "Technical SEO",
-                                  "Search Console + GA4",
-                                  "AI visibility tracking",
-                                  "AEO + GEO",
-                                  "Content engine",
-                                  "Competitor intelligence",
-                                  "Business Brain",
-                                  "Opportunities + actions",
-                                  "Monitoring + reports",
+                                  `Everything in ${getCatalogPlan(prevCode)?.name ?? "the previous plan"}, plus:`,
+                                  ...coreLimitBullets(plan),
+                                  ...deltaCapabilities,
                                 ]
-                              : plan.code === "GROWTH"
-                                ? [
-                                    "Everything in Starter",
-                                    "1,500 tracked keywords",
-                                    "10 competitors",
-                                    "50 crawl credits",
-                                    "500 growth actions",
-                                    "AI workers + intelligence",
-                                    "Leads ? Revenue",
-                                    "ROI measurement",
-                                    "3 team seats + 5 clients",
-                                  ]
-                                : plan.code === "SCALE"
-                                  ? [
-                                      "Everything in Growth",
-                                      "10 websites",
-                                      "5,000 tracked keywords",
-                                      "25 competitors",
-                                      "200 crawl credits",
-                                      "2,000 growth actions",
-                                      "White label + API access",
-                                      "25 client workspaces",
-                                      "10 team seats",
-                                    ]
-                                  : [
-                                      "Everything in Scale",
-                                      "30 websites",
-                                      "15,000 tracked keywords",
-                                      "100 competitors",
-                                      "1,000 crawl credits",
-                                      "10,000 growth actions",
-                                      "Agency OS + client portal",
-                                      "White label + API access",
-                                      "25 team seats + 100 clients",
-                                    ];
+                              : [
+                                  ...coreLimitBullets(plan),
+                                  ...(catalog?.capabilities ?? []),
+                                ];
 
                           return (
                             <div
@@ -1433,7 +1428,12 @@ export default function BillingPage() {
                                 </div>
                                 {yearly && plan.monthlyPrice > 0 && (
                                   <p className="mt-1 text-[11px] text-rk-muted">
-                                    Billed annually · monthly equivalent shown by billing service
+                                    Billed annually ·{" "}
+                                    {money(
+                                      plan.yearlyPrice,
+                                      plan.currency || "INR",
+                                    )}{" "}
+                                    per year
                                   </p>
                                 )}
                               </div>
@@ -1540,13 +1540,13 @@ export default function BillingPage() {
                                 </div>
                               ) : null}
 
-                              {!isCurrent && (
+                              {!isCurrent && catalog?.trialEligible && (
                                 <div
                                   className={`mt-2 text-center text-[10px] font-semibold ${
                                     isPopular ? "text-white/60" : "text-rk-muted"
                                   }`}
                                 >
-                                  14-day trial available
+                                  {TRIAL_DAYS}-day trial available
                                 </div>
                               )}
                             </div>
@@ -1626,8 +1626,8 @@ export default function BillingPage() {
                               ["AI prompts", "maxAiPrompts"],
                               ["Competitors", "maxCompetitors"],
                               ["Reports / month", "maxReports"],
-                              ["Growth actions / month", "maxAiGrowthActions"],
-                              ["Team seats", "maxTeamMembers"],
+                              ["AI scans / month", "maxAiScans"],
+                              ["Team seats", "maxUsers"],
                               ["Clients", "maxClients"],
                               ["Crawl credits", "maxCrawlCredits"],
                               ["API calls", "maxApiCalls"],

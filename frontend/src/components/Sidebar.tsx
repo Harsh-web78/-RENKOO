@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   Activity,
+  Award,
   BarChart3,
   Bot,
   FileText,
@@ -45,6 +46,7 @@ const nav = [
   ['Opportunities', '/opportunities', Target],
   ['Actions', '/actions', Target],
   ['Monitoring', '/monitoring', Activity],
+  ['Proof of Impact', '/proof', Award],
   ['Reports', '/reports', FileText],
   ['Intelligence', '/agents', Bot],
   ['Workers', '/workers', Bot],

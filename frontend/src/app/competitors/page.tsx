@@ -18,10 +18,12 @@ import {
   crawlCompetitor,
   getLatestCompetitorCrawl,
   isLimitError,
+  limitDetails,
   limitUsageText,
   type Website,
   type Competitor,
 } from '@/lib/api';
+import { limitTitle } from '@/lib/plans';
 import AppShell from '@/components/AppShell';
 import {
   PageHeader,
@@ -665,7 +667,9 @@ export default function CompetitorsPage() {
               {formLimit ? (
                 <div className="mt-2">
                   <LimitReachedState
-                    title="Free plan limit reached"
+                    title={limitTitle(
+                      limitDetails(formLimit)?.planCode,
+                    )}
                     description="This workspace already tracks its included competitor. Existing data is untouched."
                     detail={limitUsageText(
                       formLimit,
@@ -817,7 +821,10 @@ export default function CompetitorsPage() {
             {drawerRow.crawlLimit ? (
               <DrawerSection title="Plan limit">
                 <LimitReachedState
-                  title="Free plan limit reached"
+                  title={limitTitle(
+                    limitDetails(drawerRow.crawlLimit)
+                      ?.planCode,
+                  )}
                   description="This crawl could not start because the workspace hit its crawl allowance. Existing data is untouched."
                   detail={limitUsageText(
                     drawerRow.crawlLimit,

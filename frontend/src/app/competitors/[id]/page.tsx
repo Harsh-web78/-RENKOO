@@ -26,11 +26,13 @@ import {
   getCompetitorRecommendations,
   createActionFromRecommendation,
   isLimitError,
+  limitDetails,
   limitUsageText,
   type ComparisonOpportunity,
   type MetricComparison,
   type PageGap,
 } from '@/lib/api';
+import { limitTitle } from '@/lib/plans';
 import AppShell from '@/components/AppShell';
 import {
   PageHeader,
@@ -527,7 +529,9 @@ export default function CompetitorDetailPage() {
           ) : null}
           {crawlLimit ? (
             <LimitReachedState
-              title="Free plan limit reached"
+              title={limitTitle(
+                limitDetails(crawlLimit)?.planCode,
+              )}
               description="This crawl could not start because the workspace hit its crawl allowance. Existing data is untouched."
               detail={limitUsageText(
                 crawlLimit,

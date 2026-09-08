@@ -9,6 +9,7 @@ import Link from 'next/link';
  */
 
 const PRODUCT_LINKS = [
+  { label: 'Pricing', href: '/pricing' },
   { label: 'Log in', href: '/login' },
   { label: 'Sign up', href: '/signup' },
 ];

@@ -204,9 +204,24 @@ export class BillingController {
     );
   }
 
+  /*
+   * Manual Stripe price sync. Throttled and never run on boot.
+   * Supports ?dryRun=true (or body { dryRun: true }) to inspect the
+   * explicit USD mapping without Stripe writes or DB updates.
+   * Do NOT run against production without verified credentials and
+   * a reviewed dry-run. Never deletes prices or subscriptions.
+   */
+  @Throttle({
+    default: { limit: 5, ttl: 60000 },
+  })
   @Post('stripe/sync-plans')
-  syncStripePlans() {
-    return this.stripeService.syncPlansToStripe();
+  syncStripePlans(@Req() req: any) {
+    const query = (req as any)?.query ?? {};
+    const dryRun =
+      query?.dryRun === true ||
+      query?.dryRun === 'true' ||
+      (req as any)?.body?.dryRun === true;
+    return this.stripeService.syncPlansToStripe({ dryRun });
   }
 
   @Post('stripe/checkout/:organizationId/:planCode')

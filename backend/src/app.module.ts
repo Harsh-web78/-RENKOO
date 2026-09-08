@@ -1,4 +1,6 @@
-﻿import { MarketingSpendModule } from './marketing-spend/marketing-spend.module';
+﻿import { SnapshotModule } from './snapshot/snapshot.module';
+import { ProofModule } from './proof/proof.module';
+import { MarketingSpendModule } from './marketing-spend/marketing-spend.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { TeamModule } from './team/team.module';
 
@@ -66,6 +68,8 @@ import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
+    SnapshotModule,
+    ProofModule,
     MarketingSpendModule,
     MonitoringModule,
     TeamModule, 

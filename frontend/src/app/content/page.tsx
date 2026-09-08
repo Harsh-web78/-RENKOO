@@ -28,9 +28,11 @@ import {
   createAction,
   getWebsites,
   isLimitError,
+  limitDetails,
   limitUsageText,
   type Website,
 } from '@/lib/api';
+import { limitTitle } from '@/lib/plans';
 import AppShell from '@/components/AppShell';
 import {
   PageHeader,
@@ -843,7 +845,9 @@ export default function ContentPage() {
               {briefLimit ? (
                 <div className="mt-2">
                   <LimitReachedState
-                    title="Free plan limit reached"
+                    title={limitTitle(
+                      limitDetails(briefLimit)?.planCode,
+                    )}
                     description="This brief could not be generated because the workspace hit its AI generation allowance. Existing briefs are untouched."
                     detail={limitUsageText(
                       briefLimit,

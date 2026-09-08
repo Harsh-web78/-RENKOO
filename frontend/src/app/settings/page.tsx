@@ -31,12 +31,14 @@ import {
 import {
   getCurrentAccount,
   isLimitError,
+  limitDetails,
   limitUsageText,
   logout,
   updateProfile,
   updatePassword,
   type CurrentAccount,
 } from '@/lib/api';
+import { limitTitle } from '@/lib/plans';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -522,7 +524,9 @@ const [open, setOpen] = useState(false);
                   {teamLimit ? (
                     <div className="mt-3">
                       <LimitReachedState
-                        title="Free plan limit reached"
+                        title={limitTitle(
+                          limitDetails(teamLimit)?.planCode,
+                        )}
                         description={`This workspace already uses its included team seat.${limitUsageText(teamLimit) ? ` ${limitUsageText(teamLimit)}.` : ''}`}
                         actionLabel="View plans"
                         actionHref="/billing"

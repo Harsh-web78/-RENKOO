@@ -14,7 +14,7 @@
  * - Public routes render immediately, no checks:
  *   `/` (public landing page), /login, /signup,
  *   /verify-email, /reset-password, /privacy,
- *   /terms, /invite/*, /share/*.
+ *   /terms, /snapshot, /invite/*, /share/*.
  * - Signed-in visitors at `/` are redirected to
  *   `/dashboard` by <HomeRedirect /> (see
  *   components/HomeRedirect), after the token is
@@ -50,6 +50,7 @@ const PUBLIC_PATHS = new Set([
   '/reset-password',
   '/privacy',
   '/terms',
+  '/snapshot',
 ]);
 
 const PUBLIC_PREFIXES = ['/invite/', '/share/'];

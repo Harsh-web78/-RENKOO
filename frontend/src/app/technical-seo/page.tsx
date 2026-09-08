@@ -16,6 +16,7 @@ import {
   getTechnicalSeoByCrawl,
   getWebsites,
   isLimitError,
+  limitDetails,
   limitUsageText,
   startCrawl,
   resolveSeoIssue,
@@ -25,6 +26,7 @@ import {
   listMonitoringAlerts,
   type Website,
 } from '@/lib/api';
+import { limitTitle } from '@/lib/plans';
 import AppShell from '@/components/AppShell';
 import { useElapsed } from '@/lib/useElapsed';
 import {
@@ -550,7 +552,9 @@ export default function TechnicalSeoPage() {
             {limitError ? (
               <div className="mt-2">
                 <LimitReachedState
-                  title="Free plan limit reached"
+                  title={limitTitle(
+                    limitDetails(limitError)?.planCode,
+                  )}
                   description="This audit could not start because the workspace hit its crawl allowance. Your existing data is untouched — raising the limit unlocks the next audit."
                   detail={limitUsageText(
                     limitError,

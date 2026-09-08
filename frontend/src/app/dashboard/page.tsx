@@ -83,6 +83,15 @@ import {
   usePersona,
 } from '../../lib/persona';
 
+/*
+ * Proof Cards use the canonical API client (per-card evidence is
+ * always fetched fresh, never from the legacy session cache).
+ */
+import {
+  getProofCards,
+  type ProofCard,
+} from '@/lib/api';
+
 import {
   askIntelligence,
   createActionFromRecommendation,
@@ -294,6 +303,11 @@ export default function Home() {
     useState<OutcomeResponse | null>(null);
   const [roiLoading, setRoiLoading] = useState(false);
   const [roiError, setRoiError] = useState('');
+
+  /* ---------- Proof of Impact (compact, stored evidence only) ---------- */
+
+  const [proofCards, setProofCards] = useState<ProofCard[]>([]);
+  const [proofLoading, setProofLoading] = useState(false);
 
   /* ---------- Phase 6: ask RENKOO ---------- */
 
@@ -770,6 +784,29 @@ export default function Home() {
   }
 
   /*
+   * Proof of Impact — compact top cards for the selected website.
+   * Stored evidence only (no live external calls); failures collapse
+   * to an empty list so the dashboard never breaks on proof.
+   */
+  async function loadProof(websiteId: string) {
+    try {
+      setProofLoading(true);
+      const data = await getProofCards({
+        websiteId,
+        take: 3,
+      });
+      setProofCards(
+        Array.isArray(data?.cards) ? data.cards : [],
+      );
+    } catch (error) {
+      console.error('Failed to load proof cards:', error);
+      setProofCards([]);
+    } finally {
+      setProofLoading(false);
+    }
+  }
+
+  /*
    * =========================================================
    * ASK RENKOO
    * =========================================================
@@ -980,6 +1017,7 @@ export default function Home() {
       setRoiOutcome(null);
       setCompetitorComparison(null);
       setAskResponse(null);
+      setProofCards([]);
       return;
     }
 
@@ -988,6 +1026,7 @@ export default function Home() {
     loadMonitoring(selectedWebsite.id);
     loadAiIntel(selectedWebsite.id);
     loadOutcome(selectedWebsite.id);
+    loadProof(selectedWebsite.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWebsite?.id]);
 
@@ -2965,6 +3004,69 @@ export default function Home() {
               description="RENKOO is collecting enough history to measure post-action impact. Completed work, monitoring changes and outcome signals will be related here once the evidence exists."
             />
           )}
+
+          <div className="mt-4 border-t border-rk-border pt-4">
+            <p className="rk-field-label">
+              Proof of impact
+            </p>
+            {proofLoading ? (
+              <p className="rk-metadata mt-1">
+                Assembling proof…
+              </p>
+            ) : proofCards.length === 0 ? (
+              <p className="rk-metadata mt-1">
+                No completed actions with proof yet.{' '}
+                <Link
+                  href="/proof"
+                  className="font-bold text-rk-ink underline decoration-rk-border-strong underline-offset-4 hover:decoration-rk-ink"
+                >
+                  Open Proof Cards
+                </Link>
+              </p>
+            ) : (
+              <ul className="mt-2 space-y-2">
+                {proofCards.map((card) => (
+                  <li
+                    key={card.actionId}
+                    className="flex items-center justify-between gap-2 text-sm"
+                  >
+                    <span className="truncate font-semibold text-rk-ink">
+                      {card.title}
+                    </span>
+                    <span className="shrink-0 text-xs font-bold text-rk-secondary">
+                      {card.state === 'MEASURABLE_IMPACT'
+                        ? 'Measurable change'
+                        : card.state ===
+                            'EARLY_SIGNAL'
+                          ? 'Early signal'
+                          : card.state ===
+                              'MIXED_RESULTS'
+                            ? 'Mixed results'
+                            : card.state ===
+                                'NO_CLEAR_CHANGE'
+                              ? 'No clear change'
+                              : card.state ===
+                                  'WAITING_FOR_DATA'
+                                ? 'Waiting for data'
+                                : 'Not enough data yet'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {proofCards.length > 0 ? (
+              <Link
+                href="/proof"
+                className="rk-focusable mt-2 inline-flex items-center gap-1 text-[13px] font-bold text-rk-ink underline decoration-rk-border-strong underline-offset-4 hover:decoration-rk-ink"
+              >
+                Open Proof Cards
+                <ArrowRight
+                  size={14}
+                  aria-hidden
+                />
+              </Link>
+            ) : null}
+          </div>
         </Panel>
       </div>
 

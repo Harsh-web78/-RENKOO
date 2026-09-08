@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { captureBackendError } from '../error-monitoring/error-monitoring';
 
 const SAFE_ERROR_CODES = new Set([
   'LIMIT_REACHED',
@@ -74,6 +75,27 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       `${request.method} ${request.url} -> ${status}${requestId ? ` [${requestId}]` : ''}`,
       exception instanceof Error ? exception.stack : String(exception),
     );
+
+    // Forward important API failures to lightweight monitoring.
+    // Sanitized only (no bodies/headers/tokens); no-op without SENTRY_DSN.
+    // 5xx always; 4xx only for auth/rate-limit signals to limit noise.
+    try {
+      if (
+        status >= 500 ||
+        status === 401 ||
+        status === 403 ||
+        status === 429
+      ) {
+        captureBackendError(exception, {
+          method: request?.method,
+          url: request?.url,
+          status,
+          requestId,
+        });
+      }
+    } catch {
+      // monitoring must never break error responses
+    }
 
     /*
      * Structured commercial errors (limits, entitlements,

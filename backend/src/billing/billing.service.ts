@@ -236,7 +236,7 @@ export class BillingService {
       subscription.plan.code,
     );
 
-    const limitMap: Record<UsageMetric, number> = {
+    const limitMap: Record<UsageMetric, number | null> = {
       WEBSITES: subscription.plan.maxWebsites,
       KEYWORDS: subscription.plan.maxKeywords,
       COMPETITORS: subscription.plan.maxCompetitors,
@@ -247,7 +247,10 @@ export class BillingService {
       REPORTS: subscription.plan.maxReports,
       CRAWL_CREDITS: subscription.plan.maxCrawlCredits,
       API_CALLS: subscription.plan.maxApiCalls,
-      AI_CREDITS: subscription.plan.maxAiCredits,
+      AI_CREDITS: this.aiCreditsLimit(
+        subscription.plan.code,
+        subscription.plan.maxAiCredits,
+      ),
       AI_GROWTH_ACTIONS:
         commercial?.entitlements
           .aiGrowthActionsPerMonth ?? 0,
@@ -284,6 +287,19 @@ export class BillingService {
 
     const used = usage?.used ?? 0;
 
+    // Unlimited (AI_CREDITS on paid plans): never gate, never negative.
+    if (limit === null) {
+      return {
+        metric,
+        used,
+        limit: null,
+        remaining: null,
+        allowed: true,
+        periodStart,
+        periodEnd,
+      };
+    }
+
     return {
       metric,
       used,
@@ -319,7 +335,7 @@ export class BillingService {
       subscription.plan.code,
     );
 
-    const limitMap: Record<UsageMetric, number> = {
+    const limitMap: Record<UsageMetric, number | null> = {
       WEBSITES: subscription.plan.maxWebsites,
       KEYWORDS: subscription.plan.maxKeywords,
       COMPETITORS: subscription.plan.maxCompetitors,
@@ -330,7 +346,10 @@ export class BillingService {
       REPORTS: subscription.plan.maxReports,
       CRAWL_CREDITS: subscription.plan.maxCrawlCredits,
       API_CALLS: subscription.plan.maxApiCalls,
-      AI_CREDITS: subscription.plan.maxAiCredits,
+      AI_CREDITS: this.aiCreditsLimit(
+        subscription.plan.code,
+        subscription.plan.maxAiCredits,
+      ),
       AI_GROWTH_ACTIONS:
         commercial?.entitlements
           .aiGrowthActionsPerMonth ?? 0,
@@ -342,6 +361,18 @@ export class BillingService {
       throw new BadRequestException(
         `Usage metric ${metric} is not configured for this plan.`,
       );
+    }
+
+    // Unlimited: record nothing, gate nothing.
+    if (limit === null) {
+      return {
+        metric,
+        used: 0,
+        limit: null,
+        remaining: null,
+        allowed: true,
+        unlimited: true,
+      };
     }
 
     const periodStart =
@@ -857,6 +888,34 @@ export class BillingService {
     'ENTERPRISE',
   ];
 
+  /*
+   * AI_CREDITS semantics (explicit):
+   * - Commercial `aiGenerationsPerMonth === null` means UNLIMITED
+   *   (all paid plans today). DB `maxAiCredits` is ignored in that
+   *   case so a stale default of 100 can never cap a paid plan.
+   * - FREE has no DB row; its 5-credit allowance comes from
+   *   FREE_LIMITS (mirrors the FREE commercial row).
+   */
+  private aiCreditsLimit(
+    planCode: string,
+    dbValue: number,
+  ): number | null {
+    const commercial =
+      getCommercialPlan(planCode);
+
+    if (
+      commercial?.entitlements
+        .aiGenerationsPerMonth === null
+    ) {
+      return null;
+    }
+
+    return (
+      commercial?.entitlements
+        .aiGenerationsPerMonth ?? dbValue
+    );
+  }
+
   private planLimits(plan: {
     code: string;
     maxWebsites: number;
@@ -870,7 +929,7 @@ export class BillingService {
     maxCrawlCredits: number;
     maxApiCalls: number;
     maxAiCredits: number;
-  }): Record<string, number> {
+  }): Record<string, number | null> {
     const commercial =
       getCommercialPlan(plan.code);
 
@@ -886,7 +945,10 @@ export class BillingService {
       CRAWL_CREDITS:
         plan.maxCrawlCredits,
       API_CALLS: plan.maxApiCalls,
-      AI_CREDITS: plan.maxAiCredits,
+      AI_CREDITS: this.aiCreditsLimit(
+        plan.code,
+        plan.maxAiCredits,
+      ),
       AI_GROWTH_ACTIONS:
         commercial?.entitlements
           .aiGrowthActionsPerMonth ??
@@ -1206,14 +1268,14 @@ export class BillingService {
       string,
       {
         used: number | null;
-        limit: number;
+        limit: number | null;
         remaining: number | null;
         measurable: boolean;
       }
     > = {};
 
     for (const [metric, limit] of Object.entries(
-      limits,
+      limits as Record<string, number | null>,
     )) {
       const used =
         measured[metric] ?? null;
@@ -1222,7 +1284,7 @@ export class BillingService {
         used,
         limit,
         remaining:
-          used === null
+          used === null || limit === null
             ? null
             : Math.max(0, limit - used),
         measurable: used !== null,
@@ -1363,15 +1425,17 @@ export class BillingService {
     const limit =
       entitlements.limits[metric];
 
+    // Unlimited (null) or unconfigured (undefined): creation allowed.
     if (
       limit === undefined ||
+      limit === null ||
       currentCount < limit
     ) {
       return {
         allowed: true,
         metric,
         used: currentCount,
-        limit: limit ?? -1,
+        limit: limit ?? null,
       };
     }
 
@@ -1486,6 +1550,15 @@ export class BillingService {
           },
         });
 
+      /*
+       * DB rows are canonical in INR. USD prices live ONLY in
+       * plans.config.ts and (for Stripe) as Stripe Price IDs —
+       * never as inferred numbers on this row.
+       *
+       * maxAiCredits is intentionally left untouched when the
+       * commercial config is null (paid plans = unlimited);
+       * enforcement ignores the DB value in that case.
+       */
       const data = {
         name: commercial.code
           .charAt(0)

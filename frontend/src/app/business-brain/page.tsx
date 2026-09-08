@@ -578,22 +578,13 @@ export default function BusinessBrainPage() {
       return;
     }
 
-    console.log('[RENKOO] CREATE ACTION CLICKED', id);
-
     setActionLoading(id);
     setError('');
     setSuccess('');
 
     try {
-      console.log('[RENKOO] CREATE ACTION API START', id);
-
       const created =
         await createActionFromRecommendation(id);
-
-      console.log(
-        '[RENKOO] CREATE ACTION API SUCCESS',
-        created,
-      );
 
       if (!created?.id) {
         throw new Error(
