@@ -391,6 +391,140 @@ for (const id of ctaExpected) {
   );
 }
 
+/* ---------- route-aware journey (§11) ---------- */
+
+const expectedRoutes = [
+  '/first-value', '/first-value', '/first-value',
+  '/first-value', '/first-value', '/first-value',
+  '/first-value', '/command-center', '/command-center',
+  '/growth-plan', '/growth-work', '/growth-work',
+  '/growth-work', '/growth-work',
+];
+check(
+  'core route sequence matches product journey',
+  JSON.stringify(core.map((s) => s.route)) ===
+    JSON.stringify(expectedRoutes),
+  core.map((s) => `${s.id}:${s.route}`).join(','),
+);
+
+const routeHops = [
+  ['baseline', 'command-center', '/command-center'],
+  ['command-center', 'top-actions', '/command-center'],
+  ['top-actions', 'growth-plan', '/growth-plan'],
+  ['growth-plan', 'growth-work', '/growth-work'],
+  ['outcomes', 'complete', '/growth-work'],
+];
+for (const [from, to, route] of routeHops) {
+  const a = core.findIndex((s) => s.id === from);
+  const b = core.findIndex((s) => s.id === to);
+  check(
+    `hop ${from} → ${to} lands on ${route}`,
+    a >= 0 && b === a + 1 && core[b].route === route,
+  );
+}
+
+check(
+  'GSC/GA4 steps stay on first-value (OAuth returns there)',
+  ['connect-gsc', 'gsc-property', 'connect-ga4', 'ga4-property'].every(
+    (id) =>
+      core.find((s) => s.id === id)?.route ===
+      '/first-value',
+  ),
+);
+check(
+  'verification uses existing VERIFY section route',
+  core.find((s) => s.id === 'verification')?.route ===
+    '/growth-work' &&
+    core.find((s) => s.id === 'verification')
+      ?.target === 'verification',
+);
+check(
+  'outcomes uses existing outcomes section route',
+  core.find((s) => s.id === 'outcomes')?.route ===
+    '/growth-work' &&
+    core.find((s) => s.id === 'outcomes')?.target ===
+      'outcomes',
+);
+check(
+  'final step completes only via explicit CTA',
+  overlaySource.includes('onClick={onFinishCore}') &&
+    tourProviderSource.includes('onFinishCore'),
+);
+check(
+  'advance navigates only when routes differ',
+  tourProviderSource.includes(
+    'upcoming.route !== window.location.pathname',
+  ),
+);
+
+/* Transition + target-wait UX. */
+check(
+  'transition state on user-driven navigation',
+  tourProviderSource.includes('setNavigating(true)') &&
+    overlaySource.includes('Taking you to the next step'),
+);
+check(
+  'resume pill hidden while navigating',
+  tourProviderSource.includes("!navigating") ||
+    tourProviderSource.includes('&& !navigating'),
+);
+check(
+  'target observed via rAF with timeout + scroll',
+  tourProviderSource.includes('requestAnimationFrame') &&
+    tourProviderSource.includes('TARGET_TIMEOUT_MS') &&
+    tourProviderSource.includes('scrollIntoView'),
+);
+check(
+  'waiting card while target renders',
+  /Waiting for this RENKOO feature to\s+load/.test(
+    overlaySource,
+  ),
+);
+check(
+  'not-found card is honest with Retry',
+  /Couldn.+?t find this step/.test(overlaySource) &&
+    !overlaySource.includes('continue below without losing progress'),
+);
+check(
+  'Retry re-runs target observation',
+  tourProviderSource.includes('setRetryKey') &&
+    (overlaySource.match(/onClick=\{onRetry\}/g) ?? [])
+      .length >= 2,
+);
+check(
+  'no tooltip before target exists',
+  /targetEl &&\s*rect &&/.test(overlaySource),
+);
+check(
+  'Back navigates across routes',
+  tourProviderSource.includes(
+    'previous.route !== window.location.pathname',
+  ),
+);
+check(
+  'Resume navigates to persisted step route',
+  tourProviderSource.includes(
+    'router.push(activeEntry.step.route)',
+  ),
+);
+check(
+  'progress persisted per user (step index + group)',
+  read(
+    'components/tour/tourStorage.ts',
+  ).includes('stepIndex') &&
+    read('components/tour/tourStorage.ts').includes(
+      'discoveryGroup',
+    ) &&
+    read('components/tour/tourStorage.ts').includes(
+      'renkoo_tour_state',
+    ),
+);
+check(
+  'mobile transition card is viewport-safe',
+  overlaySource.includes('Taking you to the next step') &&
+    overlaySource.includes('max-w-sm'),
+);
+
 /* ---------- layout mount is lazy ---------- */
 
 const layoutSource = read('app/layout.tsx');

@@ -336,6 +336,20 @@ export default function TourProvider({
    */
   const [phase, setPhase] =
     useState<StepPhase>('idle');
+  /*
+   * Route-transition state. Set the moment a
+   * user-driven action (Next/Back/Resume) starts
+   * navigating to another route; cleared when the
+   * new route lands (or after a safety timeout).
+   * While set, the resume pill stays hidden and a
+   * short “taking you…” state shows instead.
+   */
+  const [navigating, setNavigating] =
+    useState(false);
+  /* Target observation: searching vs settled. */
+  const [observing, setObserving] =
+    useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
   const navigatedForStep = useRef<string | null>(
     null,
@@ -604,6 +618,7 @@ export default function TourProvider({
         upcoming &&
         upcoming.route !== window.location.pathname
       ) {
+        setNavigating(true);
         router.push(upcoming.route);
       }
 
@@ -612,6 +627,7 @@ export default function TourProvider({
     setTargetEl(null);
     setTargetMissing(false);
     setAwaitError(false);
+    setPhase('idle');
   }
 
   function goBack() {
@@ -647,6 +663,7 @@ export default function TourProvider({
         previous &&
         previous.route !== window.location.pathname
       ) {
+        setNavigating(true);
         router.push(previous.route);
       }
 
@@ -741,6 +758,8 @@ export default function TourProvider({
     setTargetEl(null);
     setTargetMissing(false);
     setPhase('idle');
+    setNavigating(false);
+    setObserving(false);
   }
 
   /* ---------- welcome gate (genuinely new users) ---------- */
@@ -796,12 +815,45 @@ export default function TourProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
+  /*
+   * Clears the transition state once the awaited
+   * route lands. Safety timeout restores the
+   * resume pill if navigation ever stalls.
+   */
+  useEffect(() => {
+    if (!navigating) return;
+
+    if (
+      activeEntry &&
+      activeEntry.step.route === pathname
+    ) {
+      setNavigating(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setNavigating(false);
+    }, 12000);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [navigating, activeEntry, pathname]);
+
+  function retryTarget() {
+    setTargetEl(null);
+    setTargetMissing(false);
+    setObserving(true);
+    setRetryKey((k) => k + 1);
+  }
+
   /* ---------- target observation ---------- */
 
   useEffect(() => {
     setTargetEl(null);
     setTargetMissing(false);
     setAwaitError(false);
+    setObserving(false);
     viewedStep.current = null;
 
     if (!activeEntry || !activeEntry.step.target) {
@@ -811,6 +863,8 @@ export default function TourProvider({
     if (activeEntry.step.route !== pathname) {
       return;
     }
+
+    setObserving(true);
 
     const target = activeEntry.step.target;
     let settled = false;
@@ -824,6 +878,7 @@ export default function TourProvider({
       );
       if (el) {
         settled = true;
+        setObserving(false);
         setTargetEl(el);
         try {
           (el as HTMLElement).scrollIntoView({
@@ -845,8 +900,9 @@ export default function TourProvider({
         settled = true;
         window.cancelAnimationFrame(raf);
         /* Never tooltip against a missing
-         * element — fall back to a centered card
-         * with the same guidance + skip. */
+         * element — fall back to an explicit
+         * not-found card with Retry + skip. */
+        setObserving(false);
         setTargetMissing(true);
       }
     }, TARGET_TIMEOUT_MS);
@@ -856,7 +912,8 @@ export default function TourProvider({
       window.cancelAnimationFrame(raf);
       window.clearTimeout(timer);
     };
-  }, [activeEntry, pathname]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeEntry, pathname, retryKey]);
 
   /* ---------- step-viewed telemetry ---------- */
 
@@ -975,6 +1032,7 @@ export default function TourProvider({
     !!activeEntry &&
     !onStepRoute &&
     phase !== 'done' &&
+    !navigating &&
     !showWelcome &&
     !showPicker;
 
@@ -1020,8 +1078,12 @@ export default function TourProvider({
           onResume={() => {
             if (!activeEntry) return;
             navigatedForStep.current = `${activeEntry.step.tour}:${activeEntry.step.id}`;
+            setNavigating(true);
             router.push(activeEntry.step.route);
           }}
+          navigating={navigating}
+          observing={observing}
+          onRetry={retryTarget}
           onFinishCore={() => {
             if (!activeEntry) return;
             recordTourEvent(

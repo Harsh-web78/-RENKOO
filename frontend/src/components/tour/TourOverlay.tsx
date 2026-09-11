@@ -49,6 +49,9 @@ interface TourOverlayProps {
   awaitError: boolean;
   pathname: string;
   phase: StepPhase;
+  navigating: boolean;
+  observing: boolean;
+  onRetry: () => void;
   onStartCore: () => void;
   onSkipWelcome: () => void;
   onClosePicker: () => void;
@@ -108,6 +111,9 @@ export default function TourOverlay(
     targetMissing,
     awaitError,
     phase,
+    navigating,
+    observing,
+    onRetry,
     onStartCore,
     onSkipWelcome,
     onClosePicker,
@@ -163,24 +169,35 @@ export default function TourOverlay(
   }, [targetEl]);
 
   /* Focus the step title on change (screen
-   * readers announce the new step). */
+   * readers announce new steps, phase changes
+   * and route transitions). */
   useEffect(() => {
-    if (activeEntry || showWelcome || showPicker) {
+    if (
+      activeEntry ||
+      showWelcome ||
+      showPicker ||
+      navigating
+    ) {
       titleRef.current?.focus();
     }
   }, [
     activeEntry?.step.id,
+    phase,
+    navigating,
     showWelcome,
     showPicker,
   ]);
 
-  /* Escape closes one layer: picker → step-skip →
-   * tour-skip. Never traps the user. */
+  /* Escape closes one layer: navigating →
+   * tour-skip, picker → close, welcome → skip,
+   * step → step-skip. Never traps the user. */
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key !== 'Escape') return;
 
-      if (showPicker) {
+      if (navigating) {
+        onSkipTour();
+      } else if (showPicker) {
         onClosePicker();
       } else if (showWelcome) {
         onSkipWelcome();
@@ -190,6 +207,7 @@ export default function TourOverlay(
     }
 
     if (
+      navigating ||
       showPicker ||
       showWelcome ||
       activeEntry
@@ -204,9 +222,11 @@ export default function TourOverlay(
       );
     };
   }, [
+    navigating,
     showPicker,
     showWelcome,
     activeEntry,
+    onSkipTour,
     onClosePicker,
     onSkipWelcome,
     onSkipStep,
@@ -217,7 +237,21 @@ export default function TourOverlay(
   const isCompleteStep =
     step?.tour === 'core' && step?.id === 'complete';
   const spotlight = Boolean(
-    targetEl && rect && step && !isCompleteStep,
+    targetEl &&
+      rect &&
+      step &&
+      !isCompleteStep &&
+      !navigating,
+  );
+  const showWaitingCard = Boolean(
+    onStepRoute &&
+      observing &&
+      !targetEl &&
+      !targetMissing &&
+      step?.target &&
+      !isCompleteStep &&
+      phase !== 'done' &&
+      !navigating,
   );
 
   /* Tooltip placement: below the target when it
@@ -546,13 +580,111 @@ export default function TourOverlay(
         </div>
       ) : null}
 
-      {/* Fallback centered card when the anchor is
-       * not on screen — same guidance, no fake
-       * tooltip against a missing element. */}
+      {/* Transition state between routes: shown
+       * after an explicit Next/Back/Resume click
+       * until the next route lands. Never
+       * advances anything on its own. */}
+      {navigating && activeEntry && step ? (
+        <div className="fixed inset-0 z-[71] grid place-items-center px-4">
+          <div
+            role="status"
+            className="w-full max-w-sm rounded-rk-lg border border-rk-border bg-rk-surface p-5 text-center shadow-rk-md"
+          >
+            <p className="rk-label">Guided tour</p>
+
+            <p className="mt-1 inline-flex items-center gap-2 text-sm font-semibold text-rk-ink">
+              <span
+                aria-hidden
+                className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-rk-border-strong border-t-transparent"
+              />
+              Taking you to the next step…
+            </p>
+
+            <div className="mt-3 flex justify-center">
+              <GhostButton
+                type="button"
+                onClick={onSkipTour}
+              >
+                Skip tour
+              </GhostButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Waiting state while the target renders
+       * after navigation — never a tooltip against
+       * a missing element. */}
+      {showWaitingCard && activeEntry && step ? (
+        <div className="fixed inset-0 z-[71] grid place-items-center px-4">
+          <div
+            role="status"
+            className="w-full max-w-md rounded-rk-lg border border-rk-border bg-rk-surface p-5 shadow-rk-md"
+          >
+            <p className="rk-label">
+              {step.tour === 'core'
+                ? 'Guided tour'
+                : 'Explore RENKOO'}{' '}
+              ·{' '}
+              <StepCounter
+                index={activeEntry.index}
+                total={activeEntry.total}
+              />
+            </p>
+
+            <h2
+              ref={titleRef}
+              tabIndex={-1}
+              className="rk-focusable mt-1 text-[17px] font-extrabold leading-snug text-rk-ink outline-none"
+            >
+              {step.title}
+            </h2>
+
+            <p className="mt-1.5 inline-flex items-center gap-2 text-sm leading-6 text-rk-secondary">
+              <span
+                aria-hidden
+                className="inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-rk-border-strong border-t-transparent"
+              />
+              Waiting for this RENKOO feature to
+              load…
+            </p>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <SecondaryButton
+                type="button"
+                onClick={onRetry}
+              >
+                Retry
+              </SecondaryButton>
+
+              {step.skippable ? (
+                <GhostButton
+                  type="button"
+                  onClick={onSkipStep}
+                >
+                  Skip step
+                </GhostButton>
+              ) : null}
+
+              <GhostButton
+                type="button"
+                onClick={onSkipTour}
+              >
+                Skip tour
+              </GhostButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Not-found card when the anchor never
+       * renders — honest, with Retry + skip. */}
       {activeEntry &&
       step &&
       !isCompleteStep &&
       onStepRoute &&
+      !observing &&
+      !navigating &&
       (targetMissing ||
         (!targetEl && step.target)) ? (
         <div className="fixed inset-0 z-[71] grid place-items-center bg-rk-ink/55 px-4">
@@ -587,12 +719,37 @@ export default function TourOverlay(
               id="rk-tour-body"
               className="mt-1.5 text-sm leading-6 text-rk-secondary"
             >
-              {stepBody()} This highlight is not
-              available on the current screen —
-              continue below without losing progress.
+              Couldn&apos;t find this step on the
+              current screen. The feature may still
+              be loading, or this workspace may not
+              show it yet — nothing is marked
+              complete.
             </p>
 
-            {renderStepActions()}
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <SecondaryButton
+                type="button"
+                onClick={onRetry}
+              >
+                Retry
+              </SecondaryButton>
+
+              {step.skippable ? (
+                <GhostButton
+                  type="button"
+                  onClick={onSkipStep}
+                >
+                  Skip step
+                </GhostButton>
+              ) : null}
+
+              <GhostButton
+                type="button"
+                onClick={onSkipTour}
+              >
+                Skip tour
+              </GhostButton>
+            </div>
           </div>
         </div>
       ) : null}
