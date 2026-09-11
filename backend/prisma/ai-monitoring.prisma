@@ -1,0 +1,91 @@
+// AI Prompt Monitoring 1.0 — schedule + run ledger (Phase 7).
+//
+// AiMonitorSchedule: one recurring DAILY/WEEKLY monitoring
+// configuration per website. No minute-level polling.
+// Duplicate ACTIVE schedules for the same logical
+// configuration are prevented in code (website +
+// configKey + isActive). Timezone is stored for display;
+// nextRunAt is always UTC.
+//
+// AiMonitorRun: one durable execution of a schedule
+// (SCHEDULED origin) or an ad-hoc set (MANUAL origin).
+// Runs are never silently lost: every run ends in a
+// terminal status (COMPLETED / PARTIAL / FAILED /
+// CANCELLED). Observations stay in AiVisibilityCheck
+// (append-only, linked via runId); this table is the
+// ledger, not the data.
+//
+// (scheduleId, windowKey) is unique so a repeated
+// scheduler tick for the same window can never create
+// a duplicate run (idempotent scheduling).
+
+model AiMonitorSchedule {
+  id             String   @id @default(cuid())
+  organizationId String
+  websiteId      String
+  name           String?
+  surfaces       String[] @default([])
+  country        String   @default("US")
+  language       String   @default("en")
+  cadence        String   @default("WEEKLY")
+  isActive       Boolean  @default(true)
+  timezone       String   @default("UTC")
+  configKey      String
+  nextRunAt      DateTime
+  lastRunAt      DateTime?
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  runs           AiMonitorRun[]
+
+  @@index([organizationId, websiteId])
+  @@index([websiteId, isActive])
+  @@index([isActive, nextRunAt])
+  @@index([websiteId, configKey])
+}
+
+model AiMonitorRun {
+  id               String    @id @default(cuid())
+  organizationId   String
+  websiteId        String
+  scheduleId       String?
+  origin           String    @default("MANUAL")
+  status           String    @default("QUEUED")
+  windowKey        String?
+  requestedAt      DateTime  @default(now())
+  startedAt        DateTime?
+  completedAt      DateTime?
+  promptCount      Int       @default(0)
+  successCount     Int       @default(0)
+  failureCount     Int       @default(0)
+  unavailableCount Int       @default(0)
+  creditUsed       Int       @default(0)
+  /*
+   * Phase 8A — bounded retry observability. Counts
+   * retry passes actually executed (max 2). Failed
+   * units are retried by idempotency key, so retries
+   * never duplicate observations or charges.
+   */
+  retryCount       Int       @default(0)
+  /*
+   * Phase 8B — long-run heartbeat. Throttled writes
+   * (default ~90s) while RUNNING so stale recovery can
+   * distinguish a live long run from a crashed worker.
+   * NULL = never beat (legacy or pre-claim rows);
+   * staleness then falls back to startedAt.
+   */
+  lastHeartbeatAt  DateTime?
+  errorSummary     String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  schedule         AiMonitorSchedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  checks           AiVisibilityCheck[]
+
+  @@unique([scheduleId, windowKey])
+  @@index([organizationId, websiteId])
+  @@index([websiteId, status])
+  @@index([websiteId, createdAt])
+  @@index([scheduleId])
+  @@index([status, startedAt])
+  @@index([status, lastHeartbeatAt])
+}

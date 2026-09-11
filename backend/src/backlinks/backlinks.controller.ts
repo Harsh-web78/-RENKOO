@@ -13,6 +13,7 @@ import { Throttle } from '@nestjs/throttler';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { BacklinksService } from './backlinks.service';
+import { AuthorityIntelligenceService } from './authority-intelligence.service';
 import {
   CreateBacklinkOpportunityDto,
   ImportBacklinksDto,
@@ -25,6 +26,7 @@ import {
 export class BacklinksController {
   constructor(
     private readonly backlinksService: BacklinksService,
+    private readonly authority: AuthorityIntelligenceService,
   ) {}
 
   @Get('provider/status')
@@ -185,6 +187,98 @@ export class BacklinksController {
       req.user.organizationId,
       websiteId,
       id,
+    );
+  }
+
+  /*
+   * AUTHORITY INTELLIGENCE 1.0 (Phase 18) — composition
+   * over stored backlink evidence + bounded CSV import.
+   * No backlink index, no DR/DA, no scores. Reads are
+   * charged:false; import is charged:false.
+   */
+
+  @Get(':websiteId/authority/overview')
+  authorityOverview(
+    @Req() req: any,
+    @Param('websiteId') websiteId: string,
+  ) {
+    return this.authority.getAuthorityOverview(
+      req.user.organizationId,
+      websiteId,
+    );
+  }
+
+  @Get(':websiteId/authority/opportunities')
+  authorityOpportunities(
+    @Req() req: any,
+    @Param('websiteId') websiteId: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsed = Number(limit);
+    return this.authority.getLinkOpportunities(
+      req.user.organizationId,
+      websiteId,
+      Number.isFinite(parsed) ? parsed : 20,
+    );
+  }
+
+  @Get(':websiteId/authority/competitor-gap')
+  authorityCompetitorGap(
+    @Req() req: any,
+    @Param('websiteId') websiteId: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsed = Number(limit);
+    return this.authority.getCompetitorIntersect(
+      req.user.organizationId,
+      websiteId,
+      Number.isFinite(parsed) ? parsed : 50,
+    );
+  }
+
+  @Get(':websiteId/authority/pages')
+  authorityPages(
+    @Req() req: any,
+    @Param('websiteId') websiteId: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsed = Number(limit);
+    return this.authority.getAuthorityPages(
+      req.user.organizationId,
+      websiteId,
+      Number.isFinite(parsed) ? parsed : 50,
+    );
+  }
+
+  @Throttle({
+    default: { limit: 10, ttl: 60000 },
+  })
+  @Post(':websiteId/authority/import/preview')
+  authorityImportPreview(
+    @Req() req: any,
+    @Param('websiteId') websiteId: string,
+    @Body() body: { csv?: string },
+  ) {
+    return this.authority.previewCsvImport(
+      req.user.organizationId,
+      websiteId,
+      body?.csv ?? '',
+    );
+  }
+
+  @Throttle({
+    default: { limit: 10, ttl: 60000 },
+  })
+  @Post(':websiteId/authority/import/confirm')
+  authorityImportConfirm(
+    @Req() req: any,
+    @Param('websiteId') websiteId: string,
+    @Body() body: { csv?: string },
+  ) {
+    return this.authority.confirmCsvImport(
+      req.user.organizationId,
+      websiteId,
+      body?.csv ?? '',
     );
   }
 }

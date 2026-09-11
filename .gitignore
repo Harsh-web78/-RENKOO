@@ -7,6 +7,10 @@ dist/
 *.tsbuildinfo
 coverage/
 
+# Temporary local QA/debug scratch (never commit)
+qa-tmp/
+backend/qa-tmp/
+
 # Local database backups (dumps/exports at any depth stay ignored)
 *.sql
 *.dump

@@ -1,0 +1,60 @@
+// AI Crawler + Agent Analytics 1.0 (Phase 8D).
+//
+// AiAgentImport: one bounded user-provided log import
+// (CSV). Reports received/parsed/imported/rejected +
+// detected families. Bounded: 10MB / 5000 parsed /
+// 2000 stored per import.
+//
+// AiAgentRequest: one append-only first-party request
+// observation. Privacy-safe: NO raw IPs (SHA-256 hash
+// only), NO cookies/headers/bodies, query params
+// stripped to non-sensitive keys. identityKey dedupes
+// re-imports. A visit is NEVER a citation, mention,
+// ranking, traffic or conversion signal.
+
+model AiAgentImport {
+  id             String   @id @default(cuid())
+  organizationId String
+  websiteId      String
+  source         String
+  fileName       String?
+  received       Int      @default(0)
+  parsed         Int      @default(0)
+  imported       Int      @default(0)
+  rejected       Int      @default(0)
+  families       String[] @default([])
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, websiteId])
+  @@index([websiteId, createdAt])
+}
+
+model AiAgentRequest {
+  id               String    @id @default(cuid())
+  organizationId   String
+  websiteId        String
+  importId         String?
+  source           String
+  observedAt       DateTime?
+  method           String    @default("GET")
+  requestPath      String
+  normalizedUrl    String
+  statusCode       Int?
+  userAgent        String
+  agentCategory    String
+  agentFamily      String
+  verificationState String   @default("OBSERVED_USER_AGENT")
+  responseBytes    Int?
+  referrer         String?
+  country          String?
+  ipHash           String?
+  identityKey      String    @unique
+  createdAt        DateTime  @default(now())
+
+  @@index([organizationId, websiteId])
+  @@index([websiteId, observedAt])
+  @@index([websiteId, agentFamily])
+  @@index([websiteId, agentCategory])
+  @@index([websiteId, normalizedUrl])
+  @@index([websiteId, statusCode])
+}

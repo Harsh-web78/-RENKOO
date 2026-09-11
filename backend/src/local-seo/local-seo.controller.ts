@@ -13,6 +13,7 @@
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LocalSeoService } from './local-seo.service';
+import { LocalIntelligenceService } from './local-intelligence.service';
 import {
   CreateLocationDto,
   UpdateLocationDto,
@@ -31,6 +32,7 @@ import {
 export class LocalSeoController {
   constructor(
     private readonly localSeoService: LocalSeoService,
+    private readonly localIntelligence: LocalIntelligenceService,
   ) {}
 
   @Get(':websiteId/summary')
@@ -280,6 +282,66 @@ export class LocalSeoController {
       req.user.organizationId,
       competitorId,
       body?.locationId?.trim() || null,
+    );
+  }
+
+  /*
+   * LOCAL SEARCH INTELLIGENCE 1.0 (Phase 19) —
+   * read-only composition over business identity,
+   * locations, crawl JSON-LD, GSC queries, ranks, SERP
+   * cache, AI checks, outcomes. No Local Score, no Maps
+   * ranks, no GBP metrics. charged:false.
+   */
+
+  @Get(':websiteId/local/overview')
+  localOverview(
+    @Req() req: any,
+    @Param('websiteId') websiteId: string,
+    @Query('days') days?: string,
+  ) {
+    const parsed = Number(days);
+    return this.localIntelligence.getLocalOverview(
+      req.user.organizationId,
+      websiteId,
+      Number.isFinite(parsed) ? parsed : 28,
+    );
+  }
+
+  @Get(':websiteId/local/opportunities')
+  localOpportunities(
+    @Req() req: any,
+    @Param('websiteId') websiteId: string,
+    @Query('days') days?: string,
+  ) {
+    const parsed = Number(days);
+    return this.localIntelligence.getLocalOpportunities(
+      req.user.organizationId,
+      websiteId,
+      Number.isFinite(parsed) ? parsed : 28,
+    );
+  }
+
+  @Get(':websiteId/local/locations')
+  localLocations(
+    @Req() req: any,
+    @Param('websiteId') websiteId: string,
+  ) {
+    return this.localIntelligence.getLocalLocations(
+      req.user.organizationId,
+      websiteId,
+    );
+  }
+
+  @Get(':websiteId/local/location')
+  localLocation(
+    @Req() req: any,
+    @Param('websiteId') websiteId: string,
+    @Query('location') location: string,
+  ) {
+    return this.localIntelligence.getLocalLocation(
+      req.user.organizationId,
+      websiteId,
+      location ?? '',
     );
   }
 }

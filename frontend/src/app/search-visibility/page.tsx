@@ -86,7 +86,11 @@ function fmtInt(value: unknown) {
 }
 
 function fmtCtr(value: unknown) {
+  /* Phase 41 — missing data renders unavailable,
+   * never 0.00% (which would imply measured zero). */
+  if (value === null || value === undefined) return '—';
   const n = num(value);
+  if (!Number.isFinite(n)) return '—';
   return `${(n <= 1 && n > 0 ? n * 100 : n).toFixed(1)}%`;
 }
 

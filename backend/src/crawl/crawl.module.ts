@@ -11,6 +11,7 @@ import { TechnicalSeoController } from './technical-seo.controller';
 
 import { CrawlService } from './crawl.service';
 import { CrawlAnalysisService } from './crawl-analysis.service';
+import { CrawlLinkService } from './crawl-link.service';
 import { SeoAuditService } from './seo-audit.service';
 import { SeoIssueService } from './seo-issue.service';
 import { RecommendationService } from './recommendation.service';
@@ -33,10 +34,16 @@ import { TechnicalSeoService } from './technical-seo.service';
   providers: [
     CrawlService,
     CrawlAnalysisService,
+    CrawlLinkService,
     SeoAuditService,
     SeoIssueService,
     RecommendationService,
     TechnicalSeoService,
+  ],
+
+  exports: [
+    CrawlService,
+    CrawlLinkService,
   ],
 })
 export class CrawlModule {}

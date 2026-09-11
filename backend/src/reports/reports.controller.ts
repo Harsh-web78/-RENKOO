@@ -8,6 +8,7 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
@@ -37,9 +38,13 @@ export class ReportsController {
 
   // Agency command center (static path before :id).
   @Get('command-center')
-  commandCenter(@Req() req: any) {
+  commandCenter(
+    @Req() req: any,
+    @Query('take') take?: string,
+  ) {
     return this.reportsService.commandCenter(
       req.user.organizationId,
+      take === undefined ? 20 : Number(take),
     );
   }
 
@@ -128,6 +133,62 @@ export class ReportsController {
       id,
       dto.expiresInDays,
     );
+  }
+
+  /*
+   * Lifecycle (Phase 20): DRAFT → PUBLISHED → ARCHIVED.
+   * Publishing freezes the immutable snapshot;
+   * regeneration creates a new snapshot via POST /.
+   */
+  @Post(':id/publish')
+  publish(
+    @Req() req: any,
+    @Param('id') id: string,
+  ) {
+    return this.reportsService.publish(
+      req.user.organizationId,
+      id,
+    );
+  }
+
+  @Post(':id/archive')
+  archive(
+    @Req() req: any,
+    @Param('id') id: string,
+  ) {
+    return this.reportsService.archive(
+      req.user.organizationId,
+      id,
+    );
+  }
+
+  /*
+   * CSV export from the immutable snapshot only:
+   * opportunities, actions, or changes. Bounded rows,
+   * never a raw database dump.
+   */
+  @Get(':id/export')
+  async export(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Query('section') section: string,
+    @Res({ passthrough: true }) res: any,
+  ) {
+    const exported =
+      await this.reportsService.exportCsv(
+        req.user.organizationId,
+        id,
+        String(section ?? ''),
+      );
+    res.setHeader(
+      'Content-Type',
+      exported.contentType,
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${exported.filename}"`,
+    );
+    return exported.content;
   }
 
   @Patch(':id/revoke')

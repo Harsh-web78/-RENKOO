@@ -1,0 +1,44 @@
+// Official Google/Bing AI search data 1.0 (Phase 8C).
+//
+// AiOfficialObservation: append-only first-party rows.
+//
+// Two honest origins only:
+// - SEARCH_ANALYTICS_API: Google Search Console standard
+//   API pulls (organic Web totals: query/page demand).
+//   VERIFIED. AI-blended traffic is never labeled AI.
+// - MANUAL_EXPORT: user-pasted CSV rows from UI-only
+//   reports (Google GenAI performance, Bing AI
+//   Performance). OBSERVED, never upgraded to VERIFIED.
+//
+// Kinds stay semantically separate: ORGANIC_DEMAND is
+// ranking demand; AI_IMPRESSION / AI_CITATION are AI
+// visibility. No universal rank is ever computed.
+// identityKey (provider|method|kind|date|query|page|
+// country|device|grounding) dedupes re-ingestion.
+
+model AiOfficialObservation {
+  id             String   @id @default(cuid())
+  organizationId String
+  websiteId      String
+  provider       String
+  method         String
+  kind           String
+  concept        String
+  date           DateTime
+  query          String?
+  pageUrl        String?
+  country        String?
+  device         String?
+  impressions    Int?
+  clicks         Int?
+  citations      Int?
+  groundingQuery String?
+  evidenceState  String   @default("OBSERVED")
+  identityKey    String   @unique
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, websiteId])
+  @@index([websiteId, provider, kind])
+  @@index([websiteId, date])
+  @@index([websiteId, kind, date])
+}

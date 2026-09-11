@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import {
@@ -17,20 +18,21 @@ function safeNextPath(value: string | null) {
     !value.startsWith('//')
   ) {
     // `/` is the public landing page; signed-in
-    // users belong on the Growth Command Center.
+    // users belong on the Command Center (which
+    // routes incomplete setup to /first-value).
     if (value === '/') {
-      return '/dashboard';
+      return '/command-center';
     }
 
     return value;
   }
 
-  return '/dashboard';
+  return '/command-center';
 }
 
 function readNext() {
   if (typeof window === 'undefined') {
-    return '/dashboard';
+    return '/command-center';
   }
 
   return safeNextPath(
@@ -106,25 +108,21 @@ export default function LoginPage() {
         <>
           <p className="text-center text-sm text-rk-secondary">
             Don&apos;t have an account?{' '}
-            <button
-              type="button"
-              onClick={() => router.push('/signup')}
+            <Link
+              href="/signup"
               className="rk-focusable font-bold text-rk-ink underline decoration-rk-border-strong underline-offset-4 hover:decoration-rk-ink"
             >
               Create account
-            </button>
+            </Link>
           </p>
 
           <p className="mt-3 text-center text-sm">
-            <button
-              type="button"
-              onClick={() =>
-                router.push('/reset-password')
-              }
+            <Link
+              href="/reset-password"
               className="rk-focusable font-semibold text-rk-secondary underline decoration-rk-border underline-offset-4 hover:text-rk-ink"
             >
               Forgot your password?
-            </button>
+            </Link>
           </p>
         </>
       }

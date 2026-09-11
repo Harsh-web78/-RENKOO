@@ -42,10 +42,12 @@ import {
   getMarketingSpend,
   getRoiOutcome,
   getRoiSummary,
+  getSearchRevenue,
   getWebsites,
   MarketingSpend,
   OutcomeResponse,
   RoiSummary,
+  SearchRevenueResponse,
   Website,
 } from "@/lib/api";
 
@@ -92,6 +94,11 @@ export default function RoiPage() {
     useState<OutcomeResponse | null>(null);
   const [outcomeLoading, setOutcomeLoading] = useState(false);
   const [outcomeError, setOutcomeError] = useState("");
+  /* Phase 13 — search-to-revenue composition */
+  const [searchRevenue, setSearchRevenue] =
+    useState<SearchRevenueResponse | null>(null);
+  const [srLoading, setSrLoading] = useState(false);
+  const [srError, setSrError] = useState("");
   const [pendingDeleteSpend, setPendingDeleteSpend] =
     useState<MarketingSpend | null>(null);
 
@@ -111,6 +118,25 @@ export default function RoiPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
+  async function loadSearchRevenue(id: string) {
+    if (!id) return;
+    setSrLoading(true);
+    setSrError("");
+    try {
+      const graph = await getSearchRevenue(id);
+      setSearchRevenue(graph);
+    } catch (err) {
+      setSrError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load search-to-revenue.",
+      );
+      setSearchRevenue(null);
+    } finally {
+      setSrLoading(false);
+    }
+  }
+
   async function load(id: string) {
     if (!id) return;
 
@@ -118,6 +144,7 @@ export default function RoiPage() {
     setOutcomeLoading(true);
     setError("");
     setOutcomeError("");
+    void loadSearchRevenue(id);
 
     try {
       const [roi, spendResponse, outcomeData] = await Promise.all([
@@ -194,6 +221,7 @@ export default function RoiPage() {
             setData(roi);
             setSpends(spendResponse.spends || []);
             setOutcome(outcomeData);
+            void loadSearchRevenue(firstWebsiteId);
           } catch (err) {
             setError(
               err instanceof Error
@@ -224,6 +252,8 @@ export default function RoiPage() {
     setToDate("");
     setOutcome(null);
     setOutcomeError("");
+    setSearchRevenue(null);
+    setSrError("");
     setPendingDeleteSpend(null);
     if (typeof window !== "undefined") {
       if (id) localStorage.setItem(STORAGE_KEY, id);
@@ -636,6 +666,189 @@ export default function RoiPage() {
                   />
                 </div>
               </div>
+            </section>
+
+            {/* PHASE 13 — Search → Revenue composition */}
+            <section
+              aria-label="Search to revenue"
+              className="mt-6"
+            >
+              <div className="mb-3 flex items-baseline justify-between gap-3">
+                <h2 className="text-[15px] font-extrabold tracking-[-0.015em] text-rk-ink">
+                  Search → Revenue
+                </h2>
+                <p className="rk-metadata hidden sm:block">
+                  Evidence-backed, never proportional
+                </p>
+              </div>
+              {srLoading ? (
+                <LoadingBlock
+                  title="Reading search-to-revenue…"
+                  lines={3}
+                />
+              ) : srError ? (
+                <ErrorState
+                  title="Search-to-revenue unavailable"
+                  description={srError}
+                  onRetry={() =>
+                    websiteId &&
+                    loadSearchRevenue(websiteId)
+                  }
+                />
+              ) : searchRevenue ? (
+                <div className="grid gap-3">
+                  <Panel
+                    eyebrow="Funnel"
+                    title="Search demand → visibility → traffic → leads → revenue"
+                    description={`Windows — GSC: ${searchRevenue.window.gsc}. Outcomes: ${searchRevenue.window.outcomes}. Missing stages stay unavailable, never zero.`}
+                  >
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      {searchRevenue.funnel.map(
+                        (stage) => (
+                          <Metric
+                            key={stage.stage}
+                            label={stage.stage
+                              .toLowerCase()
+                              .replace(/_/g, " ")}
+                            value={
+                              stage.value === null
+                                ? "unavailable"
+                                : stage.stage === "REVENUE"
+                                  ? money(
+                                      stage.value,
+                                    )
+                                  : String(stage.value)
+                            }
+                            detail={stage.evidenceState.toLowerCase()}
+                            tone={
+                              stage.value === null
+                                ? "neutral"
+                                : undefined
+                            }
+                          />
+                        ),
+                      )}
+                    </div>
+                  </Panel>
+                  <Panel
+                    eyebrow="Pages"
+                    title="Revenue-connected pages"
+                    description="Each cell is independently evidence-backed. Unavailable stays unavailable."
+                  >
+                    {searchRevenue.pages.length > 0 ? (
+                      <DataTable
+                        caption="Page search-to-revenue"
+                        columns={[
+                          { key: "url", label: "Page" },
+                          {
+                            key: "clicks",
+                            label: "Clicks",
+                          },
+                          {
+                            key: "leads",
+                            label: "Leads",
+                          },
+                          {
+                            key: "revenue",
+                            label: "Revenue",
+                          },
+                        ]}
+                        rows={searchRevenue.pages
+                          .slice(0, 8)
+                          .map((row: any, index: number) => ({
+                            ...row,
+                            key: `${row.url}|${index}`,
+                            url: String(
+                              row.url || "—",
+                            )
+                              .replace(
+                                /^https?:\/\//,
+                                "",
+                              )
+                              .slice(0, 44),
+                            clicks:
+                              row.clicksState ===
+                              "UNAVAILABLE"
+                                ? "—"
+                                : String(row.clicks),
+                            leads:
+                              row.leadsState ===
+                              "UNAVAILABLE"
+                                ? "—"
+                                : String(row.leads),
+                            revenue:
+                              row.revenueState ===
+                              "UNAVAILABLE" ||
+                              row.revenue === null
+                                ? "—"
+                                : money(row.revenue),
+                          }))}
+                        keyOf={(row: any) => row.key}
+                        emptyTitle="No page outcomes"
+                        emptyDescription="No ranking pages with observed outcomes yet."
+                      />
+                    ) : (
+                      <EmptyState
+                        title="No page outcomes yet"
+                        description="Connect ranking pages to leads to light up this view."
+                      />
+                    )}
+                  </Panel>
+                  <Panel
+                    eyebrow="Diagnostics"
+                    title="Visibility gaps and AI bridge"
+                    description={searchRevenue.diagnostic.statement}
+                  >
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <Metric
+                        label="AI mentions"
+                        value={String(
+                          searchRevenue.ai.mentions ?? 0,
+                        )}
+                        detail={`${searchRevenue.ai.citations ?? 0} citations observed`}
+                      />
+                      <Metric
+                        label="AI traffic"
+                        value="unavailable"
+                        detail="Citation is not traffic"
+                        tone="neutral"
+                      />
+                      <Metric
+                        label="Search ROI"
+                        value={
+                          searchRevenue.roi.roiPercent ===
+                          null
+                            ? "unavailable"
+                            : `${searchRevenue.roi.roiPercent.toFixed(1)}%`
+                        }
+                        detail={
+                          searchRevenue.roi.evidenceState.toLowerCase()
+                        }
+                        tone={
+                          searchRevenue.roi.roiPercent ===
+                          null
+                            ? "neutral"
+                            : "positive"
+                        }
+                      />
+                    </div>
+                    {searchRevenue.gaps.length > 0 ? (
+                      <ul className="mt-3 grid gap-2">
+                        {searchRevenue.gaps.map(
+                          (gap) => (
+                            <li
+                              key={gap.key}
+                              className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3 text-sm text-rk-secondary"
+                            >
+                              {gap.statement}
+                            </li>
+                          ),
+                        )}
+                      </ul>
+                    ) : null}
+                  </Panel>
+                </div>
+              ) : null}
             </section>
 
             {/* SECONDARY — business impact */}

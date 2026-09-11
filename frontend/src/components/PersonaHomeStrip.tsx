@@ -2,7 +2,7 @@
 
 /*
  * Persona home strip: role-aware prioritization
- * header for the Growth Command Center. Shows the
+ * header for the dashboard. Shows the
  * persona's guiding question, navigation-only
  * quick actions (real screens), and a Business
  * Brain missing-goal nudge when the goal is

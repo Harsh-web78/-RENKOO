@@ -34,8 +34,9 @@ import PublicHeader from '../components/PublicHeader';
  * labelled illustrative previews — they are not
  * connected to any data source.
  *
- * The authenticated Growth Command Center lives at
- * `/dashboard`. Signed-in visitors are redirected
+ * The authenticated Command Center lives at
+ * `/command-center` (incomplete setup resolves to
+ * `/first-value`). Signed-in visitors are redirected
  * there by <HomeRedirect /> (client-side, after the
  * public page renders).
  */
@@ -234,6 +235,34 @@ export default function PublicHomePage() {
       <HomeRedirect />
       <PublicHeader />
 
+      {/*
+       * Structured data for search + AI answer engines.
+       * Only verifiable facts: name, description, URLs.
+       * No ratings, customer counts, or prices invented here.
+       */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@graph': [
+              {
+                '@type': 'Organization',
+                name: 'RENKOO',
+                url: 'https://renkoo.online',
+                description:
+                  'RENKOO is the AI Growth Operating System: find what is hurting growth, understand why, decide what matters, execute improvements, and prove the revenue impact.',
+              },
+              {
+                '@type': 'WebSite',
+                name: 'RENKOO',
+                url: 'https://renkoo.online',
+              },
+            ],
+          }),
+        }}
+      />
+
       <main id="main-content">
         {/* ================================================
             HERO
@@ -246,7 +275,7 @@ export default function PublicHomePage() {
             <div className="min-w-0">
               <p className="inline-flex items-center gap-2 rounded-full border border-rk-border bg-rk-surface px-3 py-1.5 text-xs font-bold text-rk-secondary shadow-rk-sm">
                 <Sparkles size={13} aria-hidden />
-                RENKOO · AI Growth Operating System
+                RENKOO · Operate your growth
               </p>
 
               <h1

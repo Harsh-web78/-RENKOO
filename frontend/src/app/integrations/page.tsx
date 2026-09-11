@@ -45,6 +45,7 @@ import {
 import {
   connectGoogle,
   disconnectGoogle,
+  getCapabilitiesMatrix,
   getGbpStatus,
   getGoogleConnectionStatus,
   getGoogleHealth,
@@ -52,6 +53,8 @@ import {
   selectGoogleProperty,
   getGoogleAnalyticsProperties,
   selectGoogleAnalyticsProperty,
+  getIntegrationsHub,
+  getWebsites,
   GoogleProperty,
   GoogleAnalyticsProperty,
   GoogleIntegrationHealth,
@@ -116,6 +119,11 @@ export default function IntegrationsPage() {
 
   const [disconnectOpen, setDisconnectOpen] =
     useState(false);
+
+  const [hub, setHub] = useState<any>(null);
+
+  const [capabilities, setCapabilities] =
+    useState<any[]>([]);
 
   const [error, setError] =
     useState('');
@@ -258,12 +266,17 @@ export default function IntegrationsPage() {
         connection,
         healthData,
         gbpData,
+        hubData,
       ] = await Promise.all([
         getGoogleConnectionStatus(),
         getGoogleHealth().catch(
           () => null,
         ),
         getGbpStatus().catch(
+          () => null,
+        ),
+        /* Stored metadata only — no provider calls. */
+        getIntegrationsHub().catch(
           () => null,
         ),
       ]);
@@ -284,6 +297,37 @@ export default function IntegrationsPage() {
 
       setHealth(healthData);
       setGbpStatus(gbpData);
+      setHub(hubData);
+
+      /* Capability matrix for the active website —
+       * stored metadata only. */
+      try {
+        const sites = await getWebsites().catch(
+          () => [],
+        );
+        const list = Array.isArray(sites) ? sites : [];
+        const stored =
+          typeof window !== 'undefined'
+            ? localStorage.getItem('renkoo_website_id')
+            : null;
+        const valid =
+          stored &&
+          list.some((s: any) => s.id === stored)
+            ? stored
+            : list[0]?.id || '';
+        if (valid) {
+          const matrix = await getCapabilitiesMatrix(
+            valid,
+          ).catch(() => null);
+          setCapabilities(
+            Array.isArray(matrix?.capabilities)
+              ? matrix.capabilities
+              : [],
+          );
+        }
+      } catch {
+        setCapabilities([]);
+      }
 
       if (connection.connected) {
         await Promise.all([
@@ -1269,40 +1313,56 @@ export default function IntegrationsPage() {
           <Panel
             eyebrow="More"
             title="Other integrations"
-            description="Honest status for providers that are not connected through this page. Only real API data is shown."
+            description="Live status from stored connection metadata — no provider calls on this page, no secrets shown."
           >
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-bold text-rk-ink">
-                    AI provider
+              {(Array.isArray(hub?.providers)
+                ? hub.providers
+                : []
+              )
+                .filter(
+                  (entry: any) =>
+                    entry.provider !==
+                      'GOOGLE_SEARCH_CONSOLE' &&
+                    entry.provider !==
+                      'GOOGLE_ANALYTICS' &&
+                    entry.provider !==
+                      'GOOGLE_BUSINESS_PROFILE',
+                )
+                .map((entry: any) => (
+                  <div
+                    key={String(entry.provider)}
+                    className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-bold text-rk-ink">
+                        {String(
+                          entry.name ?? entry.provider,
+                        )}
+                      </p>
+
+                      <StatusBadge
+                        status={String(
+                          entry.state ?? 'UNKNOWN',
+                        )}
+                      />
+                    </div>
+
+                    <p className="rk-metadata mt-1.5">
+                      {String(
+                        entry.limitation ??
+                          'See capability matrix below.',
+                      )}
+                    </p>
+                  </div>
+                ))}
+              {!hub ? (
+                <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                  <p className="rk-metadata">
+                    Integration hub status unavailable.
                   </p>
-
-                  <StatusBadge status="NOT_AVAILABLE" />
                 </div>
-
-                <p className="rk-metadata mt-1.5">
-                  Provider: none connected here · Data
-                  available: No · AI provider status is
-                  managed in AI Visibility.
-                </p>
-              </div>
-
-              <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-bold text-rk-ink">
-                    Email delivery
-                  </p>
-
-                  <StatusBadge status="NOT_AVAILABLE" />
-                </div>
-
-                <p className="rk-metadata mt-1.5">
-                  Provider: none connected here · Data
-                  available: No · Scheduled delivery
-                  unavailable.
-                </p>
-              </div>
+              ) : null}
 
               <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
                 <div className="flex items-center justify-between gap-2">
@@ -1326,6 +1386,48 @@ export default function IntegrationsPage() {
                 </p>
               </div>
             </div>
+          </Panel>
+        </div>
+
+        <div className="mt-6">
+          <Panel
+            eyebrow="Capability matrix"
+            title="What RENKOO can currently measure"
+            description="Connection → capability → evidence. Unavailable is never zero."
+          >
+            {capabilities.length === 0 ? (
+              <p className="rk-metadata">
+                Select a website to see capability states.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {capabilities.map((entry: any) => (
+                  <li
+                    key={String(entry.key)}
+                    className="flex flex-col gap-1 rounded-rk-md border border-rk-border bg-white px-4 py-3 sm:flex-row sm:items-center sm:gap-3"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-bold text-rk-ink">
+                        {String(entry.label ?? entry.key)}
+                      </span>
+                      <span className="rk-metadata mt-0.5 block">
+                        {String(entry.unlocks ?? '')} ·
+                        Source:{' '}
+                        {String(entry.source ?? '—')}
+                        {entry.lastSuccessfulSync
+                          ? ` · Last data: ${String(entry.lastSuccessfulSync)}`
+                          : ''}
+                      </span>
+                    </span>
+                    <StatusBadge
+                      status={String(
+                        entry.status ?? 'UNKNOWN',
+                      )}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
           </Panel>
         </div>
 

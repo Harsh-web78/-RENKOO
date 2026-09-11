@@ -16,6 +16,7 @@ import {
   connectGoogle,
   createWebsite,
   startCrawl,
+  getActivation,
   getGoogleConnectionStatus,
   getWebsites,
   isLimitError,
@@ -40,6 +41,9 @@ export default function OnboardingPage() {
 
   const [websiteCreated, setWebsiteCreated] =
     useState(false);
+
+  const [websiteId, setWebsiteId] =
+    useState<string | null>(null);
 
   const [firstCrawlResult, setFirstCrawlResult] =
     useState<Awaited<ReturnType<typeof startCrawl>> | null>(null);
@@ -120,7 +124,9 @@ export default function OnboardingPage() {
           Array.isArray(websites) &&
           websites.length > 0
         ) {
-          setWebsiteCreated(true);
+          setWebsiteId(
+            (websites[0] as { id?: string })?.id ?? null,
+          );
         }
       } catch {
         if (!cancelled) setExistingCount(0);
@@ -167,6 +173,21 @@ export default function OnboardingPage() {
       finalUrl = `https://${finalUrl}`;
     }
 
+    try {
+      const parsed = new URL(finalUrl);
+      if (
+        parsed.protocol !== 'http:' &&
+        parsed.protocol !== 'https:'
+      ) {
+        return '';
+      }
+      if (!parsed.hostname.includes('.')) {
+        return '';
+      }
+    } catch {
+      return '';
+    }
+
     return finalUrl;
   }
 
@@ -208,9 +229,32 @@ export default function OnboardingPage() {
       });
 
       setWebsiteCreated(true);
+      setWebsiteId(createdWebsite.id ?? null);
 
-      const crawlResult = await startCrawl(createdWebsite.id);
-      setFirstCrawlResult(crawlResult);
+      /*
+       * The website is saved even if the first crawl fails —
+       * the user continues to connecting data sources instead
+       * of getting stuck on step 1. The failure is reported
+       * honestly with a retry path.
+       */
+      try {
+        const crawlResult = await startCrawl(
+          createdWebsite.id,
+        );
+        setFirstCrawlResult(crawlResult);
+      } catch (crawlErr) {
+        console.error(crawlErr);
+
+        if (isLimitError(crawlErr)) {
+          setLimitError(crawlErr);
+        } else {
+          setError(
+            crawlErr instanceof Error
+              ? `Website saved. First audit could not start: ${crawlErr.message}`
+              : 'Website saved, but the first audit could not start.',
+          );
+        }
+      }
 
       setStep(2);
     } catch (err) {
@@ -236,7 +280,7 @@ export default function OnboardingPage() {
       setError('');
 
       const response =
-        await connectGoogle();
+        await connectGoogle('onboarding');
 
       if (
         !response?.authorizationUrl
@@ -262,7 +306,9 @@ export default function OnboardingPage() {
   }
 
   function finishSetup() {
-    router.push('/dashboard');
+    /* Phase 40 primacy: guided first-value flow first;
+     * it routes to Command Center when ready. */
+    router.push('/first-value');
     router.refresh();
   }
 
@@ -405,16 +451,15 @@ export default function OnboardingPage() {
 
                   <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                     <a
-                      href="/dashboard"
+                      href="/command-center"
                       className="rounded-rk-md bg-rk-success px-5 py-3 text-center text-sm font-bold text-white transition hover:opacity-90"
                     >
-                      Open Growth Command Center
+                      Open Command Center
                     </a>
 
                     <button
                       type="button"
                       onClick={() => {
-                        setWebsiteCreated(true);
                         setStep(2);
                       }}
                       className="rounded-rk-md border border-rk-border bg-white px-5 py-3 text-sm font-semibold text-rk-success transition hover:bg-rk-successSoft"
@@ -670,7 +715,11 @@ export default function OnboardingPage() {
                   <div className="bg-rk-surface p-4">
                     <p className="text-xs font-semibold text-rk-secondary">SEO score</p>
                     <p className="mt-1 text-3xl font-black text-rk-ink">
-                      {firstCrawlResult.summary.score}
+                      {typeof firstCrawlResult.summary
+                        ?.score === 'number'
+                        ? firstCrawlResult.summary
+                            .score
+                        : '—'}
                       <span className="ml-1 text-sm font-semibold text-rk-muted">/100</span>
                     </p>
                   </div>
@@ -678,21 +727,32 @@ export default function OnboardingPage() {
                   <div className="bg-rk-surface p-4">
                     <p className="text-xs font-semibold text-rk-secondary">Pages analyzed</p>
                     <p className="mt-1 text-3xl font-black text-rk-ink">
-                      {firstCrawlResult.pagesCrawled}
+                      {typeof firstCrawlResult.pagesCrawled ===
+                      'number'
+                        ? firstCrawlResult.pagesCrawled
+                        : '—'}
                     </p>
                   </div>
 
                   <div className="bg-rk-surface p-4">
                     <p className="text-xs font-semibold text-rk-secondary">Open issues</p>
                     <p className="mt-1 text-3xl font-black text-rk-ink">
-                      {firstCrawlResult.summary.open}
+                      {typeof firstCrawlResult.summary
+                        ?.open === 'number'
+                        ? firstCrawlResult.summary
+                            .open
+                        : '—'}
                     </p>
                   </div>
 
                   <div className="bg-rk-surface p-4">
                     <p className="text-xs font-semibold text-rk-secondary">Critical issues</p>
                     <p className="mt-1 text-3xl font-black text-rk-ink">
-                      {firstCrawlResult.summary.critical}
+                      {typeof firstCrawlResult.summary
+                        ?.critical === 'number'
+                        ? firstCrawlResult.summary
+                            .critical
+                        : '—'}
                     </p>
                   </div>
                 </div>
@@ -769,7 +829,7 @@ export default function OnboardingPage() {
 
                   <div className="mt-4 grid gap-2">
                     <a
-                      href="/dashboard"
+                      href="/command-center"
                       className="flex items-center justify-between gap-2 rounded-rk-md bg-rk-ink px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90"
                     >
                       Open Growth Command Center
@@ -804,6 +864,10 @@ export default function OnboardingPage() {
               Go to RENKOO
               <ArrowRight size={18} />
             </button>
+
+            {websiteId ? (
+              <GrowthSnapshot websiteId={websiteId} />
+            ) : null}
           </section>
         )}
 
@@ -880,6 +944,118 @@ function SetupCard({
       <div className="mt-1 text-xs text-rk-secondary">
         {description}
       </div>
+    </div>
+  );
+}
+
+function GrowthSnapshot({
+  websiteId,
+}: {
+  websiteId: string;
+}) {
+  const [snapshot, setSnapshot] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    getActivation(websiteId)
+      .then((result) => {
+        if (!cancelled) setSnapshot(result);
+      })
+      .catch(() => {
+        if (!cancelled) setSnapshot(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [websiteId]);
+
+  if (loading) {
+    return (
+      <div className="mt-4 rounded-rk-md border border-rk-border p-5">
+        <p className="text-xs text-rk-secondary">
+          Building your search growth snapshot…
+        </p>
+      </div>
+    );
+  }
+
+  if (!snapshot) return null;
+
+  const insights: any[] =
+    snapshot?.snapshot?.insights ?? [];
+  const nextMoves: any[] =
+    snapshot?.snapshot?.nextMoves ?? [];
+  const checklist: any[] = snapshot?.checklist ?? [];
+
+  return (
+    <div className="mt-4 rounded-rk-md border border-rk-border p-5">
+      <p className="text-xs font-bold uppercase tracking-wider text-rk-accent">
+        Your search growth snapshot
+      </p>
+      <h3 className="mt-1 text-xl font-bold text-rk-ink">
+        Where you are, what matters, what to do first
+      </h3>
+
+      <ul className="mt-3 space-y-1.5">
+        {insights.slice(0, 5).map((insight: any) => (
+          <li
+            key={String(insight.key)}
+            className="text-xs leading-5 text-rk-secondary"
+          >
+            <b className="text-rk-ink">
+              {String(insight.title)}
+            </b>{' '}
+            — {String(insight.detail)}{' '}
+            <span className="text-rk-muted">
+              [{String(insight.evidenceState)}]
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      {nextMoves.length > 0 ? (
+        <div className="mt-3">
+          <p className="text-xs font-bold text-rk-ink">
+            Next moves
+          </p>
+          <ul className="mt-1 space-y-1">
+            {nextMoves.map((move: any, i: number) => (
+              <li
+                key={i}
+                className="text-xs text-rk-secondary"
+              >
+                {i + 1}. {String(move.title)}
+                {move.target
+                  ? ` — ${String(move.target)}`
+                  : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {checklist.map((entry: any) => (
+          <span
+            key={String(entry.key)}
+            className="rounded-full border border-rk-border px-2.5 py-1 text-[11px] font-bold text-rk-secondary"
+          >
+            {String(entry.label)}: {String(entry.state)}
+          </span>
+        ))}
+      </div>
+
+      <a
+        href="/command-center"
+        className="mt-4 flex items-center justify-between gap-2 rounded-rk-md bg-rk-ink px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90"
+      >
+        Open command center
+        <ArrowRight size={16} />
+      </a>
     </div>
   );
 }

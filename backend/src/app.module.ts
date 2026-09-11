@@ -63,6 +63,8 @@ import { IntelligenceModule } from './intelligence/intelligence.module';
 import { AgentsModule } from './agents/agents.module';
 
 import { ReportsModule } from './reports/reports.module';
+import { IntegrationsModule } from './integrations/integrations.module';
+import { GrowthPlanModule } from './growth-plan/growth-plan.module';
 
 import { EmailModule } from './email/email.module';
 
@@ -113,6 +115,8 @@ LeadsModule,
     AgentsModule,
     ReportsModule,
     EmailModule,
+    IntegrationsModule,
+    GrowthPlanModule,
   ],
   providers: [
     {

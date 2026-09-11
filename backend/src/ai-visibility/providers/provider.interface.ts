@@ -53,6 +53,15 @@ export interface ProviderCapabilities {
   citations: boolean;
   usageMetadata: boolean;
   streaming: boolean;
+  /*
+   * Phase 6 additive (optional, never required):
+   * whether the provider endpoint accepts an
+   * explicit locale / language hint and whether
+   * it returns native citation payloads. Absent
+   * flags mean UNKNOWN — callers must not assume.
+   */
+  locationLanguageSupport?: boolean;
+  nativeCitations?: boolean;
 }
 
 export interface ExecutePromptInput {
@@ -79,4 +88,16 @@ export interface LiveAiProvider {
   executePrompt(
     input: ExecutePromptInput,
   ): Promise<ExecutePromptOutput>;
+  /*
+   * Phase 6 additive (optional): provider-native
+   * citation extraction from raw answer text.
+   * Providers without native citation payloads
+   * simply omit this; callers fall back to the
+   * deterministic ai-citation extractor and must
+   * label extracted citations as INFERRED, never
+   * as provider-verified.
+   */
+  extractCitations?(
+    text: string,
+  ): ProviderCitation[];
 }

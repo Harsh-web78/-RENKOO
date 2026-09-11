@@ -6,6 +6,7 @@ import { MonitoringModule } from '../monitoring/monitoring.module';
 
 import { BacklinksController } from './backlinks.controller';
 import { BacklinksService } from './backlinks.service';
+import { AuthorityIntelligenceService } from './authority-intelligence.service';
 
 @Module({
   imports: [
@@ -20,10 +21,12 @@ import { BacklinksService } from './backlinks.service';
 
   providers: [
     BacklinksService,
+    AuthorityIntelligenceService,
   ],
 
   exports: [
     BacklinksService,
+    AuthorityIntelligenceService,
   ],
 })
 export class BacklinksModule {}

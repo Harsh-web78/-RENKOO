@@ -188,3 +188,123 @@ billing, no Prisma writes.
 - Limits are **in-memory, per-instance, reset on process restart**. Do NOT claim globally distributed rate limiting.
 - Production instance topology: **UNKNOWN** (not declared in this repo; Render default is a single instance unless autoscaling was enabled in the dashboard). If autoscaling is ever enabled, budget/cache become per-instance and the monthly guard under-counts — revisit with a shared store then.
 - Post-deploy smoke test: one `POST /snapshot/ai-visibility {"domain":"example.com"}` (≤6 provider calls), then repeat to confirm `cached:true` with zero new provider spend.
+
+## 15. AI Prompt Monitoring scheduler (Render cron trilogy)
+
+Phase 7/8A monitoring has no in-process loop by design (the web
+service gives no process-lifetime guarantee). One external cron
+drives three idempotent endpoints in order. Local implementation
+is NOT production verification — confirm each step below after
+wiring.
+
+### 15.1 Required configuration
+
+1. Render dashboard → backend service → Environment → add
+   `AI_MONITOR_SCHEDULER_SECRET` (strong random, minimum 16
+   characters). Never commit a value; never put it in a URL.
+2. Create a **Render Cron Job** (same region as the API):
+   - Schedule: `*/15 * * * *` (every 15 minutes; see §15.3).
+   - Command — one job invoking the trilogy sequentially
+     (single job preferred over three; every step is
+     idempotent and safe to repeat):
+
+```sh
+BASE="https://renkoo-backend.onrender.com/api/monitoring/internal"
+H="x-scheduler-secret: $AI_MONITOR_SCHEDULER_SECRET"
+curl -sS -m 60 -X POST "$BASE/due" -H "$H"
+for _ in 1 2 3 4 5; do
+  OUT=$(curl -sS -m 590 -X POST "$BASE/execute-next" -H "$H")
+  echo "$OUT" | grep -q '"executed":false' && break
+done
+curl -sS -m 60 -X POST "$BASE/recover" -H "$H"
+```
+
+   - Set `AI_MONITOR_SCHEDULER_SECRET` as a **secret env var on
+     the cron job itself** (Render encrypts it; it travels only
+     as the `x-scheduler-secret` header, never in the URL).
+   - Timeout: 10 minutes max per invocation covers the bounded
+     per-run execution (`AI_MONITOR_RUN_TIMEOUT_MS=600000`).
+     One `execute-next` call runs exactly one queued run; the
+     loop above caps at 5 executions per tick.
+
+### 15.2 What each endpoint does
+
+| Endpoint | Effect |
+|---|---|
+| `POST …/due` | Claims due DAILY/WEEKLY schedules into QUEUED runs (fast, no AI calls). Advances missed windows to the next eligible window — backlog is never replayed. Deactivates schedules whose website/org is gone. |
+| `POST …/execute-next` | Atomically claims the oldest QUEUED run and executes it (bounded batches, credit-guarded, failures free). Returns `{executed:false}` when the queue is empty. |
+| `POST …/recover` | Fails RUNNING rows silent past `AI_MONITOR_STALE_RUN_MS` (heartbeat-aware). No re-charge; retry via a fresh run. |
+| `POST …/prune` | Bounded retention delete; disabled unless `retentionDays > 0`. Latest observation per prompt×surface is always kept. Run manually, not on a schedule, until retention is deliberately enabled. |
+
+### 15.3 Recommended cadence (reasoning)
+
+- Tick every **15 minutes**: DAILY/WEEKLY user schedules only
+  need pickup within minutes, and a 15-minute tick bounds
+  recovery latency for crashed workers without hammering the
+  API (each tick is 2–4 indexed queries when idle).
+- Recover rides the same tick (cheap indexed lookup) — no
+  separate job needed.
+- Prune is **manual-only** by default (retention defaults to
+  keep-forever). If retention is ever enabled, run prune at
+  most weekly from a separate cron entry.
+- User monitoring itself stays DAILY/WEEKLY — infrastructure
+  cadence never creates minute-level user monitoring.
+
+### 15.4 Verification
+
+1. `GET /api/health` → `200 ok:true` (DB up; scheduler needs it).
+2. Trigger the cron command once manually from a shell with the
+   secret: `due` returns `{claimed: N}`, `execute-next` runs one
+   queued run, `recover` returns `{recovered: 0}` on a clean
+   system.
+3. Workspace check (no secret needed, normal login):
+   `GET /api/ai-visibility/monitoring/health?websiteId=…` →
+   `monitoring:"ACTIVE"`, `nextRunAt` in the future,
+   `schedulerActivity.lastTickAt` recent after a tick.
+4. Create one schedule in AI Search Visibility → Monitoring,
+   wait two ticks, confirm a COMPLETED run and appended
+   `AiVisibilityCheck` rows.
+
+### 15.5 Failure recovery
+
+- Provider failure mid-run → run ends PARTIAL; successes persist
+  and stay billed once; only FAILED units retry (same
+  idempotency keys, no double charge).
+- Process crash mid-run → heartbeat stops → next `recover`
+  tick marks it FAILED with the reason preserved; a fresh run
+  (schedule or Run now) retries only incomplete work.
+- Stale false positive → raise `AI_MONITOR_STALE_RUN_MS`
+  and/or lower `AI_MONITOR_HEARTBEAT_MS` (heartbeat default
+  90s; stale default 30min).
+
+### 15.6 Inspecting health (no secret needed)
+
+`GET /api/ai-visibility/monitoring/health?websiteId=…` (login):
+`lastRun`, `lastSuccessfulRun`, `consecutiveFailures`,
+`staleRuns`, provider availability, credit blocked + reason,
+`schedulerActivity`, and `currentRunning` with heartbeat age.
+
+### 15.7 Safely disabling monitoring
+
+Workspace level: Monitoring UI → deactivate the schedule
+(`isActive:false`) or delete it — queued runs drain, no new
+claims. Platform level: pause/delete the Render cron job.
+Neither deletes historical observations.
+
+### 15.8 Rotating the scheduler secret
+
+1. Generate a new ≥16-char secret.
+2. Update it on the **cron job first**, then on the **backend
+   service** (order matters: a tick with the old secret 401s
+   safely — no partial work, no duplicate runs thanks to
+   window-key idempotency).
+3. Confirm one tick succeeds; single mechanism only, no
+   overlapping secrets.
+
+### 15.9 Logs
+
+Ticks log counts and ids only (`claimed`, `runIds`,
+`recovered`). The secret, prompt text, provider payloads and
+AI responses never appear in logs. Alert on repeated 401s
+(wrong secret) or 503s (secret unconfigured) from
+`/monitoring/internal/*`.

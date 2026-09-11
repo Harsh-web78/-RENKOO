@@ -13,6 +13,10 @@ import { Throttle } from '@nestjs/throttler';
 
 import { GoogleService } from './google.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import {
+  normalizeOAuthOrigin,
+  oauthReturnPath,
+} from './oauth-return';
 
 @Controller('google')
 export class GoogleController {
@@ -28,13 +32,17 @@ export class GoogleController {
 
   @UseGuards(JwtAuthGuard)
   @Get('connect')
-  connect(@Req() req: any) {
+  connect(
+    @Req() req: any,
+    @Query('origin') origin?: string,
+  ) {
     const organizationId =
       req.user.organizationId;
 
     const authorizationUrl =
       this.googleService.getAuthorizationUrl(
         organizationId,
+        normalizeOAuthOrigin(origin),
       );
 
     return {
@@ -96,6 +104,13 @@ export class GoogleController {
   /*
    * =========================================================
    * GOOGLE OAUTH CALLBACK
+   *
+   * Phase 41 — the originating setup surface travels
+   * inside signed state and is restored here. Only
+   * allowlisted first-party paths are ever produced;
+   * success carries ?google=connected (the signal the
+   * setup surfaces already listen for), errors carry
+   * ?google=error on the originating surface.
    * =========================================================
    */
 
@@ -106,20 +121,26 @@ export class GoogleController {
     @Query('state') state: string,
     @Query('error') error?: string,
   ) {
+    const frontend =
+      process.env.FRONTEND_URL;
+
     if (error) {
+      const origin =
+        this.googleService.peekOAuthOrigin(state);
       return res.redirect(
-        `${process.env.FRONTEND_URL}/integrations?google=error`,
+        `${frontend}${oauthReturnPath(origin, 'error')}`,
       );
     }
 
     if (!code || !state) {
       return res.redirect(
-        `${process.env.FRONTEND_URL}/integrations?google=error`,
+        `${frontend}${oauthReturnPath('integrations', 'error')}`,
       );
     }
 
     try {
-      const organizationId = this.googleService.verifyOAuthState(state);
+      const { organizationId, origin } =
+        this.googleService.verifyOAuthState(state);
 
       const connection =
         await this.googleService.handleCallback(
@@ -132,7 +153,7 @@ export class GoogleController {
       );
 
       return res.redirect(
-        `${process.env.FRONTEND_URL}/`,
+        `${frontend}${oauthReturnPath(origin, 'connected')}`,
       );
     } catch (error) {
       /*
@@ -147,7 +168,7 @@ export class GoogleController {
       );
 
       return res.redirect(
-        `${process.env.FRONTEND_URL}/integrations?google=error`,
+        `${frontend}${oauthReturnPath('integrations', 'error')}`,
       );
     }
   }
@@ -374,6 +395,29 @@ export class GoogleController {
     @Query('endDate') endDate: string,
   ) {
     return this.googleService.getAnalyticsReport(
+      req.user.organizationId,
+      startDate,
+      endDate,
+    );
+  }
+
+  /*
+   * Phase 33 — channel × landing page pull (additive).
+   * GA4 classification used exactly as provided;
+   * AI Assistant native, AIO/Mode clicks stay
+   * Organic Search. Bounded; failures surface.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: { limit: 30, ttl: 60000 },
+  })
+  @Get('analytics/channel-report')
+  async analyticsChannelReport(
+    @Req() req: any,
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+  ) {
+    return this.googleService.getAnalyticsChannelReport(
       req.user.organizationId,
       startDate,
       endDate,

@@ -5,8 +5,11 @@
  * Run: node frontend/scripts/verify-plans-mirror.mjs
  * Exit 0 = match, exit 1 = drift (update both files together).
  *
- * No dependencies. Parses both sources with regex — it only
- * checks numbers and plan-level flags, not copy.
+ * No dependencies. Parses both sources with regex — it
+ * checks numbers, plan-level flags, trial settings, AND
+ * (since Phase 41, Group H) the PLAN_FEATURE_TIERS flag
+ * map against the frontend per-plan flags, so a flag
+ * contradiction cannot return silently.
  */
 
 import { readFileSync } from 'node:fs';
@@ -170,9 +173,82 @@ check(
   frontendTrialDays ? Number(frontendTrialDays[1]) : null,
 );
 
+/* Phase 41 (Group H): PLAN_FEATURE_TIERS is the single
+ * flag source. Every frontend per-plan flag must equal
+ * tiers[flag].includes(code). */
+
+const FLAG_KEYS = [
+  'whiteLabel',
+  'scheduledReports',
+  'agency',
+  'api',
+  'advancedMonitoring',
+];
+
+function backendTiers() {
+  const match = backendSrc.match(
+    /PLAN_FEATURE_TIERS[^=]*=\s*\{([\s\S]*?)\n\};/,
+  );
+  if (!match) return null;
+  const tiers = {};
+  for (const key of FLAG_KEYS) {
+    const entry = match[1].match(
+      new RegExp(`${key}:\\s*\\[([^\\]]*)\\]`),
+    );
+    tiers[key] = entry
+      ? entry[1]
+          .split(',')
+          .map((s) => s.trim().replace(/['"]/g, ''))
+          .filter(Boolean)
+      : null;
+  }
+  return tiers;
+}
+
+function frontendFlag(segment, key) {
+  const match = segment.match(
+    new RegExp(`${key}:\\s*(true|false)`),
+  );
+  return match ? match[1] === 'true' : null;
+}
+
+const tiers = backendTiers();
+if (!tiers) {
+  failures += 1;
+  console.error('MISSING backend PLAN_FEATURE_TIERS map');
+} else {
+  for (const code of CODES) {
+    const frontendSeg = planSegment(frontendSrc, code);
+    if (!frontendSeg) continue;
+    const flagsSeg = frontendSeg.slice(
+      frontendSeg.indexOf('flags:'),
+    );
+    for (const key of FLAG_KEYS) {
+      const expected = (tiers[key] ?? []).includes(code);
+      check(
+        `flags.${code}.${key}`,
+        expected,
+        frontendFlag(flagsSeg, key),
+      );
+    }
+  }
+
+  /* No public API exists: api must be empty so no plan
+   * can be promised API access. */
+  check('flags.apiTierEmpty', true, (tiers.api ?? []).length === 0);
+
+  /* API_ACCESS must not appear in any commercial feature
+   * list while delivery truth reports it unavailable. */
+  check(
+    'features.noApiAccess',
+    false,
+    /'API_ACCESS'/.test(backendSrc),
+  );
+}
+
 if (failures === 0) {
   console.log(
-    'plans mirror OK: all prices, limits, popular + trial flags match.',
+    'plans mirror OK: all prices, limits, popular + trial flags, PLAN_FEATURE_TIERS flags, and API honesty match.',
   );
 } else {
   console.error(`plans mirror FAILED with ${failures} mismatch(es).`);

@@ -53,6 +53,7 @@ import {
   getContentPerformance,
   getContentPublishingStatus,
   getContentRefreshQueue,
+  getPageIntelligence,
   listContentBriefs,
   listContentDrafts,
   listContentItems,
@@ -164,6 +165,14 @@ export default function ContentWorkspace({
     any
   > | null>(null);
   const [perfLoading, setPerfLoading] =
+    useState(false);
+  /* Phase 14 — unified page intelligence */
+  const [intelUrl, setIntelUrl] = useState('');
+  const [intel, setIntel] = useState<Record<
+    string,
+    any
+  > | null>(null);
+  const [intelLoading, setIntelLoading] =
     useState(false);
   const [openDraft, setOpenDraft] =
     useState<Record<string, any> | null>(
@@ -468,6 +477,30 @@ export default function ContentWorkspace({
       );
     } finally {
       setPerfLoading(false);
+    }
+  }
+
+  async function handleIntelligence() {
+    if (!intelUrl.trim() || intelLoading)
+      return;
+
+    try {
+      setIntelLoading(true);
+      setNotice('');
+      const result =
+        await getPageIntelligence(
+          websiteId,
+          intelUrl.trim(),
+        );
+      setIntel(result);
+    } catch (err) {
+      setNotice(
+        err instanceof Error
+          ? err.message
+          : 'Page intelligence lookup failed.',
+      );
+    } finally {
+      setIntelLoading(false);
     }
   }
 
@@ -1335,6 +1368,349 @@ export default function ContentWorkspace({
         )}
       </Panel>
 
+      <Panel
+        eyebrow="Page intelligence"
+        title="Why this page is (or isn't) strong"
+        description="Content, intent, entity, AI citation, authority and business evidence in one read. No scores — every claim carries its evidence state."
+      >
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            value={intelUrl}
+            onChange={(e) =>
+              setIntelUrl(e.target.value)
+            }
+            placeholder="Page URL *"
+            className="rk-input flex-1"
+            aria-label="Page URL for intelligence"
+          />
+
+          <PrimaryButton
+            onClick={handleIntelligence}
+            disabled={intelLoading}
+          >
+            {intelLoading
+              ? 'Reading…'
+              : 'Analyze page'}
+          </PrimaryButton>
+        </div>
+
+        {intel ? (
+          <div className="mt-4 grid gap-3">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                <Metric
+                  label="Decision"
+                  value={String(
+                    (intel as any)?.diagnosis
+                      ?.decision?.decision ?? '—',
+                  )}
+                  detail={String(
+                    (intel as any)?.diagnosis
+                      ?.decision?.reason ?? '',
+                  ).slice(0, 90)}
+                />
+              </div>
+
+              <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                <Metric
+                  label="Search"
+                  value={
+                    (intel as any)?.search
+                      ?.clicks === null
+                      ? 'unavailable'
+                      : `${String((intel as any)?.search?.clicks ?? 0)} clicks`
+                  }
+                  detail={`${String(((intel as any)?.search?.rankings ?? []).length)} ranking queries`}
+                />
+              </div>
+
+              <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                <Metric
+                  label="AI citations"
+                  value={String(
+                    (intel as any)?.ai?.citations ??
+                      0,
+                  )}
+                  detail={String(
+                    (intel as any)?.ai
+                      ?.citationState ?? '',
+                  )
+                    .toLowerCase()
+                    .replace(/_/g, ' ')}
+                />
+              </div>
+            </div>
+
+            {(((intel as any)?.diagnosis
+              ?.weaknesses ?? []) as any[]).length >
+            0 ? (
+              <div>
+                {(
+                  (
+                    (intel as any)?.diagnosis
+                      ?.weaknesses ?? []
+                  ) as any[]
+                )
+                  .slice(0, 5)
+                  .map((weakness: any) => (
+                    <p
+                      key={weakness.reason}
+                      className="rk-metadata mt-1"
+                    >
+                      <span className="font-semibold">
+                        {String(
+                          weakness.reason,
+                        ).toLowerCase()}
+                        :
+                      </span>{' '}
+                      {weakness.statement}
+                    </p>
+                  ))}
+              </div>
+            ) : null}
+
+            {(((intel as any)?.content?.gaps ??
+              []) as any[]).length > 0 ? (
+              <DataTable
+                caption="Evidence-backed content gaps"
+                columns={[
+                  { key: 'gapKind', label: 'Gap' },
+                  { key: 'reason', label: 'Evidence' },
+                  {
+                    key: 'existingActionKind',
+                    label: 'Action',
+                  },
+                ]}
+                rows={(
+                  ((intel as any)?.content
+                    ?.gaps ?? []) as any[]
+                )
+                  .slice(0, 6)
+                  .map(
+                    (
+                      gap: any,
+                      index: number,
+                    ) => ({
+                      ...gap,
+                      key: `${gap.gapKind}|${index}`,
+                      gapKind: String(
+                        gap.gapKind,
+                      ).toLowerCase(),
+                      reason: String(
+                        gap.reason,
+                      ).slice(0, 110),
+                    }),
+                  )}
+                keyOf={(row: any) => row.key}
+                emptyTitle="No gaps"
+                emptyDescription="No evidenced gaps for this page."
+              />
+            ) : null}
+
+            {(((intel as any)?.content?.topics ??
+              []) as any[]).length > 0 ? (
+              <DataTable
+                caption="Topic coverage"
+                columns={[
+                  { key: 'topic', label: 'Topic' },
+                  { key: 'coverage', label: 'Coverage' },
+                  {
+                    key: 'observedQueries',
+                    label: 'Observed',
+                  },
+                  {
+                    key: 'rankingQueries',
+                    label: 'Ranking',
+                  },
+                ]}
+                rows={(
+                  ((intel as any)?.content
+                    ?.topics ?? []) as any[]
+                )
+                  .slice(0, 6)
+                  .map(
+                    (
+                      row: any,
+                      index: number,
+                    ) => ({
+                      ...row,
+                      key: `${row.topic}|${index}`,
+                      coverage: String(
+                        row.coverage,
+                      ).toLowerCase(),
+                    }),
+                  )}
+                keyOf={(row: any) => row.key}
+                emptyTitle="No topics"
+                emptyDescription="No observed topic demand for this page."
+              />
+            ) : null}
+
+            {(((intel as any)?.authority
+              ?.dimensions ?? []) as any[])
+              .length > 0 ? (
+              <DataTable
+                caption="Authority evidence"
+                columns={[
+                  {
+                    key: 'dimension',
+                    label: 'Dimension',
+                  },
+                  { key: 'level', label: 'Level' },
+                  {
+                    key: 'detail',
+                    label: 'Evidence',
+                  },
+                ]}
+                rows={(
+                  ((intel as any)?.authority
+                    ?.dimensions ?? []) as any[]
+                ).map(
+                  (
+                    row: any,
+                    index: number,
+                  ) => ({
+                    ...row,
+                    key: `${row.dimension}|${index}`,
+                    dimension: String(
+                      row.dimension,
+                    ).toLowerCase(),
+                    level: String(
+                      row.level,
+                    ).toLowerCase(),
+                    detail: String(
+                      row.detail,
+                    ).slice(0, 110),
+                  }),
+                )}
+                keyOf={(row: any) => row.key}
+                emptyTitle="No authority evidence"
+                emptyDescription="Authority dimensions unavailable."
+              />
+            ) : null}
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                <Metric
+                  label="Competitors"
+                  value={String(
+                    (
+                      (intel as any)?.authority
+                        ?.competitors?.tracked ?? []
+                    ).length,
+                  )}
+                  detail={
+                    (
+                      (intel as any)?.authority
+                        ?.competitors?.evidence ??
+                      []
+                    ).length > 0
+                      ? `${String(((intel as any)?.authority?.competitors?.evidence ?? []).length)} covering observation(s)`
+                      : 'no covering observations'
+                  }
+                />
+              </div>
+
+              <div className="rounded-rk-md border border-rk-border bg-rk-soft px-4 py-3.5">
+                <Metric
+                  label="Next best action"
+                  value={String(
+                    (intel as any)?.nextBestAction
+                      ?.top ??
+                      (intel as any)?.diagnosis
+                        ?.decision?.decision ??
+                      '—',
+                  ).slice(0, 40)}
+                  detail={String(
+                    (intel as any)?.nextBestAction
+                      ?.statement ??
+                      (intel as any)?.diagnosis
+                        ?.decision?.reason ??
+                      '',
+                  ).slice(0, 90)}
+                />
+              </div>
+            </div>
+
+            {(intel as any)?.briefEnrichment ? (
+              <p className="rk-metadata">
+                Brief enrichment:{' '}
+                {String(
+                  (intel as any)?.briefEnrichment
+                    ?.primaryIntent ?? '—',
+                ).toLowerCase()}{' '}
+                intent ·{' '}
+                {String(
+                  (intel as any)?.briefEnrichment
+                    ?.primaryTopic ?? '—',
+                ).slice(0, 60)}{' '}
+                ·{' '}
+                {String(
+                  (
+                    (intel as any)
+                      ?.briefEnrichment
+                      ?.observedQueries ?? []
+                  ).length,
+                )}{' '}
+                observed querie(s)
+                {(intel as any)?.briefEnrichment
+                  ?.freshnessContext
+                  ? ` · ${String((intel as any).briefEnrichment.freshnessContext)}`
+                  : ''}
+                .
+              </p>
+            ) : null}
+
+            {(intel as any)?.measurement ? (
+              <p className="rk-metadata">
+                Measurement: rank{' '}
+                <span className="rk-technical-value">
+                  {String(
+                    (intel as any)?.measurement
+                      ?.rankEndpoint ?? '',
+                  )}
+                </span>{' '}
+                · action{' '}
+                <span className="rk-technical-value">
+                  {String(
+                    (intel as any)?.measurement
+                      ?.actionEndpoint ?? '',
+                  )}
+                </span>
+              </p>
+            ) : null}
+
+            <p className="rk-metadata">
+              Freshness:{' '}
+              {String(
+                (intel as any)?.freshness?.state ??
+                  'unknown',
+              ).toLowerCase()}{' '}
+              · Entity:{' '}
+              {String(
+                (intel as any)?.entity?.signal ??
+                  'unavailable',
+              ).toLowerCase()}{' '}
+              · Business: leads{' '}
+              {(intel as any)?.business
+                ?.leadsState === 'UNAVAILABLE'
+                ? 'unavailable'
+                : String(
+                    (intel as any)?.business
+                      ?.leads ?? 0,
+                  )}
+              . Uncertainty is never hidden —
+              unavailable means unknown, not zero.
+            </p>
+          </div>
+        ) : (
+          <p className="rk-metadata mt-3">
+            Enter a page URL to read its unified
+            content, entity and authority evidence.
+          </p>
+        )}
+      </Panel>
+
       <Drawer
         open={openBrief !== null}
         onClose={() => setOpenBrief(null)}
@@ -1560,6 +1936,15 @@ function BriefBody({
                 >
                   {link.title ?? link.url} —{' '}
                   {link.url}
+                  {link.suggestedAnchor ? (
+                    <span className="block text-xs text-rk-muted">
+                      Suggested anchor (INFERENCE): “
+                      {link.suggestedAnchor}”
+                      {link.reason
+                        ? ` — ${link.reason}`
+                        : ''}
+                    </span>
+                  ) : null}
                 </li>
               ),
             )}

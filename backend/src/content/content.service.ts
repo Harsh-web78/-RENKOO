@@ -1312,6 +1312,17 @@ export class ContentService {
               entry.page.title ??
               null,
             url: entry.page.url,
+            /* Phase 2A: source-candidate enrichment for
+               the internal-link recommender. Anchor is
+               the brief query (PRIMARY_KEYWORD,
+               INFERENCE) — never observed anchor text.
+               No target URL invented: the page does not
+               exist yet. */
+            role: 'SOURCE_CANDIDATE',
+            suggestedAnchor: query,
+            anchorSource: 'PRIMARY_KEYWORD',
+            reason:
+              `Shares ${entry.hits} topic term(s) with "${query}" in title/URL (INFERENCE from crawl metadata, no body text). Candidate source once the content exists.`,
           }));
 
         if (internalLinks.length > 0) {

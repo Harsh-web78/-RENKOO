@@ -14,6 +14,9 @@ import { Throttle } from '@nestjs/throttler';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ContentService } from './content.service';
+import { PageIntelligenceService } from './page-intelligence.service';
+import { AgentReadinessService } from './agent-readiness.service';
+import { InformationIntelligenceService } from './information-intelligence.service';
 import {
   CreateBriefDto,
   CreateItemDto,
@@ -28,6 +31,9 @@ import {
 export class ContentController {
   constructor(
     private readonly contentService: ContentService,
+    private readonly pageIntelligence: PageIntelligenceService,
+    private readonly readiness: AgentReadinessService,
+    private readonly information: InformationIntelligenceService,
   ) {}
 
   @Get('opportunities')
@@ -274,6 +280,99 @@ export class ContentController {
       req.user.organizationId,
       websiteId,
       pageUrl,
+    );
+  }
+
+  /*
+   * Phase 14 — unified page intelligence (additive
+   * composition). One bounded read-only wave over
+   * existing crawl/strategy/rank/GSC/AI/competitor/
+   * entity/backlink/outcome evidence. No provider
+   * calls, no new scores, no new persistence.
+   */
+  @Get('intelligence')
+  async intelligence(
+    @Req() req: any,
+    @Query('websiteId') websiteId: string,
+    @Query('url') url: string,
+  ) {
+    return this.pageIntelligence.getPageIntelligence(
+      req.user.organizationId,
+      websiteId,
+      url ?? '',
+    );
+  }
+
+  /*
+   * Phase 15 — agent readiness (additive composition).
+   * One bounded read-only wave over existing crawl/
+   * BusinessBrain/agent-log/AI-citation/outcome evidence.
+   * No provider calls, no scores, no new persistence,
+   * no new billing meters (charged:false).
+   */
+  @Get('agent-readiness')
+  async agentReadiness(
+    @Req() req: any,
+    @Query('websiteId') websiteId: string,
+    @Query('url') url: string,
+  ) {
+    return this.readiness.getAgentReadiness(
+      req.user.organizationId,
+      websiteId,
+      url ?? '',
+    );
+  }
+
+  /*
+   * Phase 25 — information intelligence (additive
+   * composition). Deterministic claim extraction over
+   * crawl/BusinessBrain/AI/demand evidence. No LLM on
+   * reads, no scores, no new persistence,
+   * charged:false.
+   */
+  @Get('information-intelligence')
+  async informationIntelligence(
+    @Req() req: any,
+    @Query('websiteId') websiteId: string,
+  ) {
+    return this.information.getInformationIntelligence(
+      req.user.organizationId,
+      websiteId,
+    );
+  }
+
+  @Get('information-intelligence/claims')
+  async informationClaims(
+    @Req() req: any,
+    @Query('websiteId') websiteId: string,
+    @Query('url') url: string,
+  ) {
+    return this.information.getClaims(
+      req.user.organizationId,
+      websiteId,
+      url ?? '',
+    );
+  }
+
+  @Get('information-intelligence/conflicts')
+  async informationConflicts(
+    @Req() req: any,
+    @Query('websiteId') websiteId: string,
+  ) {
+    return this.information.getConflicts(
+      req.user.organizationId,
+      websiteId,
+    );
+  }
+
+  @Get('information-intelligence/entity')
+  async informationEntity(
+    @Req() req: any,
+    @Query('websiteId') websiteId: string,
+  ) {
+    return this.information.getEntity(
+      req.user.organizationId,
+      websiteId,
     );
   }
 }

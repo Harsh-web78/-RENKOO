@@ -11,7 +11,9 @@ import {
   type DataTableColumn,
 } from '@/components/ui';
 import {
+  archiveReport,
   deleteReport,
+  exportReportCsv,
   generateReport,
   getCommandCenter,
   getReport,
@@ -22,6 +24,7 @@ import {
   limitUsageText,
   listClients,
   listReports,
+  publishReport,
   revokeReportShare,
   shareReport,
   AgencyClient,
@@ -292,6 +295,79 @@ export default function ReportsPage() {
     } catch (err: any) {
       setError(
         err?.message || 'Failed to revoke share link.',
+      );
+    }
+  }
+
+  async function handlePublish(id: string) {
+    try {
+      setError('');
+      await publishReport(id);
+      setReports((prev) =>
+        prev.map((item) =>
+          item.id === id
+            ? { ...item, status: 'PUBLISHED' }
+            : item,
+        ),
+      );
+      if (selected?.id === id) {
+        const fresh = await getReport(id);
+        setSelected(fresh);
+      }
+    } catch (err: any) {
+      setError(
+        err?.message || 'Failed to publish report.',
+      );
+    }
+  }
+
+  async function handleArchive(id: string) {
+    try {
+      setError('');
+      await archiveReport(id);
+      setReports((prev) =>
+        prev.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                status: 'ARCHIVED',
+                shareRevoked: true,
+              }
+            : item,
+        ),
+      );
+      if (selected?.id === id) {
+        const fresh = await getReport(id);
+        setSelected(fresh);
+      }
+    } catch (err: any) {
+      setError(
+        err?.message || 'Failed to archive report.',
+      );
+    }
+  }
+
+  async function handleExportCsv(
+    id: string,
+    section: 'opportunities' | 'actions' | 'changes',
+  ) {
+    try {
+      setError('');
+      const content = await exportReportCsv(id, section);
+      const blob = new Blob([content], {
+        type: 'text/csv',
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `report-${id}-${section}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setError(
+        err?.message || 'CSV export failed.',
       );
     }
   }
@@ -676,6 +752,18 @@ export default function ReportsPage() {
                     handleRevoke(selected.id)
                   }
                   onPrint={() => window.print()}
+                  onPublish={() =>
+                    handlePublish(selected.id)
+                  }
+                  onArchive={() =>
+                    handleArchive(selected.id)
+                  }
+                  onExport={(section) =>
+                    handleExportCsv(
+                      selected.id,
+                      section,
+                    )
+                  }
                 />
               )}
             </div>
@@ -767,12 +855,20 @@ function ReportDetailView({
   onShare,
   onRevoke,
   onPrint,
+  onPublish,
+  onArchive,
+  onExport,
 }: {
   report: ReportDetail;
   shareLink: string;
   onShare: () => void;
   onRevoke: () => void;
   onPrint: () => void;
+  onPublish: () => void;
+  onArchive: () => void;
+  onExport: (
+    section: 'opportunities' | 'actions' | 'changes',
+  ) => void;
 }) {
   const sections = Object.entries(
     report.sections ?? {},
@@ -793,7 +889,11 @@ function ReportDetailView({
         Generated{' '}
         {new Date(
           report.createdAt,
-        ).toLocaleString()}
+        ).toLocaleString()}{' '}
+        · Status <b>{report.status}</b>
+        {report.status === 'DRAFT'
+          ? ' (draft snapshots are not shareable until published)'
+          : null}
       </p>
 
       <div className="mt-3 flex flex-wrap gap-2">
@@ -804,7 +904,28 @@ function ReportDetailView({
         >
           Print / Save as PDF
         </button>
-        {!activeShare ? (
+        {report.status === 'DRAFT' ? (
+          <button
+            type="button"
+            onClick={onPublish}
+            className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-600"
+          >
+            Publish snapshot
+          </button>
+        ) : null}
+        {report.status === 'PUBLISHED' ||
+        report.status === 'READY' ? (
+          <button
+            type="button"
+            onClick={onArchive}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+          >
+            Archive
+          </button>
+        ) : null}
+        {(report.status === 'PUBLISHED' ||
+          report.status === 'READY') &&
+        !activeShare ? (
           <button
             type="button"
             onClick={onShare}
@@ -812,7 +933,8 @@ function ReportDetailView({
           >
             Create share link (30 days)
           </button>
-        ) : (
+        ) : null}
+        {activeShare ? (
           <button
             type="button"
             onClick={onRevoke}
@@ -820,7 +942,28 @@ function ReportDetailView({
           >
             Revoke share link
           </button>
-        )}
+        ) : null}
+        <button
+          type="button"
+          onClick={() => onExport('opportunities')}
+          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+        >
+          Export CSV: opportunities
+        </button>
+        <button
+          type="button"
+          onClick={() => onExport('actions')}
+          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+        >
+          Export CSV: actions
+        </button>
+        <button
+          type="button"
+          onClick={() => onExport('changes')}
+          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+        >
+          Export CSV: changes
+        </button>
       </div>
 
       {shareLink && (
@@ -1058,6 +1201,162 @@ function SectionBody({
           .
         </p>
       </div>
+    );
+  }
+
+  if (sectionKey === 'narrative') {
+    return (
+      <ul className="mt-2 space-y-1">
+        {(section.summary ?? []).map(
+          (line: string, i: number) => (
+            <li
+              key={i}
+              className="text-xs leading-5 text-slate-600"
+            >
+              · {line}
+            </li>
+          ),
+        )}
+      </ul>
+    );
+  }
+
+  if (sectionKey === 'changes') {
+    return (
+      <ul className="mt-2 space-y-1">
+        {(section.rows ?? []).map(
+          (row: any, i: number) => (
+            <li
+              key={i}
+              className="text-xs leading-5 text-slate-600"
+            >
+              · <b>{row.label}</b> — {row.statement}
+            </li>
+          ),
+        )}
+      </ul>
+    );
+  }
+
+  if (
+    sectionKey === 'wins' ||
+    sectionKey === 'risks'
+  ) {
+    return (
+      <ul className="mt-2 space-y-1">
+        {(section.items ?? []).map(
+          (item: any, i: number) => (
+            <li
+              key={i}
+              className="text-xs leading-5 text-slate-600"
+            >
+              · <b>{item.label}</b> — {item.detail}
+            </li>
+          ),
+        )}
+      </ul>
+    );
+  }
+
+  if (
+    sectionKey === 'priorities' ||
+    sectionKey === 'nextPlan'
+  ) {
+    return (
+      <ul className="mt-2 space-y-1">
+        {(section.items ?? []).map(
+          (item: any, i: number) => (
+            <li
+              key={i}
+              className="text-xs leading-5 text-slate-600"
+            >
+              · <b>{item.priority}</b> {item.title}
+              {item.reason ? ` — ${item.reason}` : ''}
+            </li>
+          ),
+        )}
+      </ul>
+    );
+  }
+
+  if (sectionKey === 'completed') {
+    return (
+      <ul className="mt-2 space-y-1">
+        {(section.items ?? []).map(
+          (item: any, i: number) => (
+            <li
+              key={i}
+              className="text-xs leading-5 text-slate-600"
+            >
+              · {item.title} [{item.status}]
+              {item.measurement
+                ? ` — ${item.measurement}`
+                : ''}
+              {item.measurementHref ? (
+                <span className="text-slate-400">
+                  {' '}
+                  · Observed result measured after action
+                </span>
+              ) : null}
+            </li>
+          ),
+        )}
+      </ul>
+    );
+  }
+
+  if (sectionKey === 'changeSummary') {
+    return (
+      <ul className="mt-2 space-y-1">
+        {(section.items ?? []).map(
+          (item: any, i: number) => (
+            <li
+              key={i}
+              className="text-xs leading-5 text-slate-600"
+            >
+              · <b>{String(item.changeType).replaceAll('_', ' ')}</b>{' '}
+              {item.entity} — {item.before ?? '—'} →{' '}
+              {item.after ?? '—'} ({item.direction})
+            </li>
+          ),
+        )}
+      </ul>
+    );
+  }
+
+  if (sectionKey === 'executionStatus') {
+    return (
+      <ul className="mt-2 space-y-1">
+        {(section.items ?? []).map(
+          (item: any, i: number) => (
+            <li
+              key={i}
+              className="text-xs leading-5 text-slate-600"
+            >
+              · {item.title} [{item.status}] — DONE is not
+              VERIFIED; confirm the live-page change before
+              interpreting outcomes.
+            </li>
+          ),
+        )}
+      </ul>
+    );
+  }
+
+  if (sectionKey === 'limitations') {
+    return (
+      <ul className="mt-2 space-y-1">
+        {(section.items ?? []).map(
+          (line: string, i: number) => (
+            <li
+              key={i}
+              className="text-xs leading-5 text-slate-400"
+            >
+              · {line}
+            </li>
+          ),
+        )}
+      </ul>
     );
   }
 

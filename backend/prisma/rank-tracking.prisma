@@ -1,0 +1,123 @@
+// Rank Intelligence 1.0 — persistent rank observations (Phase 11).
+//
+// RankObservation: one append-only observed ranking.
+// Sources stay labeled and are never merged:
+// - GSC: VERIFIED impression-weighted average position
+//   over a sync window (never an exact SERP rank).
+// - SERP_PROVIDER: OBSERVED position in fetched SERP.
+// - MANUAL: OBSERVED user-supplied position.
+// Missing positions stay UNAVAILABLE (never zero).
+// Movement is observed outcome, never causal proof.
+// identityKey dedupes re-ingestion per source/context.
+
+model RankObservation {
+  id                String   @id @default(cuid())
+  organizationId    String
+  websiteId         String
+  keyword           String
+  normalizedKeyword String
+  url               String?
+  position          Int?
+  engine            String   @default("GOOGLE")
+  country           String   @default("US")
+  language          String   @default("en")
+  device            String   @default("desktop")
+  observedAt        DateTime
+  source            String
+  evidenceState     String   @default("OBSERVED")
+  impressions       Int?
+  clicks            Int?
+  identityKey       String   @unique
+  createdAt         DateTime @default(now())
+  // Phase 31 (2.0) — additive only, all nullable.
+  trackedKeywordId  String?
+  rankingUrl        String?
+  serpFeatures      Json?
+  resultType        String?
+  aiOverviewState   String?
+  aiCitationState   String?
+
+  @@index([organizationId, websiteId])
+  @@index([websiteId, normalizedKeyword])
+  @@index([websiteId, normalizedKeyword, source])
+  @@index([websiteId, observedAt])
+  @@index([websiteId, url])
+  @@index([trackedKeywordId])
+  @@index([websiteId, trackedKeywordId, observedAt])
+}
+
+// Rank Intelligence 2.0 — persistent tracked keyword watchlist (Phase 31).
+//
+// One row = one tracking subscription: keyword × country ×
+// language × device × search engine for a website. History
+// lives in append-only RankObservation rows; this table is
+// the "what to track" set. Unique per
+// (organization, website, keyword, country, language,
+// device, searchEngine). origin preserves import source
+// (MANUAL / GSC / KEYWORD_RESEARCH / STRATEGY /
+// CUSTOMER_DEMAND) — GSC queries are never silently
+// converted into tracked keywords.
+
+model TrackedKeyword {
+  id                String   @id @default(cuid())
+  organizationId    String
+  websiteId         String
+  keyword           String
+  normalizedKeyword String
+  country           String   @default("US")
+  language          String   @default("en")
+  device            String   @default("desktop")
+  searchEngine      String   @default("GOOGLE")
+  targetUrl         String?
+  origin            String   @default("MANUAL")
+  isActive          Boolean  @default(true)
+  trackingStartedAt DateTime @default(now())
+  lastObservedAt    DateTime?
+  lastPosition      Int?
+  lastRankingUrl    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([organizationId, websiteId, normalizedKeyword, country, language, device, searchEngine])
+  @@index([organizationId, websiteId])
+  @@index([websiteId, isActive])
+  @@index([organizationId])
+  @@index([normalizedKeyword])
+  @@index([country, device, searchEngine])
+}
+
+// Rank Intelligence 2.0 — bounded tracking runs (Phase 31).
+//
+// Reuses the Phase 7/8 run philosophy (QUEUED → RUNNING →
+// COMPLETED / PARTIAL / FAILED) without duplicating the
+// AI-monitor scheduler: runs are claimed/executed through
+// the existing monitoring-adjacent pattern and stay
+// idempotent per (website, observationWindow).
+
+model RankTrackingRun {
+  id             String   @id @default(cuid())
+  organizationId String
+  websiteId      String
+  status         String   @default("QUEUED")
+  windowKey      String
+  totalKeywords  Int      @default(0)
+  succeeded      Int      @default(0)
+  failed         Int      @default(0)
+  skipped        Int      @default(0)
+  errorSummary   String?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  // Phase 32 (2.0) — additive only, all nullable.
+  // Heartbeat for stale-run recovery (Phase 8 pattern);
+  // optional link to the schedule that produced the run.
+  lastHeartbeatAt DateTime?
+  scheduleId      String?
+
+  @@unique([organizationId, websiteId, windowKey])
+  @@index([organizationId, websiteId])
+  @@index([status])
+  @@index([windowKey])
+  @@index([scheduleId])
+}

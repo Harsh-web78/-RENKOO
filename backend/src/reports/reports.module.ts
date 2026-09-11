@@ -12,6 +12,9 @@ import { AiVisibilityModule } from '../ai-visibility/ai-visibility.module';
 import { LocalSeoModule } from '../local-seo/local-seo.module';
 import { ContentModule } from '../content/content.module';
 import { BacklinksModule } from '../backlinks/backlinks.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
+import { KeywordsModule } from '../keywords/keywords.module';
+import { ActionsModule } from '../actions/actions.module';
 
 import { ReportsController } from './reports.controller';
 import { ReportShareController } from './report-share.controller';
@@ -32,6 +35,9 @@ import { ClientsService } from './clients.service';
     LocalSeoModule,
     ContentModule,
     BacklinksModule,
+    IntegrationsModule,
+    KeywordsModule,
+    ActionsModule,
   ],
   controllers: [
     ReportsController,

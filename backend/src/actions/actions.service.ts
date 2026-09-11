@@ -4,11 +4,13 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { BillingService } from '../billing/billing.service';
 
 @Injectable()
 export class ActionsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly billingService: BillingService,
   ) {}
 
   async getActions(organizationId: string) {
@@ -122,6 +124,16 @@ export class ActionsService {
         );
       }
     }
+
+    /*
+     * Monthly AI Growth Action allowance is enforced here so
+     * POST /actions (and every caller of this service) respects
+     * plan limits. Reads are never blocked — only creation.
+     * Internal test workspaces resolve to unlimited.
+     */
+    await this.billingService.checkActionAllowance(
+      organizationId,
+    );
 
     return this.prisma.action.create({
       data: {

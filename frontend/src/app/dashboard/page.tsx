@@ -1,7 +1,9 @@
 ﻿'use client';
 
 /*
- * RENKOO V2 — Phase 6: Growth Command Center.
+ * RENKOO V2 — Phase 6: Growth Dashboard (legacy
+ * overview surface; the canonical Command Center
+ * lives at /command-center).
  *
  * Narrative order:
  *   1. Header / context
@@ -1205,8 +1207,12 @@ export default function Home() {
 
   const searchClicks = searchAnalytics?.clicks ?? 0;
   const searchImpressions = searchAnalytics?.impressions ?? 0;
-  const searchCtr = searchAnalytics?.ctr ?? 0;
-  const searchPosition = searchAnalytics?.averagePosition ?? 0;
+  /* Phase 41 — null means no measurable window (never
+   * measured zero). formatCtr renders '—'; position is
+   * guarded at each use. */
+  const searchCtr = searchAnalytics?.ctr ?? null;
+  const searchPosition =
+    searchAnalytics?.averagePosition ?? null;
 
   /*
    * =========================================================
@@ -1423,7 +1429,12 @@ export default function Home() {
       hrefLabel: string;
     }[] = [];
 
-    if (hasSearchData && searchImpressions > 0) {
+    if (
+      hasSearchData &&
+      searchImpressions > 0 &&
+      searchCtr !== null &&
+      searchPosition !== null
+    ) {
       const ctrPct = searchCtr * 100;
       if (ctrPct < 2 && searchPosition > 8) {
         items.push({
@@ -1559,7 +1570,7 @@ export default function Home() {
 
       <PageHeader
         eyebrow="Growth Operating System"
-        title="Growth Command Center"
+        title="Growth Dashboard"
         description="Here's what needs attention — what changed, why it matters, and what RENKOO recommends doing today."
         meta={freshnessMeta}
         actions={
@@ -1583,6 +1594,17 @@ export default function Home() {
               Review opportunities
               <ArrowRight size={14} aria-hidden />
             </Link>
+
+            {/* Phase 40 primacy: Command Center is the
+              primary post-first-value home. Dashboard
+              remains fully accessible. */}
+            <Link
+              href="/command-center"
+              className="rk-focusable inline-flex h-9 items-center gap-1.5 rounded-rk-md border border-rk-border bg-white px-4 text-[13px] font-bold text-rk-ink shadow-rk-sm transition-all hover:bg-rk-soft"
+            >
+              Open Command Center
+              <ArrowRight size={14} aria-hidden />
+            </Link>
           </>
         }
       />
@@ -1602,7 +1624,7 @@ export default function Home() {
         ) : websites.length === 0 ? (
           <NotConnectedState
             title="No website connected"
-            description="Set up your first website to activate the Growth Command Center. Nothing here is estimated until real data arrives."
+            description="Set up your first website to activate your workspace. Nothing here is estimated until real data arrives."
             connectLabel="Set up your first website"
             connectHref="/onboarding"
           />
@@ -1838,7 +1860,7 @@ export default function Home() {
               title="Select a website to see changes"
               description="Monitoring compares completed crawls per website. Nothing is shown until a workspace is active."
               connectLabel="Connect a website"
-              connectHref="/integrations"
+              connectHref="/onboarding"
             />
           ) : monitoringLoading ? (
             <LoadingBlock title="Loading detected changes…" />
@@ -2441,7 +2463,11 @@ export default function Home() {
                 <SearchMetric
                   icon={<TrendingUp size={14} />}
                   label="Avg position"
-                  value={searchPosition.toFixed(1)}
+                  value={
+                    searchPosition === null
+                      ? '—'
+                      : searchPosition.toFixed(1)
+                  }
                 />
               </dl>
 
@@ -2739,8 +2765,8 @@ export default function Home() {
                   <p className="text-rk-secondary">
                     Conversion rate{' '}
                     {(
-                      (roiOutcome.funnel
-                        ?.conversionRate ?? 0) * 100
+                      roiOutcome.funnel
+                        ?.conversionRate ?? 0
                     ).toFixed(1)}
                     %.
                   </p>
@@ -2758,8 +2784,8 @@ export default function Home() {
                   <p className="text-rk-secondary">
                     Attribution coverage{' '}
                     {(
-                      (roiOutcome.attribution.coverage ??
-                        0) * 100
+                      roiOutcome.attribution.coverage ??
+                      0
                     ).toFixed(0)}
                     % · attributed{' '}
                     {roiOutcome.currency}{' '}

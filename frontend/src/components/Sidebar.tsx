@@ -8,11 +8,15 @@ import {
   Award,
   BarChart3,
   Bot,
+  Compass,
   FileText,
+  Flag,
   Globe2,
   LayoutDashboard,
   Link2,
+  ListChecks,
   MapPin,
+  Play,
   Search,
   Settings,
   CreditCard,
@@ -30,7 +34,14 @@ import {
   usePersona,
 } from '@/lib/persona';
 
+/* Phase 41 — the growth loop leads. /dashboard stays
+ * as a drilldown surface, never removed. */
 const nav = [
+  ['Command Center', '/command-center', Compass],
+  ['Growth Plan', '/growth-plan', Flag],
+  ['Work Queue', '/growth-work', ListChecks],
+  ['First Value', '/first-value', Sparkles],
+  ['Execution', '/execution', Play],
   ['Dashboard', '/dashboard', LayoutDashboard],
   ['Business Brain', '/business-brain', Sparkles],
   ['Search Visibility', '/search-visibility', Search],

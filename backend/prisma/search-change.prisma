@@ -1,0 +1,55 @@
+// Search Change & Alert Intelligence 2.0 — schedules + preferences (Phase 32).
+//
+// REUSE PROOF (§59):
+// - AiMonitorSchedule/Run CANNOT be reused: prompt/surface/credit columns
+//   (surfaces[], promptCount, creditUsed, configKey) meter AI prompt
+//   execution and billing. Storing rank keywords there would corrupt
+//   AI billing semantics. Separate minimal schedule is required.
+// - MonitoringAlert IS reused for alert dedupe/state (deduplicationKey
+//   unique, DETECTED/ACKNOWLEDGED/RESOLVED + additive DISMISSED).
+// - RankTrackingRun IS reused for run lifecycle; only a nullable
+//   heartbeat (+ optional schedule link) is added for stale recovery.
+// - No new timeline, engine, score, or scheduler framework.
+
+model RankTrackingSchedule {
+  id             String   @id @default(cuid())
+  organizationId String
+  websiteId      String
+  country        String   @default("US")
+  language       String   @default("en")
+  device         String   @default("desktop")
+  searchEngine   String   @default("GOOGLE")
+  cadence        String   @default("DAILY")
+  isActive       Boolean  @default(true)
+  nextRunAt      DateTime?
+  lastRunAt      DateTime?
+  lastStatus     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, websiteId, country, language, device, searchEngine])
+  @@index([organizationId, websiteId])
+  @@index([isActive, nextRunAt])
+  @@index([nextRunAt])
+}
+
+// Alert preferences + mutes (Phase 32, §54/§55).
+// kind SCOPE: key is RANK/AI/COMPETITOR/SITE/EXECUTION, enabled toggles delivery.
+// kind MUTE_TYPE/MUTE_KEYWORD: key is the alert type or normalized keyword,
+// mutedUntil null = indefinite. Muted rows keep evidence; muted ≠ nonexistent.
+
+model RankAlertPreference {
+  id             String   @id @default(cuid())
+  organizationId String
+  websiteId      String
+  kind           String
+  key            String
+  enabled        Boolean  @default(true)
+  mutedUntil     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, websiteId, kind, key])
+  @@index([organizationId, websiteId])
+  @@index([kind])
+}

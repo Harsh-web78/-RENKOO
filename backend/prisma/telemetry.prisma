@@ -1,0 +1,28 @@
+// First-Value & One-Product Consolidation 1.0 — telemetry model (Phase 40).
+//
+// REUSE PROOF: no existing table records onboarding step events,
+// provider-call metering, dead-ends, or acceptance timestamps.
+// Website/Crawl/GoogleConnection store current state only (no
+// step history); KeywordResearchLog covers research only (not
+// rank/SERP/AI-check provider calls); BillingEvent covers
+// payments (not product telemetry). One append-only table
+// covers §22 (provider usage), §24 (acceptance events) and
+// §26 (dead-ends) with no new analytics platform.
+
+model TelemetryEvent {
+  id             String   @id @default(cuid())
+  organizationId String
+  websiteId      String?
+  kind           String
+  step           String?
+  status         String?
+  detail         Json?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([websiteId])
+  @@index([organizationId, websiteId])
+  @@index([kind])
+  @@index([organizationId, kind, createdAt])
+  @@index([createdAt])
+}

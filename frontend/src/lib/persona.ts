@@ -114,12 +114,21 @@ export const PERSONA_META: Record<
  * keeps every entry (nothing is hidden — access
  * is decided by RBAC, not persona) and appends
  * any route missing from the list at the end.
+ *
+ * Phase 41 — the growth loop leads every persona:
+ * Command Center first, then plan → queue → setup →
+ * execution. /dashboard follows as a drilldown.
  */
 export const NAV_ORDER: Record<
   PersonaId,
   string[]
 > = {
   BUSINESS_OWNER: [
+    '/command-center',
+    '/growth-plan',
+    '/growth-work',
+    '/first-value',
+    '/execution',
     '/dashboard',
     '/opportunities',
     '/leads',
@@ -137,6 +146,11 @@ export const NAV_ORDER: Record<
     '/settings',
   ],
   SEO_SPECIALIST: [
+    '/command-center',
+    '/growth-plan',
+    '/growth-work',
+    '/first-value',
+    '/execution',
     '/dashboard',
     '/search-visibility',
     '/technical-seo',
@@ -154,6 +168,11 @@ export const NAV_ORDER: Record<
     '/settings',
   ],
   CONTENT_MARKETER: [
+    '/command-center',
+    '/growth-plan',
+    '/growth-work',
+    '/first-value',
+    '/execution',
     '/dashboard',
     '/content',
     '/opportunities',
@@ -168,6 +187,11 @@ export const NAV_ORDER: Record<
     '/settings',
   ],
   MARKETING_MANAGER: [
+    '/command-center',
+    '/growth-plan',
+    '/growth-work',
+    '/first-value',
+    '/execution',
     '/dashboard',
     '/analytics',
     '/search-visibility',
@@ -184,6 +208,11 @@ export const NAV_ORDER: Record<
     '/settings',
   ],
   AGENCY: [
+    '/command-center',
+    '/growth-plan',
+    '/growth-work',
+    '/first-value',
+    '/execution',
     '/clients',
     '/dashboard',
     '/opportunities',
@@ -200,6 +229,11 @@ export const NAV_ORDER: Record<
     '/billing',
   ],
   ADMIN: [
+    '/command-center',
+    '/growth-plan',
+    '/growth-work',
+    '/first-value',
+    '/execution',
     '/dashboard',
     '/settings',
     '/integrations',

@@ -125,4 +125,17 @@ export class MonitoringController {
       id,
     );
   }
+
+  /* Phase 32 — human dismiss: leaves the queue,
+   * keeps the evidence. Dismissed ≠ resolved. */
+  @Patch('alerts/:id/dismiss')
+  dismiss(
+    @Req() req: any,
+    @Param('id') id: string,
+  ) {
+    return this.monitoringService.dismissAlert(
+      req.user.organizationId,
+      id,
+    );
+  }
 }

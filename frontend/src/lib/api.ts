@@ -215,8 +215,12 @@ export interface GoogleAnalytics {
 
   clicks: number;
   impressions: number;
-  ctr: number;
-  averagePosition: number;
+  /* Phase 41 — null when the window has no measurable
+   * rows/impressions (missing data, never measured
+   * zero). Render '—'/unavailable, never 0. */
+  ctr: number | null;
+  averagePosition: number | null;
+  state?: 'MEASURED' | 'INSUFFICIENT_DATA';
 
   rows: GoogleAnalyticsRow[];
 }
@@ -1539,10 +1543,15 @@ export async function attachLocalCompetitor(
  * =========================================================
  */
 
-export async function connectGoogle() {
+export async function connectGoogle(
+  origin?: string,
+) {
+  const suffix = origin
+    ? `?origin=${encodeURIComponent(origin)}`
+    : '';
   return request<{
     authorizationUrl: string;
-  }>('/google/connect');
+  }>(`/google/connect${suffix}`);
 }
 
 /*
@@ -1661,6 +1670,1035 @@ export async function analyzeGoogleOpportunity(
 
   return request<GoogleOpportunityAnalysis>(
     `/google/opportunities/analyze?${params.toString()}`,
+  );
+}
+
+/*
+ * =========================================================
+ * KEYWORD RESEARCH 2.0
+ * Real corpus only — volume/KD/CPC/traffic/SERP are
+ * returned as null with explicit availability metadata.
+ * =========================================================
+ */
+
+export interface MonthlyPoint {
+  year: number;
+  month: number;
+  searchVolume: number | null;
+}
+
+export interface ResearchIdea {
+  keyword: string;
+  intent: string;
+  intentSource?: 'PROVIDER' | 'RENKOO';
+  categories: string[];
+  sources: string[];
+  sitePages: number;
+  siteRelevance: number;
+  siteUrls: string[];
+  competitorCount: number;
+  competitorPages: number;
+  competitorRelevance: number;
+  opportunityScore: number;
+  opportunityReasons: string[];
+  targetDecision: string;
+  decisionReason: string;
+  parentTopic: string;
+  parentTopicSource?: string;
+  wordCount: number;
+  cannibalizationFlag: boolean;
+  /* Real provider metrics — null means unavailable. */
+  volume: number | null;
+  keywordDifficulty: number | null;
+  kdLabel?: string | null;
+  cpc: number | null;
+  competition?: number | null;
+  competitionLevel?: string | null;
+  monthlySearches?: MonthlyPoint[];
+  trend?: string | null;
+  trendDetail?: string | null;
+  serpFeatures?: string[];
+  gscPosition?: number | null;
+  gscClicks?: number | null;
+  gscImpressions?: number | null;
+  gscCtr?: number | null;
+  dataSource?: string;
+  metricUpdatedAt?: string | null;
+  trafficPotential: null;
+  [key: string]: any;
+}
+
+export interface SerpResultRow {
+  position: number | null;
+  url: string;
+  domain: string;
+  title: string | null;
+  snippet: string | null;
+  resultType: string;
+  isOrganic?: boolean;
+  isPaid?: boolean;
+  contentType?: string | null;
+  domainRank?: number | null;
+  pageRank?: number | null;
+  backlinks?: number | null;
+  referringDomains?: number | null;
+  estimatedTraffic?: number | null;
+  pageStrength?: 'Strong' | 'Medium' | 'Weak' | 'Unknown';
+  strengthEvidence?: string[];
+}
+
+export interface SerpObservation {
+  keyword: string;
+  country: string;
+  language: string;
+  results: SerpResultRow[];
+  features: Array<{
+    type: string;
+    title: string | null;
+    count: number;
+  }>;
+  totalResults: number | null;
+  dataSource: string;
+  fetchedAt: string;
+  competition?: {
+    verdict: 'OPPORTUNITY' | 'MODERATE' | 'HARD' | 'UNKNOWN';
+    totalResults: number;
+    strongCount: number;
+    weakCount: number;
+    unknownCount: number;
+    medianDomainRank: number | null;
+    medianPageRank: number | null;
+    medianReferringDomains: number | null;
+    medianBacklinks: number | null;
+    evidence: string[];
+  } | null;
+  intentCheck?: {
+    check: 'MATCH' | 'MIXED' | 'MISMATCH' | 'UNKNOWN';
+    keywordIntent: string;
+    intentSource: 'PROVIDER' | 'RENKOO';
+    detail: string;
+  } | null;
+  featureOpportunities?: Array<{
+    type: string;
+    opportunity: string;
+  }>;
+  aiPresence?: {
+    detected: boolean;
+    elementTypes: string[];
+    referencedDomains: string[];
+    detail: string;
+  } | null;
+}
+
+export interface SerpScoring {
+  baseOpportunity: number | null;
+  serpAdjustment: number;
+  adjustedOpportunity: number | null;
+  serpReasons: string[];
+  pageDecision: {
+    action:
+      | 'IMPROVE_EXISTING_PAGE'
+      | 'CREATE_NEW_PAGE'
+      | 'CONSOLIDATE_PAGES'
+      | 'TRACK_ONLY'
+      | 'IGNORE';
+    reason: string;
+    primaryUrl: string | null;
+    competingUrls: Array<Record<string, any>>;
+    cannibalization: {
+      detected: boolean;
+      confidence: 'strong' | 'potential';
+      urls: Array<Record<string, any>>;
+      recommendation: string | null;
+    } | null;
+  } | null;
+}
+
+export interface SerpCluster {
+  name: string;
+  primaryKeyword: string;
+  supportingKeywords: string[];
+  serpSimilarity: number | null;
+  size: number;
+  intent: string;
+  intentSource: 'PROVIDER' | 'RENKOO';
+  volume: number | null;
+  keywordDifficulty: number | null;
+  pageDecision: SerpScoring['pageDecision'];
+  recommendedPageType: string;
+  splitNote: string | null;
+}
+
+export interface ResearchCluster {
+  cluster: string;
+  primaryKeyword: string;
+  supportingKeywords: string[];
+  size: number;
+  intent: string;
+  avgOpportunity: number | null;
+  recommendedPageType: string;
+  groupingReason: string;
+}
+
+export interface ResearchCost {
+  providerCalls: number;
+  cacheHits: number;
+  fresh: boolean;
+  charged: boolean;
+}
+
+export interface ResearchResponse {
+  seed?: string;
+  provider?: string;
+  locationFallback?: boolean;
+  cost?: ResearchCost;
+  clusteringBasis?: string;
+  website?: {
+    id: string;
+    name: string;
+    url: string;
+  } | null;
+  corpus: {
+    sitePhrases: number;
+    competitorPhrases: number;
+    competitorsCovered: number;
+    siteCrawled: boolean;
+  };
+  summary: {
+    total: number;
+    highOpportunity: number;
+    contentGaps: number;
+    quickWins: number;
+    commercial: number;
+  };
+  availability: Array<{
+    metric: string;
+    availability: string;
+    provider: string;
+    reason: string;
+  }>;
+  ideas: ResearchIdea[];
+  clusters: ResearchCluster[];
+  [key: string]: any;
+}
+
+export async function researchKeywords(data: {
+  websiteId?: string;
+  seed: string;
+  mode?: 'keyword' | 'website' | 'competitor';
+  country?: string;
+  language?: string;
+  limit?: number;
+  refresh?: boolean;
+}): Promise<ResearchResponse> {
+  return request<ResearchResponse>(
+    '/keywords/research',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+export async function getKeywordUniverse(
+  websiteId: string,
+  limit = 100,
+): Promise<ResearchResponse> {
+  return request<ResearchResponse>(
+    `/keywords/${encodeURIComponent(websiteId)}/universe?limit=${encodeURIComponent(String(limit))}`,
+  );
+}
+
+export async function clusterKeywords(
+  keywords: string[],
+): Promise<{ clusters: ResearchCluster[] }> {
+  return request<{ clusters: ResearchCluster[] }>(
+    '/keywords/clusters',
+    {
+      method: 'POST',
+      body: JSON.stringify({ keywords }),
+    },
+  );
+}
+
+export async function getKeywordProviders(): Promise<{
+  providers: Array<Record<string, any>>;
+  metrics: Array<Record<string, any>>;
+}> {
+  return request('/keywords/providers');
+}
+
+export async function getKeywordGap(
+  websiteId: string,
+  competitorId: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/keywords/${encodeURIComponent(websiteId)}/gap/${encodeURIComponent(competitorId)}`,
+  );
+}
+
+export async function getKeywordSerp(data: {
+  keyword: string;
+  country?: string;
+  language?: string;
+  refresh?: boolean;
+  websiteId?: string;
+}): Promise<{
+  observation: SerpObservation;
+  cached: boolean;
+  fetchedAt: string;
+  previousFetchedAt: string | null;
+  cost: ResearchCost;
+  scoring: SerpScoring | null;
+}> {
+  return request('/keywords/serp', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function clusterSerpKeywords(data: {
+  websiteId?: string;
+  keywords: string[];
+  country?: string;
+  language?: string;
+  maxSerp?: number;
+  threshold?: number;
+  refresh?: boolean;
+}): Promise<{
+  threshold: number;
+  basis: string;
+  analyzed: number;
+  fromCache: number;
+  fresh: number;
+  skipped: number;
+  cost: ResearchCost;
+  clusters: SerpCluster[];
+  unclustered: string[];
+}> {
+  return request('/keywords/serp/cluster', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function lookupCompetitorKeywords(data: {
+  websiteId?: string;
+  domain: string;
+  country?: string;
+  language?: string;
+  limit?: number;
+  refresh?: boolean;
+  includeSerpStrength?: number;
+}): Promise<Record<string, any>> {
+  return request('/keywords/competitor', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getQuickWins2(data: {
+  websiteId: string;
+  startDate: string;
+  endDate: string;
+  country?: string;
+  language?: string;
+  limit?: number;
+}): Promise<Record<string, any>> {
+  return request('/keywords/quick-wins', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getKeywordUsage(): Promise<{
+  provider: string;
+  configured: boolean;
+  freeUsed: number;
+  freeLimit: number | null;
+  apiCalls: any;
+}> {
+  return request('/keywords/usage');
+}
+
+export type StrategyPriority = 'HIGH' | 'MEDIUM' | 'LOW';
+
+export type StrategyBucket =
+  | 'TARGET_NOW'
+  | 'QUICK_WIN'
+  | 'GROW'
+  | 'PROTECT'
+  | 'CREATE'
+  | 'CONSOLIDATE'
+  | 'MONITOR'
+  | 'IGNORE';
+
+export type StrategyPageMapping =
+  | 'IMPROVE'
+  | 'OPTIMIZE'
+  | 'CREATE'
+  | 'CONSOLIDATE'
+  | 'IGNORE'
+  | 'PROTECT';
+
+export interface StrategySignal {
+  label: string;
+  value: string;
+  source: 'OBSERVED' | 'PROVIDER' | 'INFERENCE';
+}
+
+export interface StrategyQuickWin {
+  isQuickWin: boolean;
+  why: string[];
+  action: string;
+  expectedImpact: string;
+  effort: 'LOW' | 'MEDIUM' | 'HIGH';
+}
+
+export interface StrategyOpportunity {
+  keyword: string;
+  intent: string;
+  intentSource: 'PROVIDER' | 'RENKOO';
+  position: number | null;
+  clicks: number | null;
+  impressions: number | null;
+  ctr: number | null;
+  volume: number | null;
+  keywordDifficulty: number | null;
+  cpc: number | null;
+  trend: string | null;
+  serpVerdict:
+    | 'OPPORTUNITY'
+    | 'MODERATE'
+    | 'HARD'
+    | 'UNKNOWN'
+    | null;
+  serpWeakCount: number | null;
+  targetPage: string | null;
+  targetPageSource: 'OBSERVED' | 'INFERENCE' | null;
+  pageMapping: StrategyPageMapping;
+  mappingReason: string;
+  priority: StrategyPriority;
+  priorityScore: number;
+  priorityReasons: string[];
+  opportunityScore: number;
+  bucket: StrategyBucket;
+  isTargetNow: boolean;
+  quickWin: StrategyQuickWin | null;
+  signals: StrategySignal[];
+}
+
+export interface StrategyCluster {
+  topic: string;
+  primaryKeyword: string;
+  supportingKeywords: string[];
+  size: number;
+  intent: string;
+  existingPages: string[];
+  missingPages: number;
+  cannibalizationRisk: boolean;
+  topOpportunity: number;
+  priority: StrategyPriority;
+  pillarPage: string | null;
+  pillarPageSource: 'OBSERVED' | 'INFERENCE' | null;
+  supportingContent: string[];
+  recommendedPageType: string;
+}
+
+export interface StrategyAction {
+  rank: number;
+  priority: StrategyPriority;
+  actionType:
+    | 'IMPROVE_PAGE'
+    | 'OPTIMIZE_PAGE'
+    | 'CREATE_PAGE'
+    | 'CONSOLIDATE_PAGES'
+    | 'PROTECT_PAGE'
+    | 'TRACK_KEYWORD';
+  keyword: string;
+  topic: string | null;
+  targetUrl: string | null;
+  reason: string;
+  evidence: string[];
+  effort: 'LOW' | 'MEDIUM' | 'HIGH';
+}
+
+export interface StrategyResponse {
+  website: { id: string; name: string; url: string };
+  period: { startDate: string; endDate: string };
+  universe: {
+    gscKeywords: number;
+    gapCandidates: number;
+    total: number;
+  };
+  dataAvailability: {
+    provider: boolean;
+    gscConnected: boolean;
+    volumeCoverage: number;
+    kdCoverage: number;
+    serpCached: number;
+    notes: string[];
+  };
+  summary: Record<StrategyBucket, number>;
+  opportunities: StrategyOpportunity[];
+  clusters: StrategyCluster[];
+  nextActions: StrategyAction[];
+  aiBrief: {
+    website: string;
+    generatedAt: string;
+    period: { startDate: string; endDate: string };
+    counts: Record<StrategyBucket, number>;
+    topOpportunities: Array<Record<string, any>>;
+    clusterNotes: Array<Record<string, any>>;
+    dataGaps: string[];
+  };
+}
+
+export async function getKeywordStrategy(data: {
+  websiteId: string;
+  startDate?: string;
+  endDate?: string;
+  country?: string;
+  language?: string;
+  limit?: number;
+}): Promise<StrategyResponse> {
+  return request<StrategyResponse>('/keywords/strategy', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getStrategyBrief(data: {
+  websiteId: string;
+  provider: 'GEMINI' | 'OPENAI';
+  keywords?: string[];
+  maxItems?: number;
+  startDate?: string;
+  endDate?: string;
+  country?: string;
+  language?: string;
+}): Promise<{
+  id: string;
+  text: string;
+  provider: string;
+  model: string;
+  itemCount: number;
+  createdAt: string;
+}> {
+  return request('/keywords/strategy/brief', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listStrategyBriefs(
+  websiteId: string,
+): Promise<{
+  total: number;
+  briefs: Array<{
+    id: string;
+    provider: string;
+    model: string | null;
+    itemCount: number;
+    createdAt: string;
+  }>;
+}> {
+  return request(
+    `/keywords/strategy/briefs?websiteId=${encodeURIComponent(
+      websiteId,
+    )}`,
+  );
+}
+
+/*
+ * =========================================================
+ * CONTENT STRATEGY FOUNDATION 6.0 — persistence +
+ * composition reads. These compose existing intelligence
+ * (Strategy 5.0, Content Engine, refresh, actions) and
+ * never recompute scores. Statuses are honest: missing
+ * rows read as not-created, never inferred.
+ * =========================================================
+ */
+
+export interface StrategyContentStatus {
+  keyword: string;
+  topic: string | null;
+  targetPage: string | null;
+  pageMapping: string | null;
+  bucket: string | null;
+  priority: string | null;
+  contentAction: string | null;
+  content: {
+    exists: boolean;
+    id: string | null;
+    status: string | null;
+  };
+  brief: { exists: boolean; id: string | null };
+  draft: { exists: boolean; id: string | null };
+  action: {
+    exists: boolean;
+    id: string | null;
+    status: string | null;
+  };
+}
+
+export interface StrategyLinksResponse {
+  persistenceAvailable: boolean;
+  total: number;
+  clusters: Array<Record<string, any>>;
+  links: StrategyContentStatus[];
+}
+
+export async function getStrategyLinks(
+  websiteId: string,
+): Promise<StrategyLinksResponse> {
+  return request(
+    `/keywords/strategy/links?websiteId=${encodeURIComponent(
+      websiteId,
+    )}`,
+  );
+}
+
+export async function getStrategyContentOpportunities(data: {
+  websiteId: string;
+  startDate?: string;
+  endDate?: string;
+  country?: string;
+  language?: string;
+  limit?: number;
+}): Promise<{
+  persistenceAvailable: boolean;
+  website: { id: string; name: string; url: string };
+  period: { startDate: string; endDate: string };
+  dataAvailability: {
+    provider: boolean;
+    gscConnected: boolean;
+    notes: string[];
+  };
+  total: number;
+  clusters: Array<Record<string, any>>;
+  opportunities: Array<Record<string, any>>;
+  linkRecommendations?: Array<Record<string, any>>;
+}> {
+  const params = new URLSearchParams({
+    websiteId: data.websiteId,
+  });
+  if (data.startDate) params.set('startDate', data.startDate);
+  if (data.endDate) params.set('endDate', data.endDate);
+  if (data.country) params.set('country', data.country);
+  if (data.language) params.set('language', data.language);
+  if (typeof data.limit === 'number')
+    params.set('limit', String(data.limit));
+  return request(
+    `/keywords/strategy/content-opportunities?${params.toString()}`,
+  );
+}
+
+/*
+ * =========================================================
+ * INTERNAL LINK RECOMMENDER 6.0 Phase 2A (deterministic,
+ * existing data only). Anchors are INFERENCE, never
+ * observed — the crawler does not persist anchor text.
+ * =========================================================
+ */
+
+export interface LinkRecommendation {
+  sourceUrl: string;
+  targetUrl: string;
+  suggestedAnchor: string;
+  anchorSource:
+    | 'SUPPORTING_KEYWORD'
+    | 'PRIMARY_KEYWORD'
+    | 'TOPIC_TERM';
+  keyword: string;
+  topic: string | null;
+  reason: string;
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  priorityBand: 'HIGH' | 'MEDIUM' | 'LOW';
+  futureContent: boolean;
+  evidenceSources: Array<{
+    label: string;
+    value: string;
+    source: 'OBSERVED' | 'INFERENCE' | 'UNAVAILABLE';
+  }>;
+  action: {
+    exists: boolean;
+    id: string | null;
+    status: string | null;
+  };
+  verification?: {
+    status: 'VERIFIED' | 'NOT_VERIFIED' | 'BROKEN' | 'UNAVAILABLE';
+    crawlId: string | null;
+    crawlCompletedAt: string | null;
+    observedAnchors: string[];
+    anchorMatch:
+      | 'EXACT_MATCH'
+      | 'RELATED_MATCH'
+      | 'DIFFERENT'
+      | 'UNKNOWN';
+    linkAttributes: {
+      nofollow: boolean;
+      sponsored: boolean;
+      ugc: boolean;
+    } | null;
+    linkLost: boolean | null;
+    reason: string;
+  };
+  [key: string]: any;
+}
+
+export async function getLinkRecommendations(data: {
+  websiteId: string;
+  keyword?: string;
+  targetUrl?: string;
+  limit?: number;
+}): Promise<{
+  persistenceAvailable: boolean;
+  total: number;
+  recommendations: LinkRecommendation[];
+}> {
+  const params = new URLSearchParams({
+    websiteId: data.websiteId,
+  });
+  if (data.keyword) params.set('keyword', data.keyword);
+  if (data.targetUrl) params.set('targetUrl', data.targetUrl);
+  if (typeof data.limit === 'number')
+    params.set('limit', String(data.limit));
+  return request(
+    `/keywords/strategy/link-recommendations?${params.toString()}`,
+  );
+}
+
+export async function syncLinkRecommendations(data: {
+  websiteId: string;
+  limit?: number;
+}): Promise<{
+  persisted: boolean;
+  computed: number;
+  created: number;
+  updated: number;
+  skippedDismissed: number;
+}> {
+  return request(
+    '/keywords/strategy/link-recommendations/sync',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+/*
+ * =========================================================
+ * SEARCH BASELINE 1.0 — canonical "Where am I now?"
+ * composition. One request: GSC period comparison +
+ * strategy + content + crawl evidence, each section
+ * degrading independently. Evidence states travel with
+ * every metric (never zero for unavailable).
+ * =========================================================
+ */
+
+export interface SearchBaselineResponse {
+  website: { id: string; name: string; url: string };
+  generatedAt: string;
+  period: {
+    days: number;
+    current: { startDate: string; endDate: string };
+    previous: { startDate: string; endDate: string };
+  };
+  gscConnected: boolean;
+  evidence: Record<string, string>;
+  unavailable: Record<string, string>;
+  summary: Record<
+    string,
+    {
+      value: number | null;
+      delta?: number | null;
+      deltaPct?: number | null;
+      deltaPp?: number | null;
+      evidence: string;
+    }
+  > | null;
+  visibility: {
+    top3: number;
+    top10: number;
+    top20: number;
+    top100: number;
+  } | null;
+  trend: {
+    available: boolean;
+    points: Array<{
+      label: string;
+      current: number | null;
+      previous: number | null;
+    }>;
+  };
+  aha: { title: string; body: string; kind: string };
+  striking: Array<Record<string, any>>;
+  winners: Array<Record<string, any>>;
+  losers: Array<Record<string, any>>;
+  pages: Array<Record<string, any>>;
+  opportunities: Array<Record<string, any>>;
+  nextMoves: Array<Record<string, any>>;
+  health: Array<Record<string, any>>;
+}
+
+export async function getSearchBaseline(data: {
+  websiteId: string;
+  days?: number;
+}): Promise<SearchBaselineResponse> {
+  const params = new URLSearchParams({
+    websiteId: data.websiteId,
+  });
+  if (typeof data.days === 'number')
+    params.set('days', String(data.days));
+  return request(
+    `/keywords/baseline?${params.toString()}`,
+  );
+}
+
+/*
+ * =========================================================
+ * WHY-NOT-#1 DIAGNOSIS 1.0 — evidence-backed "why am I
+ * not ranking higher". Composes GSC + strategy + SERP
+ * cache + crawl + links; scores nothing new. Evidence
+ * states travel with every claim.
+ * =========================================================
+ */
+
+export interface KeywordDiagnosis {
+  keyword: string;
+  website: { id: string; name: string; url: string };
+  generatedAt: string;
+  currentRanking: {
+    position: number | null;
+    prevPosition: number | null;
+    positionDelta: number | null;
+    page: string | null;
+    pageCertainty: string;
+    clicks: number | null;
+    impressions: number | null;
+    ctr: number | null;
+    evidence: string;
+  };
+  primaryDiagnosis: string;
+  secondaryDiagnoses: string[];
+  explanation: { title: string; body: string };
+  checklist: Array<{
+    label: string;
+    state: string;
+    detail: string;
+  }>;
+  subDiagnoses: Array<Record<string, any>>;
+  recommendedAction: {
+    action: string;
+    label: string;
+    href: string;
+    purpose: string;
+  };
+  strategy: Record<string, any> | null;
+  serp: Record<string, any>;
+  technical: Record<string, any>;
+  internalLinks: {
+    inboundCount: number | null;
+    opportunities: Array<Record<string, any>>;
+    persistedCount: number;
+    evidence: string;
+  };
+  content: {
+    mapping: string | null;
+    brief: Record<string, any> | null;
+    item: Record<string, any> | null;
+    refresh: Record<string, any> | null;
+  };
+  pages: Array<Record<string, any>>;
+  evidence: Array<Record<string, any>>;
+  rankHistory?: {
+    statement: string;
+    evidenceState: string;
+    observations: number;
+    current: number | null;
+    previous: number | null;
+  } | null;
+  [key: string]: any;
+}
+
+export async function diagnoseKeyword(data: {
+  websiteId: string;
+  keyword: string;
+  country?: string;
+  language?: string;
+}): Promise<KeywordDiagnosis> {
+  const params = new URLSearchParams({
+    websiteId: data.websiteId,
+    keyword: data.keyword,
+  });
+  if (data.country) params.set('country', data.country);
+  if (data.language) params.set('language', data.language);
+  return request(
+    `/keywords/diagnose?${params.toString()}`,
+  );
+}
+
+export async function diagnoseKeywordBatch(data: {
+  websiteId: string;
+  keywords?: string[];
+  limit?: number;
+  country?: string;
+  language?: string;
+}): Promise<{
+  website: { id: string; name: string; url: string };
+  total: number;
+  diagnoses: Array<Record<string, any>>;
+}> {
+  return request('/keywords/diagnose/batch', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+/*
+ * =========================================================
+ * SEARCH GROWTH ROADMAP 1.0 — "What exactly should I do
+ * next?" Composes strategy + diagnosis + content + links
+ * + recommendations + actions + crawl blockers into an
+ * ordered, executable roadmap. Scores nothing new,
+ * guarantees nothing — planning objectives only
+ * ("Target: Top 3", "Evidence suggests").
+ * =========================================================
+ */
+
+export interface RoadmapEvidenceRef {
+  source: string;
+  label: string;
+  evidenceType: string;
+}
+
+export interface RoadmapItem {
+  id: string;
+  kind: string;
+  title: string;
+  keyword: string | null;
+  targetPage: string | null;
+  topic: string | null;
+  why: string;
+  evidence: RoadmapEvidenceRef[];
+  evidenceState: string;
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  impact: string;
+  effort: string;
+  dependsOn: string[];
+  executionStatus: string;
+  action: { id: string; status: string } | null;
+  recommendation: { id: string; status: string } | null;
+  cta: { label: string; href: string } | null;
+  planNote: string | null;
+  ranking: { current: number | null; target: string } | null;
+  observedChange: string | null;
+  measurement: {
+    keyword: string | null;
+    targetPage: string | null;
+    identityKey: string;
+  };
+}
+
+export interface RoadmapResponse {
+  website: { id: string; url?: string | null; name?: string | null };
+  generatedAt: string;
+  scope: {
+    keyword: string | null;
+    page: string | null;
+    topic: string | null;
+  };
+  goal: string;
+  currentState: {
+    candidates: number;
+    highPriority: number;
+    horizons: {
+      now: number;
+      next7Days: number;
+      next30Days: number;
+      ongoing: number;
+    };
+  };
+  doThisFirst: { item: RoadmapItem | null; reason: string };
+  priorities: RoadmapItem[];
+  horizons: {
+    now: RoadmapItem[];
+    next7Days: RoadmapItem[];
+    next30Days: RoadmapItem[];
+    ongoing: RoadmapItem[];
+  };
+  dependencies: Array<{ from: string; to: string; reason: string }>;
+  progress: {
+    total: number;
+    open: number;
+    completed: number;
+    inProgress: number;
+    searchResult: string;
+    searchResultNote: string;
+  };
+  evidence: RoadmapEvidenceRef[];
+  unavailable: Array<{ key: string; reason: string; unlocks: string }>;
+}
+
+export async function getRoadmap(data: {
+  websiteId: string;
+  keyword?: string;
+  page?: string;
+  topic?: string;
+  limit?: number;
+}): Promise<RoadmapResponse> {
+  const params = new URLSearchParams({
+    websiteId: data.websiteId,
+  });
+  if (data.keyword) params.set('keyword', data.keyword);
+  if (data.page) params.set('page', data.page);
+  if (data.topic) params.set('topic', data.topic);
+  if (typeof data.limit === 'number')
+    params.set('limit', String(data.limit));
+  return request(
+    `/keywords/roadmap?${params.toString()}`,
+  );
+}
+
+export interface OrphanCandidate {
+  url: string;
+  title: string | null;
+  label: 'POTENTIAL_ORPHAN';
+  inboundCount: 0;
+  crawlId: string;
+  crawlCompletedAt: string | null;
+  strategy: {
+    keyword: string;
+    topic: string | null;
+    priority: string | null;
+    priorityScore: number | null;
+    pageMapping: string | null;
+    bucket: string | null;
+    contentAction: string | null;
+  } | null;
+  explanation: string;
+}
+
+export async function getOrphanCandidates(data: {
+  websiteId: string;
+  limit?: number;
+}): Promise<{
+  persistenceAvailable: boolean;
+  crawlId: string | null;
+  crawlCompletedAt: string | null;
+  totalCandidates: number;
+  excludedCount: number;
+  candidates: OrphanCandidate[];
+}> {
+  const params = new URLSearchParams({
+    websiteId: data.websiteId,
+  });
+  if (typeof data.limit === 'number')
+    params.set('limit', String(data.limit));
+  return request(
+    `/keywords/strategy/orphan-candidates?${params.toString()}`,
   );
 }
 
@@ -2065,6 +3103,87 @@ export async function getContentPerformance(
 
 /*
  * =========================================================
+ * PAGE INTELLIGENCE 2.0 (Phase 14) — unified content +
+ * entity + authority composition for one page. Read-only:
+ * no provider calls, no scores. Missing stays
+ * unavailable, never zero.
+ * =========================================================
+ */
+
+export async function getPageIntelligence(
+  websiteId: string,
+  url: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/content/intelligence?websiteId=${encodeURIComponent(websiteId)}&url=${encodeURIComponent(url)}`,
+  );
+}
+
+/*
+ * =========================================================
+ * AGENT READINESS 1.0 (Phase 15) — evidence-backed
+ * diagnostic composition for one page. Read-only: no
+ * scores, no provider calls. Missing stays unavailable.
+ * =========================================================
+ */
+
+export async function getAgentReadiness(
+  websiteId: string,
+  url: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/content/agent-readiness?websiteId=${encodeURIComponent(websiteId)}&url=${encodeURIComponent(url)}`,
+  );
+}
+
+/*
+ * =========================================================
+ * ZERO-CLICK + COMMERCIAL SEARCH INTELLIGENCE 1.0
+ * (Phase 16) — read-only composition over GSC windows +
+ * strategy links + SERP cache + rank + AI + outcomes.
+ * Low CTR is never proven zero-click.
+ * =========================================================
+ */
+
+export async function getSearchCapture(
+  websiteId: string,
+  days = 28,
+): Promise<Record<string, any>> {
+  return request(
+    `/keywords/zero-click?websiteId=${encodeURIComponent(websiteId)}&days=${days}`,
+  );
+}
+
+export async function getQueryCapture(
+  websiteId: string,
+  query: string,
+  days = 28,
+): Promise<Record<string, any>> {
+  return request(
+    `/keywords/zero-click/query?websiteId=${encodeURIComponent(websiteId)}&query=${encodeURIComponent(query)}&days=${days}`,
+  );
+}
+
+/*
+ * =========================================================
+ * SEARCH OPPORTUNITY COMMAND CENTER 1.0 (Phase 17) —
+ * composition + decision over existing priorities. Top 5
+ * opinionated opportunities, do-this-first, changes, risk,
+ * working, funnel, health. No new scores.
+ * =========================================================
+ */
+
+export async function getSearchCommandCenter(
+  websiteId: string,
+  days = 28,
+): Promise<Record<string, any>> {
+  return request(
+    `/keywords/command-center?websiteId=${encodeURIComponent(websiteId)}&days=${days}`,
+  );
+}
+
+/*
+ * =========================================================
  * RESTORED API MODULES
  * =========================================================
  */
@@ -2285,6 +3404,128 @@ export async function updateActionStatus(
   } finally {
     invalidateSessionCache('actions');
   }
+}
+
+/*
+ * =========================================================
+ * ACTION MEASUREMENT 1.0 (Phase 23) — observational
+ * before/after over append-only evidence. No causality,
+ * no scores, charged:false.
+ * =========================================================
+ */
+
+export async function getActionMeasurement(
+  actionId: string,
+  windowDays = 28,
+): Promise<Record<string, any>> {
+  return request(
+    `/actions/${encodeURIComponent(actionId)}/measurement?window=${windowDays}`,
+  );
+}
+
+export async function getMeasurementHistory(
+  websiteId: string,
+  params: Record<string, string | number> = {},
+): Promise<Record<string, any>> {
+  const query = new URLSearchParams({
+    websiteId,
+    ...Object.fromEntries(
+      Object.entries(params).map(([key, value]) => [
+        key,
+        String(value),
+      ]),
+    ),
+  }).toString();
+  return request(`/actions/measurement/history?${query}`);
+}
+
+/*
+ * =========================================================
+ * EXECUTION VERIFICATION 1.0 (Phase 28) — DONE ≠
+ * VERIFIED. Explicit user-triggered live verification
+ * reusing existing crawl quota. No CMS writes.
+ * =========================================================
+ */
+
+export async function getActionVerification(
+  actionId: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/actions/${encodeURIComponent(actionId)}/verification`,
+  );
+}
+
+export async function verifyActionLive(
+  actionId: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/actions/${encodeURIComponent(actionId)}/verify`,
+    { method: 'POST' },
+  );
+}
+
+export async function getActionExecution(
+  actionId: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/actions/${encodeURIComponent(actionId)}/execution`,
+  );
+}
+
+/*
+ * =========================================================
+ * GOVERNED EXECUTION 1.0 (Phase 29) — proposals live in
+ * Action.metadata. ALL WRITES REQUIRE HUMAN APPROVAL.
+ * No CMS connected: copy/export/manual only.
+ * =========================================================
+ */
+
+export async function getActionProposals(
+  actionId: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/actions/${encodeURIComponent(actionId)}/proposal`,
+  );
+}
+
+export async function proposeActionChange(
+  actionId: string,
+  data: Record<string, any>,
+): Promise<Record<string, any>> {
+  return request(
+    `/actions/${encodeURIComponent(actionId)}/proposal`,
+    { method: 'POST', body: JSON.stringify(data ?? {}) },
+  );
+}
+
+export async function approveActionProposal(
+  actionId: string,
+  data: Record<string, any>,
+): Promise<Record<string, any>> {
+  return request(
+    `/actions/${encodeURIComponent(actionId)}/approve`,
+    { method: 'POST', body: JSON.stringify(data ?? {}) },
+  );
+}
+
+export async function rejectActionProposal(
+  actionId: string,
+  data: Record<string, any>,
+): Promise<Record<string, any>> {
+  return request(
+    `/actions/${encodeURIComponent(actionId)}/reject`,
+    { method: 'POST', body: JSON.stringify(data ?? {}) },
+  );
+}
+
+export async function executeActionProposal(
+  actionId: string,
+  data: Record<string, any>,
+): Promise<Record<string, any>> {
+  return request(
+    `/actions/${encodeURIComponent(actionId)}/execute`,
+    { method: 'POST', body: JSON.stringify(data ?? {}) },
+  );
 }
 
 export async function createAction(data: {
@@ -2648,6 +3889,1669 @@ export async function runAiVisibilityCheck(data: {
   );
 }
 
+/* Phase 6 — AI Search Intelligence 1.0 (additive). */
+
+export interface AiGeneratedPrompt {
+  text: string;
+  intent: string;
+  topic: string;
+  sourceKeyword: string | null;
+  sourceUrl: string | null;
+  country: string;
+  language: string;
+  evidenceSource: string;
+  status: string;
+}
+
+export interface AiPromptComparison {
+  prompt: string;
+  intent: string;
+  observations: Array<{
+    prompt: string;
+    provider: string;
+    observedAt: string | null;
+    mentioned: boolean;
+    relationship: string;
+    citedDomains: string[];
+    competitorMentions: string[];
+    evidenceState: string;
+  }>;
+  prompts: number;
+  brandPresent: boolean;
+  brandCited: boolean;
+  competitorsPresent: string[];
+  competitorsCited: string[];
+  citedDomains: string[];
+  evidenceState: string;
+}
+
+export interface AiSearchGap {
+  kind:
+    | 'AI_VISIBILITY_GAP'
+    | 'AI_CITATION_GAP'
+    | 'CONTENT_SOURCE_GAP';
+  prompt: string;
+  topic: string;
+  priority: string;
+  why: string;
+  evidence: Array<{
+    source: string;
+    label: string;
+    evidenceType: string;
+  }>;
+  evidenceState: string;
+}
+
+export interface AiLosingDiagnosis {
+  prompt: string;
+  topic: string;
+  diagnosis: string;
+  headline: string;
+  evidence: string[];
+  evidenceState: string;
+  action: {
+    action: string;
+    label: string;
+    href: string;
+  };
+}
+
+export interface AiRoadmapCandidate {
+  kind: string;
+  keyword: string | null;
+  targetPage: string | null;
+  title: string;
+  why: string;
+  evidence: Array<{
+    source: string;
+    label: string;
+    evidenceType: string;
+  }>;
+  strategyPriority: string;
+  impact: string;
+  effort: string;
+  evidenceState: string;
+}
+
+export interface AiPromptTrend {
+  prompt: string;
+  status: string;
+  mentionChange: number;
+  citationChange: number;
+  newCompetitors: string[];
+  lostCompetitors: string[];
+  note: string;
+}
+
+export async function generateAiPromptSet(data: {
+  keywords?: Array<{
+    keyword: string;
+    intent?: string | null;
+    topic?: string | null;
+    sourceUrl?: string | null;
+    country?: string | null;
+    language?: string | null;
+  }>;
+  gscQueries?: string[];
+  serpTopics?: string[];
+  business?: {
+    name?: string | null;
+    category?: string | null;
+    locations?: string[];
+    offerings?: string[];
+  };
+  competitorTerms?: string[];
+  existingContent?: Array<{
+    url: string;
+    topic?: string | null;
+  }>;
+  maxPrompts?: number;
+  defaultCountry?: string;
+  defaultLanguage?: string;
+}): Promise<{ prompts: AiGeneratedPrompt[] }> {
+  return request<{ prompts: AiGeneratedPrompt[] }>(
+    '/ai-visibility/prompt-sets/generate',
+    {
+      method: 'POST',
+      body: JSON.stringify(data ?? {}),
+    },
+  );
+}
+
+export async function getAiComparison(
+  websiteId: string,
+): Promise<{
+  comparisons: AiPromptComparison[];
+  gaps: AiSearchGap[];
+}> {
+  return request<{
+    comparisons: AiPromptComparison[];
+    gaps: AiSearchGap[];
+  }>(
+    `/ai-visibility/comparison?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function getAiCitationReport(
+  websiteId: string,
+): Promise<
+  Array<{
+    checkId: string;
+    prompt: string;
+    provider: string;
+    observedAt: string | null;
+    relationship: string;
+    citations: Array<{
+      url: string;
+      domain: string;
+      class: string;
+      evidenceState: string;
+    }>;
+    citedUrls: string[];
+    citedDomains: string[];
+    ownCited: boolean;
+    competitorCited: string[];
+    evidenceState: string;
+  }>
+> {
+  return request(
+    `/ai-visibility/citations?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function getAiDiagnoses(
+  websiteId: string,
+): Promise<{
+  gaps: AiSearchGap[];
+  diagnoses: AiLosingDiagnosis[];
+}> {
+  return request<{
+    gaps: AiSearchGap[];
+    diagnoses: AiLosingDiagnosis[];
+  }>(
+    `/ai-visibility/diagnoses?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function getAiRoadmapCandidates(
+  websiteId: string,
+): Promise<{ candidates: AiRoadmapCandidate[] }> {
+  return request<{ candidates: AiRoadmapCandidate[] }>(
+    `/ai-visibility/roadmap-candidates?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function getAiPromptHistory(
+  websiteId: string,
+  days = 30,
+): Promise<{ trends: AiPromptTrend[] }> {
+  return request<{ trends: AiPromptTrend[] }>(
+    `/ai-visibility/prompt-history?websiteId=${encodeURIComponent(websiteId)}&days=${days}`,
+  );
+}
+
+/* Phase 6 — AI Search OS 1.0 (composition reads + opportunity create). */
+
+export interface AiOsCommandCenter {
+  website: { id: string; name: string; url: string };
+  biggestOpportunity: {
+    prompt: string;
+    why: string;
+    priority: string;
+    evidenceState: string;
+  } | null;
+  metrics: {
+    promptsTracked: number;
+    promptsObservable: number;
+    mentionRate: number | null;
+    citationRate: number | null;
+    competitorMentionRate: number | null;
+    competitorCitationRate: number | null;
+    citationShare: number | null;
+    insufficientData: boolean;
+    denominators: Record<string, string>;
+  };
+  index: {
+    score: number | null;
+    band: string;
+    components: Record<string, number | null>;
+    explanation: string;
+  };
+  gaps: Array<{
+    kind: string;
+    prompt: string;
+    topic: string;
+    priority: string;
+    why: string;
+  }>;
+  citationGaps: Array<{
+    kind: string;
+    prompt: string;
+    topic: string;
+    headline: string;
+  }>;
+  sourceGraph: Array<{
+    domain: string;
+    frequency: number;
+    prompts: string[];
+    label: string;
+    customerOwned: boolean;
+    competitorOwned: boolean;
+  }>;
+  sourceTypes: Array<{
+    type: string;
+    domains: string[];
+    frequency: number;
+    note: string;
+  }>;
+  radar: Array<{
+    competitor: string;
+    promptsAppeared: number;
+    promptsCited: number;
+    promptsTotal: number;
+    where: string[];
+    sources: string[];
+  }>;
+  opportunities: Array<{
+    kind: string;
+    title: string;
+    prompt: string | null;
+    topic: string | null;
+    targetPage: string | null;
+    priority: string;
+    why: string;
+    measurement: string;
+  }>;
+  roadmapCandidates: Array<{
+    kind: string;
+    title: string;
+    why: string;
+  }>;
+  readiness: {
+    ready: boolean | null;
+    blockers: string[];
+    note: string;
+  } | null;
+  unavailable: Array<{
+    key: string;
+    reason: string;
+    unlocks: string;
+  }>;
+}
+
+export async function getAiCommandCenter(
+  websiteId: string,
+): Promise<AiOsCommandCenter> {
+  return request<AiOsCommandCenter>(
+    `/ai-visibility/os/command-center?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export interface AiLabPrompt {
+  prompt: string;
+  intent: string;
+  topic: string;
+  journeyStage: string;
+  evidenceSource: string;
+  generationReason: string;
+  status: string;
+  groups: string[];
+}
+
+export async function getAiPromptLab(
+  websiteId: string,
+  params?: {
+    q?: string;
+    intent?: string;
+    topic?: string;
+    stage?: string;
+    group?: string;
+    competitor?: string;
+  },
+): Promise<{
+  prompts: AiLabPrompt[];
+  clusters: Array<{ topic: string; prompts: AiLabPrompt[] }>;
+  groups: string[];
+  total: number;
+}> {
+  const search = new URLSearchParams();
+  search.set('websiteId', websiteId);
+  if (params?.q) search.set('q', params.q);
+  if (params?.intent) search.set('intent', params.intent);
+  if (params?.topic) search.set('topic', params.topic);
+  if (params?.stage) search.set('stage', params.stage);
+  if (params?.group) search.set('group', params.group);
+  if (params?.competitor)
+    search.set('competitor', params.competitor);
+  return request(
+    `/ai-visibility/os/prompt-lab?${search.toString()}`,
+  );
+}
+
+export async function getAiPromptDetail(
+  websiteId: string,
+  prompt: string,
+): Promise<{
+  prompt: string;
+  tracked: boolean;
+  intent: string;
+  visibilityState: string;
+  badges: string[];
+  brandMentioned: boolean;
+  brandCited: boolean;
+  competitorMentions: string[];
+  citations: Array<{ url: string; sourceType: string }>;
+  sources: string[];
+  why: Array<{
+    id: string;
+    label: string;
+    passed: boolean | null;
+    evidence: string;
+  }>;
+  whatToDo: Array<{
+    kind: string;
+    title: string;
+    priority: string;
+    why: string;
+    measurement: string;
+  }>;
+}> {
+  const search = new URLSearchParams();
+  search.set('websiteId', websiteId);
+  search.set('prompt', prompt);
+  return request(
+    `/ai-visibility/os/prompts/detail?${search.toString()}`,
+  );
+}
+
+export async function createAiOpportunity(data: {
+  websiteId: string;
+  kind: string;
+  title: string;
+  prompt?: string | null;
+  topic?: string | null;
+  targetPage?: string | null;
+  priority?: 'HIGH' | 'MEDIUM' | 'LOW';
+  why?: string | null;
+}): Promise<{ id: string }> {
+  return request<{ id: string }>(
+    '/ai-visibility/os/opportunities',
+    {
+      method: 'POST',
+      body: JSON.stringify(data ?? {}),
+    },
+  );
+}
+
+/* Phase 7 — AI Prompt Monitoring 1.0. */
+
+export interface AiMonitorStatus {
+  status: 'ACTIVE' | 'PAUSED' | 'NOT_CONFIGURED';
+  schedules: number;
+  nextRunAt: string | null;
+  lastRun: {
+    id: string;
+    status: string;
+    origin: string;
+    completedAt: string | null;
+    success: number;
+    failure: number;
+    unavailable: number;
+    creditUsed: number;
+  } | null;
+  prompts: number;
+}
+
+export async function getAiMonitoringStatus(
+  websiteId: string,
+): Promise<AiMonitorStatus> {
+  return request<AiMonitorStatus>(
+    `/ai-visibility/monitoring/status?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function listAiMonitorSchedules(
+  websiteId: string,
+): Promise<
+  Array<{
+    id: string;
+    surfaces: string[];
+    country: string;
+    language: string;
+    cadence: string;
+    isActive: boolean;
+    nextRunAt: string | null;
+    lastRunAt: string | null;
+  }>
+> {
+  return request(
+    `/ai-visibility/monitoring/schedules?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function createAiMonitorSchedule(data: {
+  websiteId: string;
+  name?: string;
+  surfaces: string[];
+  country?: string;
+  language?: string;
+  cadence?: string;
+  timezone?: string;
+}): Promise<{ id: string }> {
+  return request<{ id: string }>(
+    '/ai-visibility/monitoring/schedules',
+    {
+      method: 'POST',
+      body: JSON.stringify(data ?? {}),
+    },
+  );
+}
+
+export async function updateAiMonitorSchedule(
+  id: string,
+  data: {
+    name?: string;
+    surfaces?: string[];
+    cadence?: string;
+    isActive?: boolean;
+    timezone?: string;
+  },
+): Promise<unknown> {
+  return request(
+    `/ai-visibility/monitoring/schedules/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data ?? {}),
+    },
+  );
+}
+
+export async function deleteAiMonitorSchedule(
+  id: string,
+): Promise<{ deleted: boolean }> {
+  return request<{ deleted: boolean }>(
+    `/ai-visibility/monitoring/schedules/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function estimateAiMonitorRun(data: {
+  websiteId: string;
+  surfaces?: string[];
+  country?: string;
+  language?: string;
+}): Promise<{
+  prompts: number;
+  surfaces: string[];
+  executableSurfaces: number;
+  perRun: {
+    totalCalls: number;
+    billableEstimate: number;
+    note: string;
+  };
+  estimatedMonthlyChecks: number;
+  allowance: {
+    used: number;
+    limit: number | null;
+    unlimited: boolean;
+  };
+  guard: { allowed: boolean; reason: string };
+}> {
+  return request('/ai-visibility/monitoring/estimate', {
+    method: 'POST',
+    body: JSON.stringify(data ?? {}),
+  });
+}
+
+export async function requestAiMonitorRun(data: {
+  websiteId: string;
+  scheduleId?: string;
+  surfaces?: string[];
+  country?: string;
+  language?: string;
+}): Promise<{
+  id: string;
+  status: string;
+  successCount: number;
+  failureCount: number;
+  unavailableCount: number;
+  creditUsed: number;
+}> {
+  return request('/ai-visibility/monitoring/runs', {
+    method: 'POST',
+    body: JSON.stringify(data ?? {}),
+  });
+}
+
+export async function getAiMonitorChanges(
+  websiteId: string,
+  params?: {
+    runId?: string;
+    page?: number;
+    pageSize?: number;
+  },
+): Promise<{
+  baseline: string | null;
+  summary: {
+    mentionsGained: number;
+    mentionsLost: number;
+    citationsGained: number;
+    citationsLost: number;
+    competitorsEntered: number;
+    competitorsLeft: number;
+    unchanged: number;
+    unknown: number;
+    biggestWin: {
+      prompt: string;
+      surface: string;
+      primary: string;
+    } | null;
+    biggestLoss: {
+      prompt: string;
+      surface: string;
+      primary: string;
+    } | null;
+    headline: string;
+  };
+  rows: Array<{
+    prompt: string;
+    surface: string;
+    primary: string;
+    kinds: string[];
+    competitorsGained: string[];
+    competitorsLost: string[];
+    sourcesGained: string[];
+    sourcesLost: string[];
+  }>;
+  total: number;
+}> {
+  const search = new URLSearchParams();
+  search.set('websiteId', websiteId);
+  if (params?.runId) search.set('runId', params.runId);
+  if (params?.page) search.set('page', String(params.page));
+  if (params?.pageSize)
+    search.set('pageSize', String(params.pageSize));
+  return request(
+    `/ai-visibility/monitoring/changes?${search.toString()}`,
+  );
+}
+
+export async function getAiMonitorHistory(
+  websiteId: string,
+  days: 7 | 30 | 90 = 30,
+  surface?: string,
+): Promise<{
+  days: number;
+  trend: Array<{
+    day: string;
+    mentions: number;
+    citations: number;
+    competitors: number;
+    observations: number;
+  }>;
+  bySurface: Array<{
+    surface: string;
+    buckets: Array<{
+      day: string;
+      mentions: number;
+      citations: number;
+    }>;
+  }>;
+  observations: number;
+  missingNote: string;
+}> {
+  const search = new URLSearchParams();
+  search.set('websiteId', websiteId);
+  search.set('days', String(days));
+  if (surface) search.set('surface', surface);
+  return request(
+    `/ai-visibility/monitoring/history?${search.toString()}`,
+  );
+}
+
+export async function getAiMonitorPromptHistory(
+  websiteId: string,
+  prompt: string,
+): Promise<{
+  prompt: string;
+  changes: Array<{
+    surface: string;
+    primary: string;
+    kinds: string[];
+  }>;
+  rows: Array<{
+    id: string;
+    surface: string;
+    status: string;
+    mentioned: boolean;
+    citationFound: boolean;
+    citationUrl: string | null;
+    competitors: string[];
+    observedAt: string | null;
+  }>;
+  total: number;
+}> {
+  const search = new URLSearchParams();
+  search.set('websiteId', websiteId);
+  search.set('prompt', prompt);
+  return request(
+    `/ai-visibility/monitoring/prompts/history?${search.toString()}`,
+  );
+}
+
+/* Phase 8A — monitoring production health + run observability. */
+
+export interface AiMonitoringHealth {
+  monitoring: 'ACTIVE' | 'PAUSED' | 'NOT_CONFIGURED';
+  nextRunAt: string | null;
+  lastRun: {
+    id: string;
+    status: string;
+    completedAt: string | null;
+  } | null;
+  lastSuccessfulRun: {
+    id: string;
+    completedAt: string | null;
+  } | null;
+  consecutiveFailures: number;
+  consecutiveFailuresDetail: number;
+  staleRuns: number;
+  providers: Array<{
+    id: string;
+    available: boolean;
+  }>;
+  credits: {
+    used: number;
+    limit: number | null;
+    blocked: boolean;
+    reason: string;
+  };
+  prompts: number;
+  schedulerActivity: {
+    lastTickAt: string | null;
+    recoveriesLast24h: number;
+  } | null;
+  currentRunning: {
+    id: string;
+    startedAt: string | null;
+    lastHeartbeatAt: string | null;
+    heartbeatAgeMs: number | null;
+  } | null;
+}
+
+export async function getAiMonitoringHealth(
+  websiteId: string,
+): Promise<AiMonitoringHealth> {
+  return request<AiMonitoringHealth>(
+    `/ai-visibility/monitoring/health?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export interface AiRunObservability {
+  id: string;
+  status: string;
+  origin: string;
+  requestedAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  durationMs: number | null;
+  promptsRequested: number;
+  promptsExecuted: number;
+  successes: number;
+  failures: number;
+  unavailable: number;
+  retries: number;
+  creditsConsumed: number;
+  errorSummary: string | null;
+  stale: boolean;
+}
+
+export async function getAiRunObservability(
+  runId: string,
+): Promise<AiRunObservability> {
+  return request<AiRunObservability>(
+    `/ai-visibility/monitoring/runs/${encodeURIComponent(runId)}/observability`,
+  );
+}
+
+/* Phase 8C — official Google/Bing data (honest sources only). */
+
+export interface OfficialCapabilityRow {
+  capability: string;
+  google: string;
+  bing: string;
+  renkoo: string;
+  evidence: string;
+  note: string;
+}
+
+export async function getOfficialCapabilities(): Promise<{
+  matrix: OfficialCapabilityRow[];
+  concepts: string[];
+  legend: Record<string, string>;
+  sources: string[];
+}> {
+  return request(
+    '/ai-visibility/official/capabilities',
+  );
+}
+
+export async function syncOfficialGoogle(data: {
+  websiteId: string;
+  days?: 30 | 90;
+}): Promise<{
+  evidenceState: string;
+  window: { startDate: string; endDate: string };
+  semantics: string;
+  candidates: number;
+  stored: number;
+  skipped: number;
+  baseline: boolean;
+}> {
+  return request('/ai-visibility/official/google/sync', {
+    method: 'POST',
+    body: JSON.stringify(data ?? {}),
+  });
+}
+
+export async function importOfficialRows(data: {
+  websiteId: string;
+  provider: string;
+  rows: unknown;
+}): Promise<{
+  evidenceState: string;
+  received: number;
+  rejected: number;
+  stored: number;
+  skipped: number;
+  baseline: boolean;
+}> {
+  return request('/ai-visibility/official/import', {
+    method: 'POST',
+    body: JSON.stringify(data ?? {}),
+  });
+}
+
+export async function getOfficialSummary(
+  websiteId: string,
+): Promise<{
+  demand: {
+    source: string;
+    evidenceState: string;
+    semantics: string;
+    topQueries: Array<{
+      query: string | null;
+      impressions: number | null;
+    }>;
+    topPages: Array<{
+      pageUrl: string | null;
+      impressions: number | null;
+    }>;
+  };
+  aiVisibility: {
+    evidenceState: string;
+    importCount: number;
+    totalImportedImpressions: number;
+    note: string;
+  };
+  unavailable: Array<{
+    key: string;
+    reason: string;
+    evidenceState: string;
+  }>;
+}> {
+  return request(
+    `/ai-visibility/official/summary?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+/* Phase 8D — AI crawler + agent analytics (first-party logs only). */
+
+export interface AgentActivity {
+  connected: boolean;
+  emptyState?: string;
+  summary: {
+    requests: number;
+    families: string[];
+    pages: number;
+    firstSeen: string | null;
+    lastSeen: string | null;
+  } | null;
+  topAgents: Array<{
+    family: string;
+    category: string;
+    requests: number;
+    pages: number;
+  }>;
+  topPages: Array<{
+    url: string;
+    requests: number;
+    families: string[];
+  }>;
+  accessIssues: Array<{
+    url: string;
+    status: number;
+    count: number;
+    families: string[];
+    aiRelated: boolean;
+    evidence: string;
+  }>;
+  changes: Array<{
+    kind: string;
+    subject: string;
+    evidence: string;
+  }>;
+  verificationNote?: string;
+  separationNote?: string;
+}
+
+export async function getAgentActivity(
+  websiteId: string,
+  days: 7 | 30 | 90 = 30,
+): Promise<AgentActivity> {
+  return request<AgentActivity>(
+    `/ai-visibility/agents/activity?websiteId=${encodeURIComponent(websiteId)}&days=${days}`,
+  );
+}
+
+export async function previewAgentImport(data: {
+  csv: string;
+  source?: string;
+}): Promise<{
+  received: number;
+  parsed: number;
+  rejected: number;
+  truncated: boolean;
+  families: string[];
+  sample: Array<{
+    normalizedUrl: string;
+    family: string;
+    category: string;
+  }>;
+}> {
+  return request('/ai-visibility/agents/import/preview', {
+    method: 'POST',
+    body: JSON.stringify(data ?? {}),
+  });
+}
+
+export async function confirmAgentImport(data: {
+  websiteId: string;
+  csv: string;
+  source?: string;
+  fileName?: string;
+}): Promise<{
+  importId: string;
+  received: number;
+  parsed: number;
+  imported: number;
+  rejected: number;
+  families: string[];
+  baseline: string | null;
+}> {
+  return request('/ai-visibility/agents/import', {
+    method: 'POST',
+    body: JSON.stringify(data ?? {}),
+  });
+}
+
+export async function getAgentCoverage(
+  websiteId: string,
+): Promise<{
+  hasObservations: boolean;
+  total: number;
+  visited: number;
+  headline: string;
+  pages: Array<{
+    url: string;
+    source: string;
+    coverage: string;
+    robots: string;
+    agentSentence: string;
+  }>;
+}> {
+  return request(
+    `/ai-visibility/agents/coverage?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function getAgentDetail(
+  websiteId: string,
+  family: string,
+): Promise<{
+  family: string;
+  category: string;
+  verificationState: string;
+  firstSeen: string | null;
+  lastSeen: string | null;
+  requests: number;
+  pages: number;
+  statusCodes: Array<{ status: number; count: number }>;
+  pagesDetail: Array<{
+    url: string;
+    requests: number;
+    lastSeen: string | null;
+    statuses: number[];
+  }>;
+}> {
+  const search = new URLSearchParams();
+  search.set('websiteId', websiteId);
+  search.set('family', family);
+  return request(
+    `/ai-visibility/agents/detail?${search.toString()}`,
+  );
+}
+
+/* Phase 8E — evidence fusion (read-only composition). */
+
+export interface FusedEvidenceItem {
+  source: string;
+  state: string;
+  keyword: string | null;
+  page: string | null;
+  prompt: string | null;
+  topic: string | null;
+  window: string | null;
+  summary: string;
+}
+
+export async function getNextBestAction(
+  websiteId: string,
+): Promise<{
+  action: {
+    category: string;
+    title: string;
+    keyword: string | null;
+    targetPage: string | null;
+    priority: string;
+    measurement: string;
+  } | null;
+  why: string;
+  evidence: FusedEvidenceItem[];
+  traceability: {
+    recommendationId: string | null;
+    recommendationStatus: string | null;
+    actionId: string | null;
+    actionStatus: string | null;
+    note: string;
+  } | null;
+  reason?: string;
+}> {
+  return request(
+    `/keywords/strategy/next-best-action?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+/* Phase 11 — Rank Intelligence (labeled sources, never merged). */
+
+export interface RankKeywordStat {
+  keyword: string;
+  url: string | null;
+  source: string;
+  scope: string;
+  current: number | null;
+  previous: number | null;
+  change: number | null;
+  movement: string;
+  band: string;
+  strikingDistance: boolean;
+  firstObserved: string | null;
+  lastObserved: string | null;
+  observations: number;
+}
+
+export async function getRankOverview(
+  websiteId: string,
+  days = 30,
+): Promise<{
+  tracked: number;
+  gaining: number;
+  losing: number;
+  top10: number;
+  striking: number;
+  keywords: RankKeywordStat[];
+}> {
+  return request(
+    `/keywords/rank/overview?websiteId=${encodeURIComponent(websiteId)}&days=${days}`,
+  );
+}
+
+export async function trackRanks(data: {
+  websiteId: string;
+  keywords: string[];
+  country?: string;
+  language?: string;
+  refresh?: boolean;
+}): Promise<{
+  tracked: number;
+  results: Array<{
+    keyword: string;
+    position: number | null;
+    url: string | null;
+    cached: boolean;
+    charged: boolean;
+    evidenceState: string;
+  }>;
+}> {
+  return request('/keywords/rank/track', {
+    method: 'POST',
+    body: JSON.stringify(data ?? {}),
+  });
+}
+
+export async function syncGscRanks(data: {
+  websiteId: string;
+  days?: 30 | 90;
+}): Promise<{
+  evidenceState: string;
+  window: { startDate: string; endDate: string };
+  semantics: string;
+  stored: number;
+}> {
+  return request('/keywords/rank/gsc-sync', {
+    method: 'POST',
+    body: JSON.stringify(data ?? {}),
+  });
+}
+
+export async function getRankChanges(
+  websiteId: string,
+  days = 30,
+): Promise<{
+  events: Array<{
+    keyword: string;
+    scope: string;
+    source: string;
+    kind: string;
+    statement: string;
+  }>;
+  total: number;
+  keywords: number;
+}> {
+  return request(
+    `/keywords/rank/changes?websiteId=${encodeURIComponent(websiteId)}&days=${days}`,
+  );
+}
+
+export async function getRankMeasure(
+  actionId: string,
+): Promise<{
+  actionId: string;
+  title: string;
+  keyword: string | null;
+  url: string | null;
+  before: number | null;
+  after: number | null;
+  outcome: string;
+}> {
+  return request(
+    `/keywords/rank/measure?actionId=${encodeURIComponent(actionId)}`,
+  );
+}
+
+/*
+ * =========================================================
+ * RANK INTELLIGENCE 2.0 — tracked watchlist + runs +
+ * URL intelligence + SERP/AI divergence (Phase 31).
+ * GSC POSITION vs TRACKED POSITION stay labeled as
+ * DIFFERENT_MEASUREMENT_CONTEXT. Missing stays
+ * unavailable, never zero. No causal claims.
+ * =========================================================
+ */
+
+export interface TrackedKeywordRow {
+  id: string;
+  keyword: string;
+  normalizedKeyword: string;
+  country: string;
+  language: string;
+  device: string;
+  searchEngine: string;
+  targetUrl: string | null;
+  origin: string;
+  isActive: boolean;
+  trackingStartedAt: string;
+  lastObservedAt: string | null;
+  lastPosition: number | null;
+  lastRankingUrl: string | null;
+}
+
+export interface TrackedKeywordDetail {
+  trackedKeyword: TrackedKeywordRow;
+  current: number | null;
+  previous: number | null;
+  movement: string;
+  delta: {
+    delta: number | null;
+    direction: string;
+    statement: string;
+  };
+  band: string;
+  strikingDistance: boolean;
+  rankingUrl: string | null;
+  previousUrl: string | null;
+  urlState: string;
+  rankingUrlChanged: boolean;
+  targetUrl: string | null;
+  targetState: string;
+  wrongUrlRanking: boolean;
+  serpFeatures: string[];
+  aiOverview: string;
+  aiMode: string;
+  divergence: string;
+  volatility: string;
+  historyState: string;
+  gscComparison: {
+    context: string;
+    gscLabel: string;
+    trackedLabel: string;
+    statement: string;
+  };
+  gscPosition: number | null;
+  investigation: string;
+  observations: Array<{
+    position: number | null;
+    rankingUrl: string | null;
+    observedAt: string;
+    source: string;
+  }>;
+  observationCount: number;
+  lastObservedAt: string | null;
+  windowDays?: number;
+  note?: string;
+}
+
+export async function getTrackingOverview(
+  websiteId: string,
+): Promise<{
+  trackedKeywords: number;
+  activeKeywords: number;
+  top3: number;
+  top10: number;
+  wrongUrlCount: number;
+  health: string;
+  providerConfigured: boolean;
+  lastRun: unknown;
+  lastObserved: string;
+  gscNote: string;
+  providerNote: string;
+}> {
+  return request(
+    `/keywords/tracking/overview?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function listTrackedKeywords(
+  websiteId: string,
+  params?: {
+    isActive?: boolean;
+    origin?: string;
+    device?: string;
+    country?: string;
+    search?: string;
+    pageNum?: number;
+    pageSize?: number;
+  },
+): Promise<{
+  keywords: TrackedKeywordRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}> {
+  const q = new URLSearchParams({
+    websiteId,
+    ...(params?.isActive !== undefined
+      ? { isActive: String(params.isActive) }
+      : {}),
+    ...(params?.origin ? { origin: params.origin } : {}),
+    ...(params?.device ? { device: params.device } : {}),
+    ...(params?.country ? { country: params.country } : {}),
+    ...(params?.search ? { search: params.search } : {}),
+    pageNum: String(params?.pageNum ?? 1),
+    pageSize: String(params?.pageSize ?? 25),
+  });
+  return request(`/keywords/tracking/keywords?${q.toString()}`);
+}
+
+export async function addTrackedKeywords(data: {
+  websiteId: string;
+  items: Array<{
+    keyword?: string;
+    country?: string;
+    language?: string;
+    device?: string;
+    searchEngine?: string;
+    targetUrl?: string | null;
+    origin?: string;
+  }>;
+}): Promise<{
+  requested: number;
+  created: number;
+  duplicates: number;
+  limit: number | null;
+  originNote: string;
+}> {
+  return request('/keywords/tracking/keywords', {
+    method: 'POST',
+    body: JSON.stringify(data ?? {}),
+  });
+}
+
+export async function getTrackedKeyword(
+  id: string,
+  websiteId: string,
+): Promise<TrackedKeywordDetail> {
+  return request(
+    `/keywords/tracking/keywords/${encodeURIComponent(id)}?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function getTrackedKeywordHistory(
+  id: string,
+  websiteId: string,
+  days = 28,
+): Promise<TrackedKeywordDetail> {
+  return request(
+    `/keywords/tracking/keywords/${encodeURIComponent(id)}/history?websiteId=${encodeURIComponent(websiteId)}&days=${days}`,
+  );
+}
+
+export async function updateTrackedKeyword(
+  id: string,
+  data: {
+    websiteId: string;
+    targetUrl?: string | null;
+    isActive?: boolean;
+  },
+): Promise<TrackedKeywordRow> {
+  return request(
+    `/keywords/tracking/keywords/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data ?? {}),
+    },
+  );
+}
+
+export async function startTrackingRun(data: {
+  websiteId: string;
+  refresh?: boolean;
+  limit?: number;
+}): Promise<{
+  id: string;
+  status: string;
+  windowKey: string;
+  totalKeywords: number;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+  errorSummary: string | null;
+}> {
+  return request('/keywords/tracking/run', {
+    method: 'POST',
+    body: JSON.stringify(data ?? {}),
+  });
+}
+
+export async function listTrackingRuns(
+  websiteId: string,
+): Promise<
+  Array<{
+    id: string;
+    status: string;
+    windowKey: string;
+    totalKeywords: number;
+    succeeded: number;
+    failed: number;
+    skipped: number;
+    createdAt: string;
+  }>
+> {
+  return request(
+    `/keywords/tracking/runs?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function getTrackingPages(
+  websiteId: string,
+): Promise<{
+  pages: Array<{
+    page: string;
+    keywordCount: number;
+    top3: number;
+    top10: number;
+    bestPosition: number | null;
+    averagePosition: number | null;
+    gscNote: string;
+  }>;
+}> {
+  return request(
+    `/keywords/tracking/pages?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function getTrackingCompetitors(
+  websiteId: string,
+  keywordId?: string,
+): Promise<{
+  keyword?: string;
+  yourPosition: number | null;
+  competitors: unknown[];
+  movementState: string;
+  note: string;
+}> {
+  const q = keywordId
+    ? `&keywordId=${encodeURIComponent(keywordId)}`
+    : '';
+  return request(
+    `/keywords/tracking/competitors?websiteId=${encodeURIComponent(websiteId)}${q}`,
+  );
+}
+
+export async function evaluateTrackingAlerts(data: {
+  websiteId: string;
+  keywordId?: string;
+  limit?: number;
+}): Promise<{
+  evaluated: number;
+  alertsCreated: number;
+  alerts: Array<{ trigger: string; title: string }>;
+  note: string;
+}> {
+  return request('/keywords/tracking/alerts/evaluate', {
+    method: 'POST',
+    body: JSON.stringify(data ?? {}),
+  });
+}
+
+export async function getTrackingCommandSignals(
+  websiteId: string,
+): Promise<{
+  signals: Array<{
+    title: string;
+    why: string;
+    evidence: Record<string, unknown>;
+    action: string;
+    measurement: string;
+  }>;
+}> {
+  return request(
+    `/keywords/tracking/command-signals?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+/*
+ * =========================================================
+ * SEARCH CHANGE & ALERT INTELLIGENCE 2.0 — schedules,
+ * digest, preferences, observability (Phase 32).
+ * Recurring SCHEDULE → COLLECT → … → LEARN loop.
+ * CHANGE ≠ CAUSE everywhere. Digest default, instant
+ * only for configured high-value events.
+ * =========================================================
+ */
+
+export interface TrackingScheduleRow {
+  id: string;
+  country: string;
+  language: string;
+  device: string;
+  searchEngine: string;
+  cadence: string;
+  isActive: boolean;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  lastStatus: string | null;
+  missedWindows: number;
+}
+
+export async function listTrackingSchedules(
+  websiteId: string,
+): Promise<{ schedules: TrackingScheduleRow[] }> {
+  return request(
+    `/keywords/tracking/schedules?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function createTrackingSchedule(data: {
+  websiteId: string;
+  country?: string;
+  language?: string;
+  device?: string;
+  cadence?: string;
+}): Promise<TrackingScheduleRow> {
+  return request('/keywords/tracking/schedules', {
+    method: 'POST',
+    body: JSON.stringify(data ?? {}),
+  });
+}
+
+export async function updateTrackingSchedule(
+  id: string,
+  data: {
+    websiteId: string;
+    cadence?: string;
+    isActive?: boolean;
+  },
+): Promise<TrackingScheduleRow> {
+  return request(
+    `/keywords/tracking/schedules/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data ?? {}),
+    },
+  );
+}
+
+export async function deleteTrackingSchedule(
+  id: string,
+  websiteId: string,
+): Promise<{ deleted: string }> {
+  return request(
+    `/keywords/tracking/schedules/${encodeURIComponent(id)}?websiteId=${encodeURIComponent(websiteId)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function getTrackingDigest(
+  websiteId: string,
+  timeZone?: string,
+): Promise<{
+  title: string;
+  total: number;
+  positive: number;
+  negative: number;
+  divergences: number;
+  topAttention: string | null;
+  items: Array<{
+    alertType: string;
+    title: string;
+    positive: boolean;
+    divergence: boolean;
+  }>;
+  note: string;
+  day: string;
+  timeZone: string;
+  delivery: string;
+}> {
+  const q = timeZone
+    ? `&timeZone=${encodeURIComponent(timeZone)}`
+    : '';
+  return request(
+    `/keywords/tracking/digest?websiteId=${encodeURIComponent(websiteId)}${q}`,
+  );
+}
+
+export async function getTrackingPreferences(
+  websiteId: string,
+): Promise<{
+  scopes: string[];
+  mutedTypes: Array<{ key: string; mutedUntil: string | null }>;
+  mutedKeywords: Array<{ key: string; mutedUntil: string | null }>;
+  note: string;
+}> {
+  return request(
+    `/keywords/tracking/preferences?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function setTrackingScope(data: {
+  websiteId: string;
+  scope: string;
+  enabled: boolean;
+}): Promise<unknown> {
+  return request('/keywords/tracking/preferences/scope', {
+    method: 'POST',
+    body: JSON.stringify(data ?? {}),
+  });
+}
+
+export async function muteTracking(data: {
+  websiteId: string;
+  alertType?: string;
+  keyword?: string;
+  mutedUntil?: string;
+}): Promise<{
+  muted: Array<{ kind: string; key: string; mutedUntil: string | null }>;
+  note: string;
+}> {
+  return request('/keywords/tracking/preferences/mute', {
+    method: 'POST',
+    body: JSON.stringify(data ?? {}),
+  });
+}
+
+export async function unmuteTracking(data: {
+  websiteId: string;
+  alertType?: string;
+  keyword?: string;
+}): Promise<{ unmuted: number }> {
+  return request('/keywords/tracking/preferences/unmute', {
+    method: 'POST',
+    body: JSON.stringify(data ?? {}),
+  });
+}
+
+export async function resolveReversedAlerts(data: {
+  websiteId: string;
+  keywordId?: string;
+}): Promise<{
+  evaluated: number;
+  resolved: number;
+  note: string;
+}> {
+  return request('/keywords/tracking/alerts/resolve-reversed', {
+    method: 'POST',
+    body: JSON.stringify(data ?? {}),
+  });
+}
+
+export async function getTrackingObservability(
+  websiteId: string,
+): Promise<{
+  health: string;
+  lastTickAt: string | null;
+  lastRunAt: string | null;
+  lastSuccessfulRunAt: string | null;
+  currentlyRunning: number;
+  recoveries: number;
+  providerUnavailableCount: number;
+  note: string;
+}> {
+  return request(
+    `/keywords/tracking/observability?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function dismissMonitoringAlert(
+  id: string,
+): Promise<unknown> {
+  return request(
+    `/monitoring/alerts/${encodeURIComponent(id)}/dismiss`,
+    { method: 'PATCH' },
+  );
+}
+
+/*
+ * =========================================================
+ * TOPIC INTELLIGENCE 1.0 — query fan-out + ownership
+ * (Phase 12). Read-only composition over stored
+ * evidence: no provider calls, no AI credits, no new
+ * scores. Missing stays unavailable, never zero.
+ * =========================================================
+ */
+
+export interface TopicNeedQuery {
+  query: string;
+  intent: string;
+  google: {
+    position: number | null;
+    url: string | null;
+    evidenceState: string;
+  };
+  ai: {
+    mentioned: boolean | null;
+    cited: boolean | null;
+    citedUrl: string | null;
+    observations: number;
+    evidenceState: string;
+  };
+  page: string | null;
+  competitors: string[];
+  gap: string;
+  gapStatement: string;
+}
+
+export interface TopicIntelligence {
+  primaryQuery: string;
+  topic: string;
+  topicSource: string;
+  ownership: {
+    google: {
+      state: string;
+      statement: string;
+      queriesCovered: number;
+      queriesObserved: number;
+      evidenceState: string;
+    };
+    ai: {
+      state: string;
+      statement: string;
+      promptsTracked: number;
+      promptsCovered: number;
+      evidenceState: string;
+    };
+    content: {
+      state: string;
+      statement: string;
+      queriesMapped: number;
+      queriesObserved: number;
+      evidenceState: string;
+    };
+    relationship: string;
+    relationshipStatement: string;
+  };
+  needs: Array<{
+    need: string;
+    intent: string;
+    queries: TopicNeedQuery[];
+  }>;
+  totalNeeds: number;
+  totalQueries: number;
+  nextBestAction: Record<string, any>;
+  freshness: Record<string, string>;
+}
+
+export async function getTopicIntelligence(
+  websiteId: string,
+  query: string,
+  days = 30,
+): Promise<TopicIntelligence> {
+  return request(
+    `/keywords/topic-intelligence?websiteId=${encodeURIComponent(websiteId)}&query=${encodeURIComponent(query)}&days=${days}`,
+  );
+}
+
 export interface IntelligenceEvidence {
   source: string;
   metric: string;
@@ -3006,6 +5910,304 @@ export async function revokeReportShare(
   return request(
     `/reports/${encodeURIComponent(id)}/revoke`,
     { method: 'PATCH' },
+  );
+}
+
+export async function publishReport(
+  id: string,
+): Promise<{ id: string; status: string }> {
+  return request(
+    `/reports/${encodeURIComponent(id)}/publish`,
+    { method: 'POST' },
+  );
+}
+
+export async function archiveReport(
+  id: string,
+): Promise<{ id: string; status: string }> {
+  return request(
+    `/reports/${encodeURIComponent(id)}/archive`,
+    { method: 'POST' },
+  );
+}
+
+export async function exportReportCsv(
+  id: string,
+  section: 'opportunities' | 'actions' | 'changes',
+): Promise<string> {
+  const token = getToken();
+  const response = await fetch(
+    `${API_URL}/reports/${encodeURIComponent(id)}/export?section=${section}`,
+    {
+      headers: {
+        Accept: 'text/csv',
+        ...(token
+          ? { Authorization: `Bearer ${token}` }
+          : {}),
+      },
+    },
+  );
+  if (!response.ok) throw new Error('CSV export failed.');
+  return response.text();
+}
+
+/*
+ * =========================================================
+ * INTEGRATION HUB 1.0 (Phase 21) — stored connection
+ * metadata only. No provider calls on read, no secrets.
+ * =========================================================
+ */
+
+export async function getIntegrationsHub(): Promise<
+  Record<string, any>
+> {
+  return request('/integrations');
+}
+
+export async function getCapabilitiesMatrix(
+  websiteId: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/integrations/capabilities?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function getIntegrationProviderStatus(
+  provider: string,
+  websiteId?: string,
+): Promise<Record<string, any>> {
+  const suffix = websiteId
+    ? `?websiteId=${encodeURIComponent(websiteId)}`
+    : '';
+  return request(
+    `/integrations/${encodeURIComponent(provider)}/status${suffix}`,
+  );
+}
+
+/*
+ * =========================================================
+ * SEARCH EVERYWHERE 1.0 (Phase 22) — cross-surface
+ * composition over persisted evidence. No provider calls
+ * on reads, no scores.
+ * =========================================================
+ */
+
+export async function getSearchSurfaces(
+  websiteId: string,
+  days = 28,
+): Promise<Record<string, any>> {
+  return request(
+    `/keywords/search/surfaces?websiteId=${encodeURIComponent(websiteId)}&days=${days}`,
+  );
+}
+
+export async function getSearchSurfaceQuery(
+  websiteId: string,
+  query: string,
+  days = 28,
+): Promise<Record<string, any>> {
+  return request(
+    `/keywords/search/surfaces/query?websiteId=${encodeURIComponent(websiteId)}&query=${encodeURIComponent(query)}&days=${days}`,
+  );
+}
+
+export async function getSearchSurfaceTopic(
+  websiteId: string,
+  topic: string,
+  days = 28,
+): Promise<Record<string, any>> {
+  return request(
+    `/keywords/search/surfaces/topic?websiteId=${encodeURIComponent(websiteId)}&topic=${encodeURIComponent(topic)}&days=${days}`,
+  );
+}
+
+/*
+ * =========================================================
+ * CUSTOMER DEMAND 2.0 (Phase 24) — need → journey →
+ * decision coverage over observed queries and prompts.
+ * Deterministic rules first; no scores.
+ * =========================================================
+ */
+
+export async function getCustomerNeeds(
+  websiteId: string,
+  days = 28,
+): Promise<Record<string, any>> {
+  return request(
+    `/keywords/customer-needs?websiteId=${encodeURIComponent(websiteId)}&days=${days}`,
+  );
+}
+
+export async function getCustomerNeedQuery(
+  websiteId: string,
+  query: string,
+  days = 28,
+): Promise<Record<string, any>> {
+  return request(
+    `/keywords/customer-needs/query?websiteId=${encodeURIComponent(websiteId)}&query=${encodeURIComponent(query)}&days=${days}`,
+  );
+}
+
+export async function getCustomerNeedTopic(
+  websiteId: string,
+  topic: string,
+  days = 28,
+): Promise<Record<string, any>> {
+  return request(
+    `/keywords/customer-needs/topic?websiteId=${encodeURIComponent(websiteId)}&topic=${encodeURIComponent(topic)}&days=${days}`,
+  );
+}
+
+/*
+ * =========================================================
+ * INFORMATION INTELLIGENCE 1.0 (Phase 25) — deterministic
+ * claim extraction over stored evidence. No LLM on reads,
+ * no scores.
+ * =========================================================
+ */
+
+export async function getInformationIntelligence(
+  websiteId: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/content/information-intelligence?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function getInformationClaims(
+  websiteId: string,
+  url: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/content/information-intelligence/claims?websiteId=${encodeURIComponent(websiteId)}&url=${encodeURIComponent(url)}`,
+  );
+}
+
+export async function getInformationConflicts(
+  websiteId: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/content/information-intelligence/conflicts?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function getInformationEntity(
+  websiteId: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/content/information-intelligence/entity?websiteId=${encodeURIComponent(websiteId)}`,
+  );
+}
+
+/*
+ * =========================================================
+ * SEARCH CHANGE INTELLIGENCE 1.0 (Phase 26) — temporal
+ * association only, never causal. No scores.
+ * =========================================================
+ */
+
+export async function getChangeSummary(
+  websiteId: string,
+  days = 28,
+): Promise<Record<string, any>> {
+  return request(
+    `/change-intelligence?websiteId=${encodeURIComponent(websiteId)}&days=${days}`,
+  );
+}
+
+export async function getPageChanges(
+  websiteId: string,
+  url: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/change-intelligence/page?websiteId=${encodeURIComponent(websiteId)}&url=${encodeURIComponent(url)}`,
+  );
+}
+
+export async function getKeywordChanges(
+  websiteId: string,
+  keyword: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/change-intelligence/keyword?websiteId=${encodeURIComponent(websiteId)}&keyword=${encodeURIComponent(keyword)}`,
+  );
+}
+
+export async function getActionChanges(
+  websiteId: string,
+  actionId: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/change-intelligence/action?websiteId=${encodeURIComponent(websiteId)}&actionId=${encodeURIComponent(actionId)}`,
+  );
+}
+
+/*
+ * =========================================================
+ * COMPETITIVE INTELLIGENCE 1.0 (Phase 27) — observed
+ * competitor presence only. Never superiority,
+ * dominance, share or causation.
+ * =========================================================
+ */
+
+export async function getCompetitiveSummary(
+  websiteId: string,
+  days = 28,
+): Promise<Record<string, any>> {
+  return request(
+    `/keywords/competitive-intelligence?websiteId=${encodeURIComponent(websiteId)}&days=${days}`,
+  );
+}
+
+export async function getCompetitiveDetail(
+  websiteId: string,
+  competitor: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/keywords/competitive-intelligence/competitor?websiteId=${encodeURIComponent(websiteId)}&competitor=${encodeURIComponent(competitor)}`,
+  );
+}
+
+export async function getCompetitiveNeed(
+  websiteId: string,
+  needKey: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/keywords/competitive-intelligence/need?websiteId=${encodeURIComponent(websiteId)}&needKey=${encodeURIComponent(needKey)}`,
+  );
+}
+
+export async function getCompetitiveQuery(
+  websiteId: string,
+  query: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/keywords/competitive-intelligence/query?websiteId=${encodeURIComponent(websiteId)}&query=${encodeURIComponent(query)}`,
+  );
+}
+
+/*
+ * =========================================================
+ * ACTIVATION + TIME-TO-FIRST-VALUE 1.0 (Phase 30) —
+ * read-only growth snapshot and funnel from existing
+ * records. No new tables, charged:false.
+ * =========================================================
+ */
+
+export async function getActivation(
+  websiteId?: string,
+): Promise<Record<string, any>> {
+  const suffix = websiteId
+    ? `?websiteId=${encodeURIComponent(websiteId)}`
+    : '';
+  return request(`/dashboard/activation${suffix}`);
+}
+
+export async function getActivationFunnel(
+  websiteId: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/dashboard/activation/funnel?websiteId=${encodeURIComponent(websiteId)}`,
   );
 }
 
@@ -3442,9 +6644,13 @@ export async function getGoogleAnalyticsProperties() {
 export async function selectGoogleAnalyticsProperty(
   propertyId: string,
 ) {
-  return request<GoogleConnection>(
-    `/google/analytics/select-property?propertyId=${encodeURIComponent(propertyId)}`,
-  );
+  try {
+    return request<GoogleConnection>(
+      `/google/analytics/select-property?propertyId=${encodeURIComponent(propertyId)}`,
+    );
+  } finally {
+    invalidateSessionCache('google-status');
+  }
 }
 
 export async function getGoogleAnalyticsReport(
@@ -3583,6 +6789,113 @@ export async function getBacklinkOpportunities(
 ) {
   return request<any>(
     `/backlinks/${encodeURIComponent(websiteId)}/opportunities`,
+  );
+}
+
+/*
+ * =========================================================
+ * AUTHORITY INTELLIGENCE 1.0 (Phase 18) — evidence-backed
+ * composition over stored backlink evidence + bounded CSV
+ * import. No backlink index, no DR/DA, no scores.
+ * =========================================================
+ */
+
+export async function getAuthorityOverview(
+  websiteId: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/backlinks/${encodeURIComponent(websiteId)}/authority/overview`,
+  );
+}
+
+export async function getAuthorityOpportunities(
+  websiteId: string,
+  limit = 20,
+): Promise<Record<string, any>> {
+  return request(
+    `/backlinks/${encodeURIComponent(websiteId)}/authority/opportunities?limit=${limit}`,
+  );
+}
+
+export async function getAuthorityCompetitorGap(
+  websiteId: string,
+  limit = 50,
+): Promise<Record<string, any>> {
+  return request(
+    `/backlinks/${encodeURIComponent(websiteId)}/authority/competitor-gap?limit=${limit}`,
+  );
+}
+
+export async function getAuthorityPages(
+  websiteId: string,
+  limit = 50,
+): Promise<Record<string, any>> {
+  return request(
+    `/backlinks/${encodeURIComponent(websiteId)}/authority/pages?limit=${limit}`,
+  );
+}
+
+export async function previewAuthorityImport(
+  websiteId: string,
+  csv: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/backlinks/${encodeURIComponent(websiteId)}/authority/import/preview`,
+    { method: 'POST', body: JSON.stringify({ csv }) },
+  );
+}
+
+export async function confirmAuthorityImport(
+  websiteId: string,
+  csv: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/backlinks/${encodeURIComponent(websiteId)}/authority/import/confirm`,
+    { method: 'POST', body: JSON.stringify({ csv }) },
+  );
+}
+
+/*
+ * =========================================================
+ * LOCAL SEARCH INTELLIGENCE 1.0 (Phase 19) — read-only
+ * composition over business identity, locations, crawl
+ * JSON-LD, GSC queries, ranks, SERP cache, AI, outcomes.
+ * No Local Score, no Maps ranks, no GBP metrics.
+ * =========================================================
+ */
+
+export async function getLocalOverview(
+  websiteId: string,
+  days = 28,
+): Promise<Record<string, any>> {
+  return request(
+    `/local-seo/${encodeURIComponent(websiteId)}/local/overview?days=${days}`,
+  );
+}
+
+export async function getLocalOpportunities(
+  websiteId: string,
+  days = 28,
+): Promise<Record<string, any>> {
+  return request(
+    `/local-seo/${encodeURIComponent(websiteId)}/local/opportunities?days=${days}`,
+  );
+}
+
+export async function getLocalLocations(
+  websiteId: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/local-seo/${encodeURIComponent(websiteId)}/local/locations`,
+  );
+}
+
+export async function getLocalLocation(
+  websiteId: string,
+  location: string,
+): Promise<Record<string, any>> {
+  return request(
+    `/local-seo/${encodeURIComponent(websiteId)}/local/location?location=${encodeURIComponent(location)}`,
   );
 }
 
@@ -4245,6 +7558,1190 @@ export async function getRoiSummary(
   return request<RoiSummary>(
     `/roi/${encodeURIComponent(websiteId)}/summary${query ? `?${query}` : ''}`,
   );
+}
+
+/*
+ * =========================================================
+ * SEARCH-TO-REVENUE + AI ROI 1.0 (Phase 13).
+ * Read-only composition over stored evidence: search
+ * demand, ranks, pages, leads, revenue, spend, AI
+ * monitoring, actions. Missing stays unavailable,
+ * never zero; movement is observed, never causal.
+ * =========================================================
+ */
+
+export interface SearchRevenueFunnelStage {
+  stage: string;
+  value: number | null;
+  window: string;
+  evidenceState: string;
+}
+
+export interface SearchRevenueResponse {
+  website: { id: string; name: string; url: string };
+  window: {
+    days: number;
+    from: string;
+    to: string;
+    gsc: string;
+    ai: string;
+    outcomes: string;
+  };
+  snapshot: {
+    revenue: number | null;
+    revenueState: string;
+    customers: number;
+    qualified: number;
+    leads: number;
+    outcomesState: string;
+  };
+  funnel: SearchRevenueFunnelStage[];
+  pages: Array<Record<string, any>>;
+  pageTotal: number;
+  topics: Array<Record<string, any>>;
+  channels: Array<Record<string, any>>;
+  ai: Record<string, any>;
+  actions: Array<Record<string, any>>;
+  commercial: Array<Record<string, any>>;
+  diagnostic: { state: string; statement: string };
+  roi: {
+    roiPercent: number | null;
+    statement: string;
+    evidenceState: string;
+  };
+  gaps: Array<{ key: string; statement: string }>;
+  nextBestAction: Record<string, any>;
+  freshness: Record<string, string>;
+}
+
+export async function getSearchRevenue(
+  websiteId: string,
+  days = 28,
+): Promise<SearchRevenueResponse> {
+  return request<SearchRevenueResponse>(
+    `/roi/${encodeURIComponent(websiteId)}/search-revenue?days=${days}`,
+  );
+}
+
+/*
+ * =========================================================
+ * SEARCH-TO-REVENUE ATTRIBUTION 2.0 (Phase 33).
+ * Evidence-first outcome attribution: OBSERVED vs
+ * ATTRIBUTED vs INFERRED vs ESTIMATED vs UNAVAILABLE.
+ * GSC query → revenue stays CONTEXTUAL. Temporal
+ * association only — never causal. No ROI score.
+ * =========================================================
+ */
+
+export interface AttributionHeroMetric {
+  key: string;
+  value: string | null;
+  evidence: string;
+}
+
+export interface AttributionOverview {
+  websiteId: string;
+  websiteFound?: boolean;
+  windowDays: number;
+  hierarchy: string;
+  hero: AttributionHeroMetric[];
+  aiHero: AttributionHeroMetric[];
+  aiNote: string;
+  organic: {
+    sessions: number | null;
+    keyEvents: number | null;
+    channelRevenue: number | null;
+    evidence: string;
+    note: string;
+  };
+  leads: {
+    total: number;
+    qualified: number | null;
+    won: number;
+    countNote: string;
+    qualification: string;
+  };
+  revenue: {
+    recognized: number;
+    amount: number | null;
+    currencies: string[];
+    currencyNote: string;
+    money: Array<{
+      amount: number | null;
+      currency: string | null;
+      state: string;
+      note: string;
+    }>;
+    explanation: {
+      where: string;
+      source: string;
+      attribution: string;
+      channel: string;
+      window: string;
+      status: string;
+    } | null;
+  };
+  roi: {
+    roi: number | null;
+    label: string;
+    state: string;
+    spend: number | null;
+    spendNote: string;
+  };
+  gap: string;
+  gapNote: string;
+  prompts: string[];
+  freshness: string;
+  channelNote: string;
+  causality: string;
+}
+
+export async function getAttributionOverview(
+  websiteId: string,
+  days = 28,
+): Promise<AttributionOverview> {
+  return request(
+    `/roi/${encodeURIComponent(websiteId)}/attribution/overview?days=${days}`,
+  );
+}
+
+export async function getAttributionPages(
+  websiteId: string,
+  days = 28,
+): Promise<{
+  websiteId: string;
+  websiteFound?: boolean;
+  windowDays: number;
+  channelAvailable: boolean;
+  pages: Array<{
+    page: string;
+    organicSessions: number;
+    keyEvents: number;
+    leads: number;
+    revenue: number | null;
+    revenueState: string;
+  }>;
+  note: string;
+}> {
+  return request(
+    `/roi/${encodeURIComponent(websiteId)}/attribution/pages?days=${days}`,
+  );
+}
+
+export async function getAttributionNeeds(
+  websiteId: string,
+  days = 28,
+): Promise<{
+  websiteId: string;
+  websiteFound?: boolean;
+  windowDays: number;
+  gscAvailable: boolean;
+  needs: Array<{
+    query: string;
+    gscClicks: number | null;
+    gscImpressions: number | null;
+    gscPosition: number | null;
+    demandEvidence: string;
+    relation: { relation: string; statement: string };
+    leadHint: string | null;
+    quality: string;
+  }>;
+  association: string;
+}> {
+  return request(
+    `/roi/${encodeURIComponent(websiteId)}/attribution/needs?days=${days}`,
+  );
+}
+
+export async function getAttributionActions(
+  websiteId: string,
+  days = 28,
+): Promise<{
+  websiteId: string;
+  websiteFound?: boolean;
+  windowDays: number;
+  actions: Array<{
+    id: string;
+    title: string;
+    status: string | null;
+    keyword: string | null;
+    rank: unknown;
+    trafficNote: string;
+    leadsBefore: number;
+    leadsAfter: number;
+    revenueNote: string;
+    statement: string;
+  }>;
+  sequence: string;
+}> {
+  return request(
+    `/roi/${encodeURIComponent(websiteId)}/attribution/actions?days=${days}`,
+  );
+}
+
+export async function getAttributionModel(
+  websiteId: string,
+  days = 28,
+): Promise<{
+  websiteId: string;
+  websiteFound?: boolean;
+  windowDays: number;
+  model: string;
+  modelNote: string;
+  channels: Array<{
+    channel: string;
+    sessions: number;
+    conversions: number;
+    revenue: number;
+    quality: string;
+    qualityNote: string;
+  }>;
+  unattributedNote: string;
+  pathExample: unknown;
+  creditExample: string;
+  lookback: string;
+  modeled: string;
+  freshness: string;
+}> {
+  return request(
+    `/roi/${encodeURIComponent(websiteId)}/attribution/model?days=${days}`,
+  );
+}
+
+export async function getAttributionAi(
+  websiteId: string,
+  days = 28,
+): Promise<{
+  websiteId: string;
+  websiteFound?: boolean;
+  windowDays: number;
+  available: boolean;
+  traffic: {
+    sessions: number;
+    conversions: number;
+    revenue: number;
+    evidence: string;
+    note: string;
+  };
+  granularity: string;
+  bySource: Array<{
+    source: string;
+    sessions: number;
+    conversions: number;
+    revenue: number;
+  }>;
+  visibility: { citations: number; mentions: number; note: string };
+  statement: string;
+}> {
+  return request(
+    `/roi/${encodeURIComponent(websiteId)}/attribution/ai?days=${days}`,
+  );
+}
+
+export async function getAttributionSignals(
+  websiteId: string,
+): Promise<{
+  signals: Array<{
+    what: string;
+    source: string;
+    window: string;
+    attribution: string;
+    next: string;
+  }>;
+}> {
+  return request(
+    `/roi/${encodeURIComponent(websiteId)}/attribution/signals`,
+  );
+}
+
+export async function getAttributionClientReport(
+  websiteId: string,
+): Promise<{ lines: string[]; attribution: string }> {
+  return request(
+    `/roi/${encodeURIComponent(websiteId)}/attribution/client-report`,
+  );
+}
+
+export async function getAnalyticsChannelReport(
+  startDate: string,
+  endDate: string,
+): Promise<unknown> {
+  return request(
+    `/google/analytics/channel-report?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`,
+  );
+}
+
+/*
+ * =========================================================
+ * UNIFIED GROWTH DECISION ENGINE 1.0 (Phase 34).
+ * Composition-only decision ordering over existing
+ * evidence. No scores, no CRUD, no auto-execution.
+ * =========================================================
+ */
+
+export interface GrowthDecision {
+  fingerprint: string;
+  decisionType: string;
+  title: string;
+  summary: string;
+  priorityBand: string;
+  existingPriority: string | null;
+  status: string;
+  primaryEvidence: string;
+  supportingEvidence: string[];
+  evidenceState: string;
+  page: string | null;
+  keyword: string | null;
+  customerNeed: string | null;
+  existingRecommendationId: string | null;
+  existingActionId: string | null;
+  existingActionStatus: string | null;
+  actionReuse: string;
+  verificationState: string | null;
+  measurementState: string | null;
+  nextAction: string;
+  blockedReason: string | null;
+  unavailableReason: string | null;
+  conflict: {
+    what: string;
+    sources: string[];
+    known: string;
+    unknown: string;
+    safeNextStep: string;
+  } | null;
+  whyFirst: string;
+  trace: string[];
+  section: string;
+}
+
+export interface GrowthPlan {
+  websiteId: string;
+  now: GrowthDecision[];
+  next: GrowthDecision[];
+  wait: GrowthDecision[];
+  blocked: GrowthDecision[];
+  completed: Array<{
+    actionId: string;
+    title: string;
+    status: string;
+    verificationState: string;
+    measurementState: string;
+    measurement: string | null;
+    learning: string;
+  }>;
+  material: {
+    status: string;
+    section: string;
+    nextAction: string;
+    unavailableReason: string;
+  } | null;
+  availability: Record<string, boolean>;
+  counts: Record<string, number>;
+  reuseNote?: string;
+}
+
+export async function getGrowthPlan(
+  websiteId: string,
+): Promise<GrowthPlan> {
+  return request(
+    `/growth-plan/${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function getGrowthNow(
+  websiteId: string,
+): Promise<{ websiteId: string; now: GrowthDecision[]; why: string }> {
+  return request(
+    `/growth-plan/${encodeURIComponent(websiteId)}/now`,
+  );
+}
+
+export async function getGrowthDecisions(
+  websiteId: string,
+  section?: string,
+): Promise<{ websiteId: string; decisions: GrowthDecision[] }> {
+  const q = section ? `?section=${encodeURIComponent(section)}` : '';
+  return request(
+    `/growth-plan/${encodeURIComponent(websiteId)}/decisions${q}`,
+  );
+}
+
+export async function getGrowthDecision(
+  websiteId: string,
+  fingerprint: string,
+): Promise<GrowthDecision & { reuse: string; clientWording: string }> {
+  return request(
+    `/growth-plan/${encodeURIComponent(websiteId)}/decisions/${encodeURIComponent(fingerprint)}`,
+  );
+}
+
+export async function refreshGrowthPlan(
+  websiteId: string,
+): Promise<{
+  websiteId: string;
+  refreshedAt: string;
+  decisions: number;
+  completed: number;
+  note: string;
+}> {
+  return request(
+    `/growth-plan/${encodeURIComponent(websiteId)}/refresh`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
+}
+
+/*
+ * =========================================================
+ * BUSINESS GOAL → GROWTH ROADMAP 1.0 (Phase 35).
+ * Goal-aligned 30/60/90 sequencing. TARGET_UNSET by
+ * default, TIMING_UNCERTAIN over fabricated dates,
+ * categorical alignment — never a score.
+ * =========================================================
+ */
+
+export interface BusinessGoalRow {
+  goalType: string | null;
+  goalLabel: string;
+  goalSource: string;
+  goalEvidenceState: string;
+  targetValue: null;
+  targetUnit: null;
+  targetWindow: null;
+  baseline: string | null;
+  measurementSource: string | null;
+  status: string;
+  targetNote: string;
+}
+
+export interface RoadmapItemRow {
+  id: string;
+  decision: GrowthDecision;
+  goalAlignment: string;
+  goalExplanation: string;
+  whyNow: string;
+  horizon: string;
+  horizonNote: string;
+  workClass: string;
+  dependencies: Array<{ from: string; to: string; kind: string; reason: string }>;
+  dependencyNotes: string[];
+  state: string;
+  verification: string | null;
+  measurement: {
+    what: string;
+    source: string | null;
+    window: string;
+    baseline: string | null;
+    status: string;
+  };
+  status: string;
+  evidenceState: string;
+  outcomeChain: string[];
+}
+
+export interface GoalRoadmap {
+  websiteId: string;
+  websiteFound: boolean;
+  goal: BusinessGoalRow;
+  now: RoadmapItemRow[];
+  days30: RoadmapItemRow[];
+  days60: RoadmapItemRow[];
+  days90: RoadmapItemRow[];
+  later: RoadmapItemRow[];
+  wait: RoadmapItemRow[];
+  blocked: RoadmapItemRow[];
+  conflicts: Array<{
+    goals: string[];
+    affectedDecisions: string[];
+    tradeoff: string;
+    evidence: string;
+    resolution: string;
+    safeChoice: string | null;
+  }>;
+  dependencyHealth: {
+    edges: number;
+    unknownRefs: string[];
+    cycles: string[][];
+    note: string;
+  };
+  stability: { note: string };
+}
+
+export async function getGrowthGoals(
+  websiteId: string,
+): Promise<{ goals: BusinessGoalRow[]; note: string }> {
+  return request(
+    `/growth-plan/${encodeURIComponent(websiteId)}/goals`,
+  );
+}
+
+export async function getGoalRoadmap(
+  websiteId: string,
+): Promise<GoalRoadmap> {
+  return request(
+    `/growth-plan/${encodeURIComponent(websiteId)}/roadmap`,
+  );
+}
+
+export async function getGoalProgress(
+  websiteId: string,
+): Promise<{
+  websiteId: string;
+  goal?: string;
+  progress: string;
+  progressNote?: string;
+  note?: string;
+  horizons?: Record<string, number>;
+  replan?: {
+    lastUpdated: string;
+    lastEvidenceChange: string | null;
+    nextReview: string | null;
+    stale: boolean;
+    note: string;
+  };
+  resources?: string;
+}> {
+  return request(
+    `/growth-plan/${encodeURIComponent(websiteId)}/progress`,
+  );
+}
+
+export async function getGrowthExecutive(
+  websiteId: string,
+): Promise<{
+  goal: string;
+  currentState: string;
+  nextThree: string[];
+  blocked: string[];
+  changed: string[];
+  measuring: string[];
+}> {
+  return request(
+    `/growth-plan/${encodeURIComponent(websiteId)}/executive`,
+  );
+}
+
+/*
+ * =========================================================
+ * GOVERNED GROWTH WORK QUEUE 1.0 (Phase 36).
+ * Operational composition over existing actions. Queue
+ * states map existing lifecycle — never a new engine,
+ * never auto-execution. Planning is not execution.
+ * =========================================================
+ */
+
+export interface GrowthWorkItem {
+  fingerprint: string;
+  actionId: string;
+  title: string;
+  workType: string;
+  status: string;
+  section: string;
+  priorityBand: string;
+  goal: string | null;
+  goalAlignment: string | null;
+  horizon: string | null;
+  owner: string;
+  capacity: string;
+  approval: string;
+  approvalPack: string[] | null;
+  clientApproval: string;
+  execution: string | null;
+  verification: string | null;
+  measurement: string | null;
+  blocker: string | null;
+  blockerNote: string | null;
+  dependencies: string[];
+  evidence: string[];
+  evidenceState: string;
+  nextStep: string;
+  stale: boolean;
+  trace: string[];
+}
+
+export interface GrowthQueue {
+  websiteId: string;
+  websiteFound: boolean;
+  today?: GrowthWorkItem[];
+  sections?: Record<string, GrowthWorkItem[]>;
+  dismissed?: Array<{
+    actionId: string;
+    title: string;
+    status: string;
+    reconsideration: string;
+    note: string;
+  }>;
+  counts?: Record<string, number>;
+  note?: string;
+}
+
+export async function getGrowthQueue(
+  websiteId: string,
+): Promise<GrowthQueue> {
+  return request(
+    `/growth-work/${encodeURIComponent(websiteId)}`,
+  );
+}
+
+export async function getGrowthToday(
+  websiteId: string,
+): Promise<{
+  websiteId: string;
+  today: Array<GrowthWorkItem & { todayReason?: string }>;
+  why: string;
+}> {
+  return request(
+    `/growth-work/${encodeURIComponent(websiteId)}/today`,
+  );
+}
+
+export async function getGrowthSection(
+  websiteId: string,
+  section: string,
+): Promise<{ websiteId: string; items: GrowthWorkItem[] }> {
+  const valid = ['ready', 'approval', 'blocked', 'verify', 'measure'];
+  const seg = valid.includes(section) ? section : 'ready';
+  return request(
+    `/growth-work/${encodeURIComponent(websiteId)}/${seg}`,
+  );
+}
+
+export async function getGrowthWorkItem(
+  websiteId: string,
+  actionId: string,
+): Promise<
+  GrowthWorkItem & {
+    detail: {
+      what: string;
+      why: string;
+      goal: string | null;
+      evidence: string[];
+      decision: string;
+      roadmap: string;
+      recommendation: string | null;
+      action: string;
+      dependency: string[];
+      approval: string;
+      approvalPack: string[] | null;
+      execution: string | null;
+      verification: string | null;
+      measurement: string | null;
+      blocker: string | null;
+      nextStep: string;
+    };
+  }
+> {
+  return request(
+    `/growth-work/${encodeURIComponent(websiteId)}/item/${encodeURIComponent(actionId)}`,
+  );
+}
+
+export async function refreshGrowthQueue(
+  websiteId: string,
+): Promise<{
+  websiteId: string;
+  refreshedAt: string;
+  items: number;
+  note: string;
+}> {
+  return request(
+    `/growth-work/${encodeURIComponent(websiteId)}/refresh`,
+    { method: 'POST' },
+  );
+}
+
+/*
+ * =========================================================
+ * SEARCH GROWTH OUTCOME LOOP 1.0 (Phase 37).
+ * VERIFICATION → MEASUREMENT → OUTCOME → NEXT DECISION.
+ * Evidence states only; no scores, no forecasting,
+ * no causal claims. EXECUTION ≠ OUTCOME.
+ * =========================================================
+ */
+
+export interface ActionOutcome {
+  key: string;
+  actionId: string;
+  title: string;
+  actionStatus: string;
+  verification: string | null;
+  windowDays: number;
+  readiness: string;
+  readinessNote: string;
+  search: {
+    rank: {
+      before: number | null;
+      after: number | null;
+      delta: number | null;
+      direction: string;
+      baseline: string;
+      evidenceState: string;
+      window: string;
+    };
+    gsc: string;
+    statement: string;
+  };
+  ai: {
+    presence: string;
+    presenceNote: string;
+    layers: string[];
+    citedUrl: string | null;
+  };
+  agentic: { evidence: string[]; note: string };
+  business: {
+    leads: {
+      before: number | null;
+      after: number | null;
+      delta: number | null;
+      direction: string;
+      baseline: string;
+      evidenceState: string;
+      window: string;
+    };
+    revenue: {
+      before: number | null;
+      after: number | null;
+      delta: number | null;
+      direction: string;
+      baseline: string;
+      evidenceState: string;
+      window: string;
+    };
+    statement: string;
+  };
+  signal: string;
+  interpretation: string;
+  causality: string;
+  nextDecision: string;
+  nextNote: string;
+  hierarchy: string[];
+  headline: {
+    work: string;
+    changed: string;
+    unchanged: string;
+    unknown: string;
+    next: string;
+  };
+  agency: string[];
+}
+
+export async function getActionOutcome(
+  websiteId: string,
+  actionId: string,
+  window = 28,
+): Promise<ActionOutcome> {
+  return request(
+    `/growth-outcomes/${encodeURIComponent(websiteId)}/${encodeURIComponent(actionId)}?window=${window}`,
+  );
+}
+
+export async function getRecentOutcomes(
+  websiteId: string,
+): Promise<{
+  websiteId: string;
+  websiteFound: boolean;
+  items: Array<{
+    actionId: string;
+    title: string;
+    signal: string;
+    interpretation: string;
+    nextDecision: string;
+    headline: ActionOutcome['headline'];
+  }>;
+  note: string;
+}> {
+  return request(
+    `/growth-outcomes/${encodeURIComponent(websiteId)}/recent`,
+  );
+}
+
+export async function getPendingOutcomes(
+  websiteId: string,
+): Promise<{
+  websiteId: string;
+  websiteFound: boolean;
+  items: Array<{
+    actionId: string;
+    title: string;
+    readiness: string;
+    note: string;
+  }>;
+  note: string;
+}> {
+  return request(
+    `/growth-outcomes/${encodeURIComponent(websiteId)}/pending`,
+  );
+}
+
+/*
+ * =========================================================
+ * SEARCH & AI DECISION GAP INTELLIGENCE 1.0 (Phase 38).
+ * WHY WE ARE NOT WINNING from observed evidence only.
+ * No scores, no invented authority, no inferred
+ * recommendations. Unknowns stay unknown.
+ * =========================================================
+ */
+
+export interface ObservedGap {
+  kind: string;
+  orderKind: string;
+  fingerprint: string;
+  title: string;
+  evidence: string[];
+  evidenceState: string;
+  unknown: string[];
+  nextDecision: string;
+}
+
+export async function getDecisionGapTargets(
+  websiteId: string,
+): Promise<{
+  websiteId: string;
+  targets: Array<{
+    fingerprint: string;
+    targetType: string;
+    target: string;
+    page: string | null;
+    position: number | null;
+    device: string;
+    country: string;
+    note: string;
+  }>;
+}> {
+  return request(
+    `/decision-gap/${encodeURIComponent(websiteId)}/targets`,
+  );
+}
+
+export async function getDecisionGapQuery(
+  websiteId: string,
+  query: string,
+  opts?: { country?: string; language?: string; page?: string },
+): Promise<{
+  fingerprint: string;
+  targetType: string;
+  target: string;
+  page: string | null;
+  position: number | null;
+  positionSource: string;
+  intent: string;
+  ourAngle: string;
+  dominantFormat: string;
+  ourFormat: string;
+  competitors: Array<{
+    domain: string;
+    url: string;
+    title: string;
+    position: number | null;
+    resultType: string | null;
+  }>;
+  gaps: ObservedGap[];
+  gapCount: number;
+  unknowns: string[];
+  conflicts: string[];
+  summary: {
+    primary: string;
+    supporting: string[];
+    unknown: string[];
+    nextInvestigation: string;
+    existingAction: string;
+  };
+  buyerCriteria: string[];
+  customerNeed: { query: string; intent: string; coverage: string };
+  technical: {
+    title: string | null;
+    h1: string[];
+    wordCount: number;
+    canonical: string | null;
+    structuredData: number;
+    internalLinks: number;
+  } | null;
+  nextDecision: string;
+  linked: {
+    recommendation: { id: string; title: string; status: string } | null;
+    action: { id: string; title: string; status: string } | null;
+    work: { status: string; section: string } | null;
+    outcome: { signal: string; nextDecision: string } | null;
+    note: string;
+  };
+  evidenceNote: string;
+}> {
+  const q = new URLSearchParams({ query });
+  if (opts?.country) q.set('country', opts.country);
+  if (opts?.language) q.set('language', opts.language);
+  if (opts?.page) q.set('page', opts.page);
+  return request(
+    `/decision-gap/${encodeURIComponent(websiteId)}/query?${q.toString()}`,
+  );
+}
+
+export async function getDecisionGapAi(
+  websiteId: string,
+  prompt: string,
+): Promise<{
+  fingerprint: string;
+  targetType: string;
+  target: string;
+  state: string;
+  recommendation: string;
+  checksObserved: number;
+  citedUrls: string[];
+  competitorNames: string[];
+  buyerCriteria: string[];
+  gaps: ObservedGap[];
+  gapCount: number;
+  unknowns: string[];
+  conflicts: string[];
+  summary: {
+    primary: string;
+    supporting: string[];
+    unknown: string[];
+    nextInvestigation: string;
+    existingAction: string;
+  };
+  nextDecision: string;
+  linked: unknown;
+  evidenceNote: string;
+}> {
+  return request(
+    `/decision-gap/${encodeURIComponent(websiteId)}/ai?prompt=${encodeURIComponent(prompt)}`,
+  );
+}
+
+export async function getDecisionGapItem(
+  websiteId: string,
+  type: string,
+  target: string,
+  competitor?: string,
+): Promise<unknown> {
+  const q = new URLSearchParams({ type, target });
+  if (competitor) q.set('competitor', competitor);
+  return request(
+    `/decision-gap/${encodeURIComponent(websiteId)}/item?${q.toString()}`,
+  );
+}
+
+/*
+ * =========================================================
+ * AI SOURCE & BRAND AUTHORITY INTELLIGENCE 1.0 (Phase 39).
+ * Which external sources shape search/AI decisions.
+ * Presence is never influence; citation is never
+ * recommendation. No scores, no outreach automation.
+ * =========================================================
+ */
+
+export interface SourceRow {
+  fingerprint: string;
+  source: string;
+  domain: string;
+  type: string;
+  firstParty: boolean;
+  brandPresent: boolean | null;
+  competitorPresent: boolean | null;
+  presence: string;
+  presenceNote: string;
+  citationsObserved: number;
+  prompts: string[];
+  engines: string[];
+  urls: string[];
+  observedAt: string | null;
+  evidenceSource: string;
+  trust: string;
+  opportunity: string;
+}
+
+export interface SourceLandscape {
+  websiteId: string;
+  totals: {
+    sources: number;
+    ours: number;
+    competitorOnly: number;
+    shared: number;
+    prompts: number;
+    engines: string[];
+  };
+  ours: SourceRow[];
+  competitorOnly: SourceRow[];
+  shared: SourceRow[];
+  diversity: Array<{ type: string; count: number }>;
+  diversityNote: string;
+  unknowns: string[];
+  note: string;
+}
+
+export async function getSourceLandscape(
+  websiteId: string,
+): Promise<SourceLandscape> {
+  return request(
+    `/source-intelligence/${encodeURIComponent(websiteId)}/landscape`,
+  );
+}
+
+export async function getSourceCompetitors(
+  websiteId: string,
+): Promise<{
+  websiteId: string;
+  competitors: Array<{
+    domain: string;
+    sources: number;
+    prompts: string[];
+    rows: SourceRow[];
+    note: string;
+  }>;
+  unknowns: string[];
+}> {
+  return request(
+    `/source-intelligence/${encodeURIComponent(websiteId)}/competitors`,
+  );
+}
+
+export async function getSourceAi(
+  websiteId: string,
+): Promise<{
+  websiteId: string;
+  prompts: Array<{
+    prompt: string;
+    engines: string[];
+    ourMentioned: boolean;
+    ourCited: boolean;
+    ourUrls: string[];
+    competitorMentioned: boolean;
+    competitorNames: string[];
+    recommendation: string;
+    frequency: string | null;
+  }>;
+  unknowns: string[];
+}> {
+  return request(
+    `/source-intelligence/${encodeURIComponent(websiteId)}/ai`,
+  );
+}
+
+export async function getSourceItem(
+  websiteId: string,
+  domain: string,
+): Promise<
+  SourceRow & {
+    freshness: string;
+    freshnessNote: string;
+    claimSupport: string;
+    buyerCriteria: string[];
+    gaps: string[];
+    opportunity: string;
+    relatedWork: Array<{ id: string; title: string; status: string }>;
+    work: { status: string; section: string } | null;
+    outcome: { signal: string; interpretation: string } | null;
+    agency: string[];
+    outreachBan: string;
+  }
+> {
+  return request(
+    `/source-intelligence/${encodeURIComponent(websiteId)}/item/${encodeURIComponent(domain)}`,
+  );
+}
+
+/*
+ * =========================================================
+ * FIRST-VALUE & ONE-PRODUCT CONSOLIDATION 1.0 (Phase 40).
+ * One guided first-run flow: WEBSITE → CRAWL → GSC →
+ * PROPERTY → GA4 → PROPERTY → BASELINE → TOP 3 →
+ * FIRST_VALUE_READY → Command Center. Skips persist and
+ * resurface; FAILED never becomes COMPLETED.
+ * =========================================================
+ */
+
+export interface FirstValueStep {
+  step: string;
+  state: string;
+  required: boolean;
+  why: string;
+  next: string | null;
+}
+
+export interface FirstValueStatus {
+  websiteId: string;
+  website: { id: string; name: string; url: string };
+  steps: FirstValueStep[];
+  progress: { completedRequired: number; totalRequired: number; label: string };
+  ready: boolean;
+  readyReasons: string[];
+  resume: Array<{ step: string; state: string; label: string; action: string }>;
+  continueSetup: string | null;
+  deadEnd: { dead: boolean; pattern: string | null; recovery: string | null };
+  baseline: { ready: boolean; partial: boolean; label: string };
+  topActions: Array<{ id: string; title: string; priority: string }>;
+  noActionAvailable: string | null;
+  unknowns: Array<{ step: string; class: string }>;
+}
+
+export async function getFirstValueStatus(
+  websiteId: string,
+  fresh = false,
+): Promise<FirstValueStatus> {
+  /* Phase 41 (Group I): fresh=true bypasses the
+   * short-lived server baseline cache after explicit
+   * actions and manual Refresh. Mounts stay cached. */
+  const suffix = fresh ? '?fresh=1' : '';
+  return request(
+    `/first-value/${encodeURIComponent(websiteId)}/status${suffix}`,
+  );
+}
+
+export async function recordFirstValueEvent(
+  websiteId: string,
+  data: { kind?: string; step?: string; status?: string },
+): Promise<unknown> {
+  return request(
+    `/first-value/${encodeURIComponent(websiteId)}/events`,
+    { method: 'POST', body: JSON.stringify(data ?? {}) },
+  );
+}
+
+export async function getFirstValueAcceptance(
+  websiteId: string,
+): Promise<{
+  websiteId: string;
+  timeToFirstValueMs: number | null;
+  timeToFirstValueLabel: string;
+  failures: number;
+  blocks: number;
+  skips: number;
+  resumes: number;
+  deadEnds: number;
+  unknownRate: { value: number | null; label: string };
+  ready: boolean;
+  deadEndsDetected: number;
+  note: string;
+}> {
+  return request(
+    `/first-value/${encodeURIComponent(websiteId)}/acceptance`,
+  );
+}
+
+export async function getProviderUsage(): Promise<{
+  available: boolean;
+  operations?: Array<{
+    operation: string;
+    calls: number;
+    tasks: number;
+    failures: number;
+    vendorCost: number | null;
+    costKnown: boolean;
+    costLabel: string;
+  }>;
+  note: string;
+}> {
+  return request('/first-value/provider/usage');
+}
+
+export async function getDeliveryTruth(): Promise<{
+  whiteLabel: string;
+  scheduledReports: string;
+  pdfExport: string;
+  apiAccess: string;
+  agencyReporting: string;
+  note: string;
+}> {
+  return request('/first-value/delivery/truth');
 }
 
 /* MARKETING SPEND */

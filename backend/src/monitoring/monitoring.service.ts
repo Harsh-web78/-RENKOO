@@ -17,10 +17,16 @@ const SOURCES = [
   'AI_VISIBILITY',
   'BACKLINKS',
   'LEADS_REVENUE',
+  'RANK',
 ] as const;
 
 const SEVERITIES = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const;
-const STATUSES = ['DETECTED', 'ACKNOWLEDGED', 'RESOLVED'] as const;
+const STATUSES = [
+  'DETECTED',
+  'ACKNOWLEDGED',
+  'RESOLVED',
+  'DISMISSED',
+] as const;
 
 type AlertSource = (typeof SOURCES)[number];
 type AlertSeverity = (typeof SEVERITIES)[number];
@@ -1387,6 +1393,36 @@ export class MonitoringService {
       }
 
       return this.handleUnexpectedError('resolveAlert', error);
+    }
+  }
+
+  /* Phase 32 — DISMISS is a human decision, not a
+   * resolution: the alert leaves the active queue but
+   * its evidence is retained. Dismissed ≠ resolved. */
+  async dismissAlert(organizationId: string, id: string) {
+    try {
+      const alert = await this.findScopedAlert(organizationId, id);
+
+      if (alert.status === 'DISMISSED') {
+        return alert;
+      }
+
+      return await this.prisma.monitoringAlert.update({
+        where: { id: alert.id },
+        data: {
+          status: 'DISMISSED',
+          active: false,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
+
+      return this.handleUnexpectedError('dismissAlert', error);
     }
   }
 

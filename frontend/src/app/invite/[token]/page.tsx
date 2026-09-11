@@ -75,7 +75,7 @@ export default function InvitePage() {
       );
 
       setTimeout(() => {
-        router.push("/dashboard");
+        router.push("/command-center");
       }, 500);
     } catch (err: unknown) {
       const message =
@@ -105,7 +105,7 @@ export default function InvitePage() {
           "Invitation accepted. Redirecting...",
         );
 
-        router.push("/dashboard");
+        router.push("/command-center");
         return;
       }
 

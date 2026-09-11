@@ -70,6 +70,34 @@ export const PLAN_ORDER = [
   'AGENCY',
 ] as const;
 
+/*
+ * =========================================================
+ * PLAN FEATURE FLAGS — SINGLE AUTHORITATIVE SOURCE
+ * (Phase 41, Group H).
+ *
+ * White-label / scheduled-reports / agency / api /
+ * advanced-monitoring entitlement lives HERE and nowhere
+ * else. BillingService.FEATURE_TIERS, the frontend
+ * catalog mirror (frontend/src/lib/plans.ts), and
+ * verify-plans-mirror.mjs all resolve to this map, so a
+ * flag contradiction cannot return silently.
+ *
+ * Honesty rule: `api` stays EMPTY until a customer-facing
+ * public API (keys, docs, gateway) actually ships.
+ * `apiCalls` entitlements remain internal DataForSEO /
+ * provider metering — metered capacity, never a public
+ * API promise (see deliveryTruth().apiAccess).
+ * =========================================================
+ */
+
+export const PLAN_FEATURE_TIERS: Record<string, string[]> = {
+  whiteLabel: ['AGENCY', 'SCALE'],
+  scheduledReports: ['AGENCY', 'SCALE'],
+  agency: ['AGENCY', 'SCALE'],
+  api: [],
+  advancedMonitoring: ['PRO', 'AGENCY', 'SCALE'],
+};
+
 export const COMMERCIAL_PLANS: CommercialPlan[] =
   [
     {
@@ -281,7 +309,6 @@ export const COMMERCIAL_PLANS: CommercialPlan[] =
         'REPORTS',
         'TEAM_COLLABORATION',
         'WHITE_LABEL',
-        'API_ACCESS',
       ],
     },
     {
@@ -340,7 +367,6 @@ export const COMMERCIAL_PLANS: CommercialPlan[] =
         'CLIENT_PORTAL',
         'WHITE_LABEL',
         'TEAM_COLLABORATION',
-        'API_ACCESS',
       ],
     },
   ];

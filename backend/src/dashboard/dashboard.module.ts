@@ -8,9 +8,15 @@ import { ContentModule } from '../content/content.module';
 import { WebsitesModule } from '../websites/websites.module';
 import { CompetitorsModule } from '../competitors/competitors.module';
 import { MonitoringModule } from '../monitoring/monitoring.module';
+import { KeywordsModule } from '../keywords/keywords.module';
+import { BusinessBrainModule } from '../business-brain/business-brain.module';
 
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
+import { ActivationService } from './activation.service';
+import { FirstValueController } from './first-value.controller';
+import { FirstValueService } from './first-value.service';
+import { TelemetryService } from './telemetry.service';
 
 @Module({
   imports: [
@@ -22,15 +28,24 @@ import { DashboardService } from './dashboard.service';
     WebsitesModule,
     CompetitorsModule,
     MonitoringModule,
+    KeywordsModule,
+    BusinessBrainModule,
   ],
   controllers: [
     DashboardController,
+    FirstValueController,
   ],
   providers: [
     DashboardService,
+    ActivationService,
+    FirstValueService,
+    TelemetryService,
   ],
   exports: [
     DashboardService,
+    ActivationService,
+    FirstValueService,
+    TelemetryService,
   ],
 })
 export class DashboardModule {}

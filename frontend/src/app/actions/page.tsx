@@ -6,6 +6,9 @@ import AppShell from '@/components/AppShell';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import {
   getActions,
+  getActionMeasurement,
+  getActionVerification,
+  verifyActionLive,
   getWebsites,
   updateActionStatus,
   Website,
@@ -991,6 +994,224 @@ function ActionDetail({
         here. Carry out the work yourself or through a connected
         integration, then re-crawl to let monitoring measure the
         outcome.
+      </p>
+
+      <ActionMeasurementBlock action={action} />
+    </div>
+  );
+}
+
+function ActionMeasurementBlock({
+  action,
+}: {
+  action: RenkooAction;
+}) {
+  const [measurement, setMeasurement] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (action.status !== 'DONE') return;
+    setLoading(true);
+    getActionMeasurement(action.id, 28)
+      .then((result) => {
+        if (!cancelled) setMeasurement(result);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [action.id, action.status]);
+
+  if (action.status !== 'DONE') {
+    return (
+      <p className="mt-3 text-[11px] leading-5 text-[#9ca3af]">
+        Measurement starts after this action is completed.
+      </p>
+    );
+  }
+
+  if (loading) {
+    return (
+      <p className="mt-3 text-[11px] leading-5 text-[#9ca3af]">
+        Reading observed measurement…
+      </p>
+    );
+  }
+
+  if (failed || !measurement) {
+    return (
+      <p className="mt-3 text-[11px] leading-5 text-[#9ca3af]">
+        Measurement is currently unavailable.
+      </p>
+    );
+  }
+
+  const changes: any[] =
+    measurement.observedChanges ?? [];
+
+  return (
+    <div className="mt-3 border-t border-[#e5e7eb] pt-3">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">
+        Measurement — observed after action
+      </div>
+      <p className="mt-1 text-xs text-[#111827]">
+        Outcome:{' '}
+        <b>{String(measurement.outcomeState ?? 'UNKNOWN')}</b>
+      </p>
+      <ul className="mt-1.5 space-y-1">
+        {changes.slice(0, 6).map((row: any) => (
+          <li
+            key={String(row.key)}
+            className="text-xs text-[#4b5563]"
+          >
+            · <b>{String(row.label)}</b> {String(row.before)}{' '}
+            → {String(row.after)} ({String(row.outcome)})
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1.5 text-[11px] leading-5 text-[#9ca3af]">
+        {String(measurement.learning ?? '')}
+      </p>
+      {measurement.overlapNote ? (
+        <p className="mt-1 text-[11px] leading-5 text-[#9ca3af]">
+          {String(measurement.overlapNote)}
+        </p>
+      ) : null}
+      <p className="mt-1.5 text-[11px] leading-5">
+        <Link
+          href="/change-intelligence"
+          className="font-semibold text-[#111827] underline"
+        >
+          View change timeline
+        </Link>
+      </p>
+      <ActionVerificationBlock action={action} />
+    </div>
+  );
+}
+
+function ActionVerificationBlock({
+  action,
+}: {
+  action: RenkooAction;
+}) {
+  const [verification, setVerification] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (action.status !== 'DONE') return;
+    setLoading(true);
+    getActionVerification(action.id)
+      .then((result) => {
+        if (!cancelled) setVerification(result);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [action.id, action.status]);
+
+  async function handleVerify() {
+    if (verifying) return;
+    setVerifying(true);
+    setFailed(false);
+    try {
+      const result = await verifyActionLive(action.id);
+      setVerification(result);
+    } catch {
+      setFailed(true);
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  if (action.status !== 'DONE') {
+    return (
+      <p className="mt-3 text-[11px] leading-5 text-[#9ca3af]">
+        Live verification becomes available after this
+        action is marked complete.
+      </p>
+    );
+  }
+
+  if (loading) {
+    return (
+      <p className="mt-3 text-[11px] leading-5 text-[#9ca3af]">
+        Reading verification state…
+      </p>
+    );
+  }
+
+  if (failed || !verification) {
+    return (
+      <p className="mt-3 text-[11px] leading-5 text-[#9ca3af]">
+        Verification state is currently unavailable.
+      </p>
+    );
+  }
+
+  const expected = verification.expectedChange as any;
+
+  return (
+    <div className="mt-3 border-t border-[#e5e7eb] pt-3">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#9ca3af]">
+        Live verification
+      </div>
+      {expected ? (
+        <p className="mt-1 text-xs text-[#111827]">
+          Expected:{' '}
+          <b>{String(expected.targetElement ?? '')}</b>{' '}
+          {String(expected.expectedState ?? '')}
+        </p>
+      ) : (
+        <p className="mt-1 text-xs text-[#4b5563]">
+          This action has no deterministic live-page
+          verification target.
+        </p>
+      )}
+      <p className="mt-1 text-xs text-[#111827]">
+        Status:{' '}
+        <b>{String(verification.verificationStatus)}</b>
+      </p>
+      <p className="mt-1 text-[11px] leading-5 text-[#4b5563]">
+        {String(verification.verificationNote ?? '')}
+      </p>
+      {verification.live ? (
+        <p className="mt-1 break-words text-[11px] leading-5 text-[#4b5563]">
+          Observed:{' '}
+          {String(
+            verification.live.title ??
+              verification.live.url ??
+              '',
+          )}
+        </p>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => void handleVerify()}
+        disabled={verifying}
+        className="mt-2 rounded-lg border border-[#d1d5db] px-3 py-1.5 text-xs font-bold text-[#111827] hover:bg-[#f3f4f6] disabled:opacity-60"
+      >
+        {verifying ? 'Verifying…' : 'Verify live change'}
+      </button>
+      <p className="mt-1 text-[11px] leading-5 text-[#9ca3af]">
+        Explicit verification uses existing crawl quota.
+        RENKOO never modifies your website.
       </p>
     </div>
   );

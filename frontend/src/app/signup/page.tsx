@@ -53,7 +53,8 @@ export default function SignupPage() {
   }, []);
 
   // Already signed in: new accounts start at
-  // onboarding, existing sessions go to the dashboard.
+  // onboarding, existing sessions go to the
+  // Command Center (setup-aware home).
   useEffect(() => {
     if (!isAuthenticated()) {
       return;
@@ -64,7 +65,7 @@ export default function SignupPage() {
     getMe()
       .then(() => {
         if (!cancelled) {
-          router.replace('/dashboard');
+          router.replace('/command-center');
         }
       })
       .catch(() => {
@@ -128,13 +129,12 @@ export default function SignupPage() {
       footer={
         <p className="text-center text-sm text-rk-secondary">
           Already have an account?{' '}
-          <button
-            type="button"
-            onClick={() => router.push('/login')}
+          <Link
+            href="/login"
             className="rk-focusable font-bold text-rk-ink underline decoration-rk-border-strong underline-offset-4 hover:decoration-rk-ink"
           >
             Sign in
-          </button>
+          </Link>
         </p>
       }
     >

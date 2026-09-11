@@ -8,6 +8,18 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SeoAuditService } from './seo-audit.service';
 import { MonitoringService } from '../monitoring/monitoring.service';
+import { CrawlLinkService } from './crawl-link.service';
+import {
+  cleanAnchorText,
+  normalizeCrawlHostname,
+  normalizeCrawlUrl,
+  parseLinkRel,
+  type RawLinkObservation,
+} from './crawl-links';
+import {
+  VERIFICATION_CRAWL_COMPLETED,
+  VERIFICATION_CRAWL_FAILED,
+} from './crawl-status';
 
 import {
   chromium,
@@ -110,7 +122,157 @@ export class CrawlService {
     private readonly prisma: PrismaService,
     private readonly seoAuditService: SeoAuditService,
     private readonly monitoringService: MonitoringService,
+    private readonly crawlLinkService: CrawlLinkService,
   ) {}
+
+  /*
+   * =========================================================
+    * VERIFY SINGLE PAGE (Phase 28) — bounded on-demand
+    * observation for execution verification. Reuses the
+    * same browser flags, timeout, normalization and
+    * extraction as full crawls via crawlSinglePage.
+    * Persists as a one-page Crawl row (honest history,
+    * quota-consumed by the caller). Never full-site.
+    * Phase 41 (Group G): terminal status is
+    * COMPLETED_VERIFICATION / FAILED_VERIFICATION so
+    * verification rows can never become the
+    * authoritative latest site crawl (every authority
+    * query filters status COMPLETED exactly).
+    * The URL must belong to the website host — cross-org
+    * URLs are rejected before any fetch.
+    * =========================================================
+    */
+
+  async verifyPageUrl(
+    organizationId: string,
+    websiteId: string,
+    url: string,
+  ): Promise<{
+    crawlId: string;
+    page: Record<string, unknown> | null;
+    crawlAt: string;
+  }> {
+    let browser: Browser | undefined;
+
+    const website =
+      await this.prisma.website.findFirst({
+        where: {
+          id: websiteId,
+          organizationId,
+        },
+      });
+    if (!website) {
+      throw new BadRequestException(
+        'Website not found',
+      );
+    }
+    const websiteHost = this.normalizeHostname(
+      new URL(
+        this.normalizeUrl(website.url) ??
+          website.url,
+      ).hostname,
+    );
+    const target = this.normalizeUrl(url);
+    if (!target) {
+      throw new BadRequestException(
+        'Invalid URL for verification',
+      );
+    }
+    let targetHost = '';
+    try {
+      targetHost = this.normalizeHostname(
+        new URL(target).hostname,
+      );
+    } catch {
+      throw new BadRequestException(
+        'Invalid URL for verification',
+      );
+    }
+    if (targetHost !== websiteHost) {
+      throw new BadRequestException(
+        'Verification URL must belong to the website',
+      );
+    }
+
+    const crawl = await this.prisma.crawl.create({
+      data: {
+        websiteId,
+        status: 'RUNNING',
+      },
+    });
+
+    try {
+      try {
+        browser = await chromium.launch({
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+          ],
+        });
+      } catch (launchError) {
+        const message =
+          launchError instanceof Error
+            ? launchError.message
+            : 'Unknown error';
+        throw new BadRequestException(
+          `Live verification could not start: browser launch failed (${message}).`,
+        );
+      }
+
+      const context = await browser.newContext({
+        userAgent:
+          'Mozilla/5.0 (compatible; RENKOOBot/1.0; +https://renkoo.ai)',
+      });
+      context.setDefaultNavigationTimeout(
+        this.PAGE_TIMEOUT,
+      );
+      const page = await context.newPage();
+      await this.crawlSinglePage(
+        page,
+        target,
+        websiteHost,
+        crawl.id,
+        { organizationId, websiteId },
+      );
+      await page.close().catch(() => null);
+      await context.close().catch(() => null);
+
+      await this.prisma.crawl.update({
+        where: { id: crawl.id },
+        data: {
+          status: VERIFICATION_CRAWL_COMPLETED,
+          completedAt: new Date(),
+        },
+      });
+
+      const saved =
+        await this.prisma.crawlPage.findFirst({
+          where: { crawlId: crawl.id },
+        });
+
+      return {
+        crawlId: crawl.id,
+        page: (saved ?? null) as Record<
+          string,
+          unknown
+        > | null,
+        crawlAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      await this.prisma.crawl
+        .update({
+          where: { id: crawl.id },
+          data: { status: VERIFICATION_CRAWL_FAILED },
+        })
+        .catch(() => null);
+      throw error;
+    } finally {
+      await browser?.close().catch(() => null);
+    }
+  }
 
   /*
    * =========================================================
@@ -547,6 +709,10 @@ export class CrawlService {
               currentUrl,
               websiteHost,
               crawl.id,
+              {
+                organizationId,
+                websiteId,
+              },
             );
 
           return {
@@ -889,6 +1055,10 @@ export class CrawlService {
     url: string,
     websiteHost: string,
     crawlId: string,
+    linkCtx: {
+      organizationId: string;
+      websiteId: string;
+    },
   ) {
     const startedAt =
       Date.now();
@@ -1091,24 +1261,43 @@ export class CrawlService {
      * =======================================================
      */
 
-    const allHrefs =
+    /*
+     * Phase 2B: collect href + anchor + rel per element.
+     * Counting and frontier semantics below are
+     * unchanged; edge observations are captured
+     * alongside for the persisted link graph.
+     */
+
+    const linkNodes =
       $('a')
-        .map(
-          (_, el) =>
-            $(el).attr('href'),
-        )
+        .map((_, el) => ({
+          href:
+            $(el).attr('href') ?? '',
+          anchor: cleanAnchorText(
+            $(el).text(),
+          ),
+          rel:
+            $(el).attr('rel') ??
+            '',
+        }))
         .get()
-        .filter(Boolean);
+        .filter(
+          (node) => !!node.href,
+        );
 
     const internalUrls: string[] =
+      [];
+
+    const linkEdges: RawLinkObservation[] =
       [];
 
     let internalLinks = 0;
     let externalLinks = 0;
 
     for (
-      const href of allHrefs
+      const node of linkNodes
     ) {
+      const href = node.href;
       try {
         const link =
           new URL(
@@ -1154,6 +1343,33 @@ export class CrawlService {
             internalUrls.push(
               normalized,
             );
+
+            /*
+             * Observed edge for the link graph.
+             * Self-links (logo/home, fragment-only
+             * hrefs resolving to the page itself)
+             * stay counted above but are NOT
+             * graphed — they carry no pass-through
+             * navigational value and would swamp
+             * inbound counts with self-references.
+             */
+
+            const flags =
+              parseLinkRel(
+                node.rel,
+              );
+
+            linkEdges.push({
+              sourceUrl: finalUrl,
+              targetUrl: normalized,
+              anchorText:
+                node.anchor,
+              nofollow:
+                flags.nofollow,
+              sponsored:
+                flags.sponsored,
+              ugc: flags.ugc,
+            });
           }
         } else {
           externalLinks++;
@@ -1519,6 +1735,40 @@ export class CrawlService {
       crawlPage,
     );
 
+    /*
+     * =======================================================
+     * LINK GRAPH (Phase 2B)
+     * =======================================================
+     *
+     * Batched per page: one createMany for the page's
+     * deduplicated edges — never one insert per link.
+     * Edge persistence must never fail the page: audit
+     * evidence above already stands on its own.
+     */
+
+    try {
+      await this.crawlLinkService.persistPageEdges(
+        {
+          organizationId:
+            linkCtx.organizationId,
+          websiteId:
+            linkCtx.websiteId,
+          crawlId,
+          sourceUrl: finalUrl,
+          edges: linkEdges,
+        },
+      );
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[RENKOO] Crawl ${crawlId} link edges skipped for ${finalUrl}: ${
+          error instanceof Error
+            ? error.message
+            : 'Unknown error'
+        }`,
+      );
+    }
+
     return {
       crawlPage,
 
@@ -1701,12 +1951,16 @@ export class CrawlService {
    * website for crawl/internal-link detection.
    */
 
+  /*
+   * Hostname/URL normalization lives in crawl-links.ts
+   * (single source of truth shared with link-graph
+   * edges). These wrappers preserve the long-standing
+   * call sites and behavior verbatim.
+   */
   private normalizeHostname(
     hostname: string,
   ): string {
-    return hostname
-      .toLowerCase()
-      .replace(/^www\./, '');
+    return normalizeCrawlHostname(hostname);
   }
 
   /*
@@ -1728,88 +1982,7 @@ export class CrawlService {
   private normalizeUrl(
     input: string,
   ): string {
-    try {
-      const url =
-        new URL(input);
-
-      if (
-        url.protocol !==
-          'http:' &&
-        url.protocol !==
-          'https:'
-      ) {
-        return '';
-      }
-
-      url.hostname =
-        this.normalizeHostname(
-          url.hostname,
-        );
-
-      url.hash = '';
-
-      const trackingParams = [
-        'utm_source',
-        'utm_medium',
-        'utm_campaign',
-        'utm_term',
-        'utm_content',
-        'gclid',
-        'fbclid',
-        'msclkid',
-        'dclid',
-        'ref',
-        'referrer',
-      ];
-
-      for (
-        const param of
-        trackingParams
-      ) {
-        url.searchParams.delete(
-          param,
-        );
-      }
-
-      /*
-       * Current crawler intentionally
-       * normalizes away remaining
-       * query parameters.
-       */
-
-      url.search = '';
-
-      if (
-        url.pathname.length > 1 &&
-        url.pathname.endsWith('/')
-      ) {
-        url.pathname =
-          url.pathname.slice(
-            0,
-            -1,
-          );
-      }
-
-      if (
-        url.protocol ===
-          'http:' &&
-        url.port === '80'
-      ) {
-        url.port = '';
-      }
-
-      if (
-        url.protocol ===
-          'https:' &&
-        url.port === '443'
-      ) {
-        url.port = '';
-      }
-
-      return url.toString();
-    } catch {
-      return '';
-    }
+    return normalizeCrawlUrl(input);
   }
 
   /*

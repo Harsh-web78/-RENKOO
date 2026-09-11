@@ -31,15 +31,22 @@ import {
   Brain,
   Briefcase,
   CheckCircle2,
+  Compass,
   Cpu,
   CreditCard,
+  Crosshair,
   FileText,
+  Flag,
   Globe2,
   Hash,
+  HelpCircle,
   LayoutDashboard,
   Link2,
+  ListChecks,
   MapPin,
   Newspaper,
+  Play,
+  Route,
   Search,
   Settings,
   ShieldCheck,
@@ -91,6 +98,35 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Command',
     items: [
+      /* Phase 41 — the growth loop is the primary
+       * product destination. Command Center first,
+       * then plan → queue → setup → execution.
+       * /dashboard remains below as a drilldown. */
+      {
+        name: 'Command Center',
+        href: '/command-center',
+        Icon: Compass,
+      },
+      {
+        name: 'Growth Plan',
+        href: '/growth-plan',
+        Icon: Flag,
+      },
+      {
+        name: 'Work Queue',
+        href: '/growth-work',
+        Icon: ListChecks,
+      },
+      {
+        name: 'First Value',
+        href: '/first-value',
+        Icon: Sparkles,
+      },
+      {
+        name: 'Execution',
+        href: '/execution',
+        Icon: Play,
+      },
       {
         name: 'Dashboard',
         href: '/dashboard',
@@ -116,6 +152,21 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Insights',
     items: [
+      {
+        name: 'Search Baseline',
+        href: '/search-baseline',
+        Icon: Crosshair,
+      },
+      {
+        name: 'Why Not #1',
+        href: '/why-not-number-one',
+        Icon: HelpCircle,
+      },
+      {
+        name: 'Growth Roadmap',
+        href: '/roadmap',
+        Icon: Route,
+      },
       {
         name: 'Search Visibility',
         href: '/search-visibility',

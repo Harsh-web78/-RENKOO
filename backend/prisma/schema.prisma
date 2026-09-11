@@ -191,10 +191,53 @@ model Crawl {
   createdAt   DateTime    @default(now())
   website     Website     @relation(fields: [websiteId], references: [id], onDelete: Cascade)
   pages       CrawlPage[]
+  links       CrawlLink[]
 
   @@index([websiteId])
   @@index([createdAt])
   @@index([websiteId, status])
+}
+
+// RENKOO 6.0 Phase 2B — observed internal-link graph.
+//
+// One row per distinct (crawl, source, target, anchor,
+// rel-attribute) observation. Edges are OBSERVED crawl
+// facts: anchorText is stored as found (bounded), never
+// recommended. organizationId/websiteId are denormalized
+// so link reads stay tenant-safe without joins (CrawlPage
+// carries no direct tenant columns; links are queried far
+// more often per access pattern). No scores, no authority,
+// no traffic — measurement lives in later phases.
+model CrawlLink {
+  id             String   @id @default(cuid())
+  organizationId String
+  websiteId      String
+  crawlId        String
+  sourceUrl      String
+  targetUrl      String
+  anchorText     String   @default("")
+  anchorKey      String   @default("")
+  linkType       String   @default("INTERNAL")
+  isInternal     Boolean  @default(true)
+  nofollow       Boolean  @default(false)
+  sponsored      Boolean  @default(false)
+  ugc            Boolean  @default(false)
+  occurrenceCount Int     @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  crawl          Crawl    @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+
+  // Dedupe backstop: in-memory page dedupe + single
+  // processing per URL make conflicts ~impossible;
+  // skipDuplicates on write absorbs the residual race.
+  @@unique([crawlId, sourceUrl, targetUrl, anchorKey, nofollow, sponsored, ugc])
+  // Tenant crawl snapshot scoping (latest-crawl reads).
+  @@index([organizationId, websiteId, crawlId])
+  // Outbound edges per crawl (source page link lists).
+  @@index([crawlId, sourceUrl])
+  // Inbound edges per crawl (orphan foundation: pages
+  // with zero inbound in a crawl snapshot).
+  @@index([crawlId, targetUrl])
 }
 
 model CrawlPage {
@@ -331,12 +374,27 @@ model AiVisibilityCheck {
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
   Website         Website                 @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  /*
+   * Phase 7 — monitoring lineage (all nullable,
+   * append-only history never rewritten). runId links
+   * a batch observation to its AiMonitorRun; the
+   * idempotencyKey (website|prompt|surface|country|
+   * language|window) makes repeat windows safe to
+   * retry without duplicate rows or double charges.
+   */
+  runId           String?
+  idempotencyKey  String?                 @unique
+  country         String?
+  language        String?
+  run             AiMonitorRun?           @relation(fields: [runId], references: [id], onDelete: SetNull)
 
   @@index([checkedAt])
   @@index([platform])
   @@index([status])
   @@index([websiteId])
   @@index([websiteId, platform])
+  @@index([runId])
+  @@index([websiteId, query, platform, checkedAt])
 }
 
 model AiVisibilityQuery {

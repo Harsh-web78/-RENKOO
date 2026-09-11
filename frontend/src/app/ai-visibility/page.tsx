@@ -22,6 +22,35 @@ import {
   suggestAiVisibilityQueries,
   recordAiVisibilityCheck,
   runAiVisibilityCheck,
+  generateAiPromptSet,
+  getAiComparison,
+  getAiDiagnoses,
+  getAiRoadmapCandidates,
+  getAiPromptHistory,
+  getAiCommandCenter,
+  getAiPromptLab,
+  getAiPromptDetail,
+  createAiOpportunity,
+  getAiMonitoringStatus,
+  listAiMonitorSchedules,
+  createAiMonitorSchedule,
+  updateAiMonitorSchedule,
+  estimateAiMonitorRun,
+  requestAiMonitorRun,
+  getAiMonitorChanges,
+  getAiMonitorHistory,
+  getAiMonitorPromptHistory,
+  getAiMonitoringHealth,
+  getOfficialSummary,
+  syncOfficialGoogle,
+  getAgentActivity,
+  previewAgentImport,
+  confirmAgentImport,
+  getAgentCoverage,
+  getAgentDetail,
+  getNextBestAction,
+  getRankOverview,
+  getRankChanges,
   createActionFromRecommendation,
   isLimitError,
   limitDetails,
@@ -49,6 +78,7 @@ import {
   ErrorState,
   EmptyState,
   LimitReachedState,
+  InsufficientHistoryState,
   InsightBlock,
   EvidenceList,
   ConfidenceIndicator,
@@ -140,26 +170,147 @@ export default function AiVisibilityPage() {
   const [actionDone, setActionDone] = useState<
     Record<string, boolean>
   >({});
+  /* Phase 6 — AI Search Intelligence 1.0 (additive). */
+  const [comparison, setComparison] = useState<any>(null);
+  const [diagnosesData, setDiagnosesData] =
+    useState<any>(null);
+  const [candidates, setCandidates] = useState<any[]>(
+    [],
+  );
+  const [trends, setTrends] = useState<any[]>([]);
+  const [historyDays, setHistoryDays] = useState(30);
+  const [generating, setGenerating] = useState(false);
+  const [generatedPrompts, setGeneratedPrompts] =
+    useState<any[]>([]);
+  const [genMsg, setGenMsg] = useState('');
+  const [trackingPrompt, setTrackingPrompt] = useState<
+    Record<string, boolean>
+  >({});
+  /* Phase 6 — AI Search OS 1.0 Command Center (additive). */
+  const [commandCenter, setCommandCenter] =
+    useState<any>(null);
+  const [lab, setLab] = useState<any>(null);
+  const [labQuery, setLabQuery] = useState('');
+  const [labGroup, setLabGroup] = useState('ALL');
+  const [promptDetail, setPromptDetail] =
+    useState<any>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [oppBusy, setOppBusy] = useState<
+    Record<string, boolean>
+  >({});
+  const [oppMsg, setOppMsg] = useState('');
+  /* Phase 7 — AI Prompt Monitoring 1.0 (additive). */
+  const [monitorStatus, setMonitorStatus] =
+    useState<any>(null);
+  const [monitorChanges, setMonitorChanges] =
+    useState<any>(null);
+  const [monitorHistory, setMonitorHistory] =
+    useState<any>(null);
+  const [monitorHistoryDays, setMonitorHistoryDays] =
+    useState<7 | 30 | 90>(30);
+  const [schedules, setSchedules] = useState<any[]>([]);
+  const [setupCadence, setSetupCadence] = useState('WEEKLY');
+  const [setupSurfaces, setSetupSurfaces] = useState(
+    'GEMINI',
+  );
+  const [setupMsg, setSetupMsg] = useState('');
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [runBusy, setRunBusy] = useState(false);
+  const [monitorRunMsg, setMonitorRunMsg] = useState('');
+  const [promptTimeline, setPromptTimeline] =
+    useState<any>(null);
+  /* Phase 8A — production health (additive). */
+  const [monitorHealth, setMonitorHealth] =
+    useState<any>(null);
+  /* Phase 8C — official data (additive). */
+  const [official, setOfficial] = useState<any>(null);
+  const [officialBusy, setOfficialBusy] = useState(false);
+  const [officialMsg, setOfficialMsg] = useState('');
+  /* Phase 8D — agent analytics (additive). */
+  const [agentActivity, setAgentActivity] =
+    useState<any>(null);
+  const [agentCoverage, setAgentCoverage] =
+    useState<any>(null);
+  const [agentDetail, setAgentDetail] =
+    useState<any>(null);
+  const [agentCsv, setAgentCsv] = useState('');
+  const [agentPreview, setAgentPreview] =
+    useState<any>(null);
+  const [agentBusy, setAgentBusy] = useState(false);
+  const [agentMsg, setAgentMsg] = useState('');
+  /* Phase 8E — next best action hero (additive). */
+  const [nextBest, setNextBest] = useState<any>(null);
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
+  /* Phase 11 — rank movement (additive). */
+  const [rankOverview, setRankOverview] =
+    useState<any>(null);
 
   const loadAll = useCallback(async (id: string) => {
     if (!id) return;
     try {
       setError('');
-      const [d, h, intelRes, prov] = await Promise.all([
-        getAiVisibilityDashboard(id).catch(() => null),
-        getAiVisibilityHistory(id).catch(() => null),
-        getAiVisibilityIntelligence(id).catch(() => null),
-        getAiProviderStates().catch(() => null),
-      ]);
+      const [d, h, intelRes, prov, comp, diag, cand, os, labRes, mStatus, mChanges, mHist, sched, mHealth, off, agAct, agCov, nb, rk] =
+        await Promise.all([
+          getAiVisibilityDashboard(id).catch(() => null),
+          getAiVisibilityHistory(id).catch(() => null),
+          getAiVisibilityIntelligence(id).catch(
+            () => null,
+          ),
+          getAiProviderStates().catch(() => null),
+          getAiComparison(id).catch(() => null),
+          getAiDiagnoses(id).catch(() => null),
+          getAiRoadmapCandidates(id).catch(() => null),
+          getAiCommandCenter(id).catch(() => null),
+          getAiPromptLab(id).catch(() => null),
+          getAiMonitoringStatus(id).catch(() => null),
+          getAiMonitorChanges(id).catch(() => null),
+          getAiMonitorHistory(id, 30).catch(() => null),
+          listAiMonitorSchedules(id).catch(() => []),
+          getAiMonitoringHealth(id).catch(() => null),
+          getOfficialSummary(id).catch(() => null),
+          getAgentActivity(id).catch(() => null),
+          getAgentCoverage(id).catch(() => null),
+          getNextBestAction(id).catch(() => null),
+          getRankOverview(id).catch(() => null),
+        ]);
       setDashboard(d);
       setHistory(h);
       setIntel(intelRes);
+      setComparison(comp);
+      setDiagnosesData(diag);
+      setCommandCenter(os);
+      setLab(labRes);
+      setMonitorStatus(mStatus);
+      setMonitorChanges(mChanges);
+      setMonitorHistory(mHist);
+      setMonitorHealth(mHealth);
+      setOfficial(off);
+      setAgentActivity(agAct);
+      setAgentCoverage(agCov);
+      setNextBest(nb);
+      setRankOverview(rk);
+      setSchedules(
+        Array.isArray(sched) ? sched : [],
+      );
+      setCandidates(
+        Array.isArray((cand as any)?.candidates)
+          ? (cand as any).candidates
+          : [],
+      );
       const plist = Array.isArray(
         (prov as any)?.providers,
       )
         ? (prov as any).providers
         : [];
       setProviders(plist);
+      const t = await getAiPromptHistory(id, 30).catch(
+        () => null,
+      );
+      setTrends(
+        Array.isArray((t as any)?.trends)
+          ? (t as any).trends
+          : [],
+      );
     } catch (err: any) {
       setError(
         err?.message ||
@@ -262,6 +413,37 @@ export default function AiVisibilityPage() {
       [];
     return Array.isArray(src) ? src : [];
   }, [intel, dashboard]);
+
+  /* Phase 6 memos — derived from existing intelligence
+     plus the additive comparison/diagnosis endpoints. */
+  const shareOfVoice: any = useMemo(
+    () => (intel as any)?.shareOfVoice || null,
+    [intel],
+  );
+
+  const competitorTracked: any[] = useMemo(() => {
+    const list =
+      (intel as any)?.competitors?.tracked || [];
+    return Array.isArray(list) ? list : [];
+  }, [intel]);
+
+  const competitorUnlisted: any[] = useMemo(() => {
+    const list =
+      (intel as any)?.competitors?.unlisted || [];
+    return Array.isArray(list) ? list : [];
+  }, [intel]);
+
+  const matrixRows: any[] = useMemo(() => {
+    const list =
+      (comparison as any)?.comparisons || [];
+    return Array.isArray(list) ? list : [];
+  }, [comparison]);
+
+  const diagnoses: any[] = useMemo(() => {
+    const list =
+      (diagnosesData as any)?.diagnoses || [];
+    return Array.isArray(list) ? list : [];
+  }, [diagnosesData]);
 
   const trendPoints: TrendPoint[] = useMemo(() => {
     const h = history as any;
@@ -398,6 +580,78 @@ export default function AiVisibilityPage() {
     } finally {
       setSuggesting(false);
     }
+  }
+
+  async function handleGeneratePromptSet() {
+    if (!websiteId || generating) return;
+    try {
+      setGenerating(true);
+      setGenMsg('');
+      const res = await generateAiPromptSet({
+        keywords: queries.slice(0, 40).map((q: any) => ({
+          keyword: String(q.query || q.text || ''),
+          intent: q.category || null,
+          topic: q.topic || null,
+          sourceUrl: null,
+          country: 'US',
+          language: 'en',
+        })),
+        maxPrompts: 60,
+        defaultCountry: 'US',
+        defaultLanguage: 'en',
+      });
+      const list = Array.isArray(
+        (res as any)?.prompts,
+      )
+        ? (res as any).prompts
+        : [];
+      setGeneratedPrompts(list);
+      setGenMsg(
+        list.length > 0
+          ? `${list.length} evidence-based prompts generated. Track the ones that matter.`
+          : 'No prompts could be generated from current evidence.',
+      );
+    } catch (err: any) {
+      setGenMsg(
+        err?.message || 'Prompt generation failed.',
+      );
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleTrackPrompt(p: any) {
+    const key = String(p.text || '');
+    if (!key || !websiteId || trackingPrompt[key]) return;
+    try {
+      setTrackingPrompt((s) => ({ ...s, [key]: true }));
+      await createAiVisibilityQuery({
+        websiteId,
+        query: key,
+        category: String(p.intent || 'INFORMATIONAL'),
+      });
+      await loadAll(websiteId);
+    } catch (err: any) {
+      setGenMsg(
+        err?.message || 'Could not track prompt.',
+      );
+    } finally {
+      setTrackingPrompt((s) => ({ ...s, [key]: false }));
+    }
+  }
+
+  async function handleHistoryDays(days: number) {
+    if (!websiteId) return;
+    setHistoryDays(days);
+    const t = await getAiPromptHistory(
+      websiteId,
+      days,
+    ).catch(() => null);
+    setTrends(
+      Array.isArray((t as any)?.trends)
+        ? (t as any).trends
+        : [],
+    );
   }
 
   async function handleRecord() {
@@ -613,6 +867,1172 @@ export default function AiVisibilityPage() {
         </div>
       ) : (
         <div className="mt-6 space-y-6">
+          {/* Phase 6 — AI Search Command Center hierarchy. */}
+          <Panel
+            eyebrow="Command center"
+            title="How often is your business appearing in AI answers?"
+            description="Evidence-backed visibility across tracked prompts — biggest opportunity first, then citation, coverage, competitors, sources, diagnosis and actions."
+          >
+            {!commandCenter ? (
+              <EmptyState
+                title="Command Center unavailable"
+                description="No composed AI-search state yet. Track prompts and record observations to unlock it."
+              />
+            ) : (
+              <div className="space-y-4">
+                {commandCenter.biggestOpportunity ? (
+                  <RecommendationCallout
+                    title={`Do this first — ${commandCenter.biggestOpportunity.prompt}`}
+                    text={`${commandCenter.biggestOpportunity.why} Priority: ${commandCenter.biggestOpportunity.priority}.`}
+                    actionLabel="Open roadmap"
+                    actionHref="/roadmap"
+                  />
+                ) : (
+                  <EmptyState
+                    title="No evidence-backed first move yet"
+                    description="RENKOO does not have enough observable answers to recommend a single first move."
+                  />
+                )}
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <Metric
+                    label="Mention rate"
+                    value={
+                      commandCenter.metrics?.mentionRate ===
+                      null
+                        ? 'Insufficient data'
+                        : fmtPct(
+                            commandCenter.metrics
+                              ?.mentionRate,
+                          )
+                    }
+                    detail="Mentions / observable answers"
+                  />
+                  <Metric
+                    label="Citation rate"
+                    value={
+                      commandCenter.metrics?.citationRate ===
+                      null
+                        ? 'Insufficient data'
+                        : fmtPct(
+                            commandCenter.metrics
+                              ?.citationRate,
+                          )
+                    }
+                    detail="Citations / observable answers"
+                  />
+                  <Metric
+                    label="Visibility index"
+                    value={
+                      commandCenter.index?.score === null
+                        ? '—'
+                        : String(
+                            commandCenter.index?.score,
+                          )
+                    }
+                    detail={String(
+                      commandCenter.index?.band ??
+                        'INSUFFICIENT_DATA',
+                    )}
+                  />
+                  <Metric
+                    label="Observable prompts"
+                    value={fmtInt(
+                      commandCenter.metrics
+                        ?.promptsObservable ?? 0,
+                    )}
+                    detail={`Tracked ${fmtInt(commandCenter.metrics?.promptsTracked ?? 0)}`}
+                  />
+                </div>
+                {Array.isArray(
+                  commandCenter.radar,
+                ) &&
+                commandCenter.radar.length > 0 ? (
+                  <div>
+                    <h3 className="rk-h3">
+                      Competitor radar
+                    </h3>
+                    <DataTable
+                      caption="Competitors observed in AI answers"
+                      columns={[
+                        {
+                          key: 'competitor',
+                          label: 'Competitor',
+                        },
+                        {
+                          key: 'promptsAppeared',
+                          label: 'Appeared',
+                        },
+                        {
+                          key: 'promptsCited',
+                          label: 'Cited',
+                        },
+                      ]}
+                      rows={commandCenter.radar.slice(
+                        0,
+                        5,
+                      )}
+                      keyOf={(row: any, index: number) =>
+                        String(
+                          row?.competitor ?? index,
+                        )
+                      }
+                      emptyTitle="No competitors observed"
+                      emptyDescription="Competitors appear here once observations record them."
+                    />
+                  </div>
+                ) : null}
+                {Array.isArray(
+                  commandCenter.opportunities,
+                ) &&
+                commandCenter.opportunities.length > 0 ? (
+                  <div className="space-y-2">
+                    <h3 className="rk-h3">
+                      Recommended actions
+                    </h3>
+                    {commandCenter.opportunities
+                      .slice(0, 3)
+                      .map((opp: any) => (
+                        <NextAction
+                          key={opp.kind}
+                          label={opp.title}
+                          detail={`${opp.why} Measure: ${opp.measurement}`}
+                          href="/roadmap"
+                        />
+                      ))}
+                    {oppMsg ? (
+                      <p className="rk-body">{oppMsg}</p>
+                    ) : null}
+                  </div>
+                ) : null}
+                {Array.isArray(
+                  commandCenter.unavailable,
+                ) &&
+                commandCenter.unavailable.length > 0 ? (
+                  <EvidenceList
+                    items={commandCenter.unavailable.map(
+                      (u: any) => ({
+                        text: `${u.reason} ${u.unlocks}`,
+                        source: 'Gap',
+                      }),
+                    )}
+                  />
+                ) : null}
+              </div>
+            )}
+          </Panel>
+
+          {/* Phase 8E — Next Best Action hero (fused evidence). */}
+          <Panel
+            eyebrow="Next best action"
+            title="Your biggest growth opportunity"
+            description="One decision fused from Search + AI + technical evidence. No scores — existing priorities only."
+          >
+            {!nextBest?.action ? (
+              <EmptyState
+                title="No evidence-backed next move yet"
+                description={String(
+                  nextBest?.reason ??
+                    'Generate strategy opportunities or track AI prompts to unlock the next move.',
+                )}
+              />
+            ) : (
+              <div className="space-y-4">
+                <RecommendationCallout
+                  title={`DO: ${nextBest.action.title}`}
+                  text={`WHY: ${nextBest.why}`}
+                  actionLabel="Why this recommendation?"
+                  onAction={() =>
+                    setEvidenceOpen(true)
+                  }
+                />
+                <div className="flex flex-wrap gap-2">
+                  {(nextBest.evidence ?? [])
+                    .slice(0, 6)
+                    .map(
+                      (
+                        item: any,
+                        index: number,
+                      ) => (
+                        <StatusChip
+                          key={index}
+                          status={`${item.source} ${item.state}`}
+                        />
+                      ),
+                    )}
+                </div>
+                <NextAction
+                  label={`Measure: ${nextBest.action.measurement}`}
+                  detail={`Priority ${nextBest.action.priority} · ${nextBest.traceability?.note ?? ''}`}
+                  href="/roadmap"
+                />
+              </div>
+            )}
+          </Panel>
+
+          {/* Phase 11 — ranking movement summary. */}
+          {rankOverview &&
+          (rankOverview.tracked ?? 0) > 0 ? (
+            <Panel
+              eyebrow="Rank movement"
+              title="Google ranking movement"
+              description="Persistent observations from labeled sources. GSC averages are VERIFIED window means — never exact ranks."
+            >
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <Metric
+                  label="Tracked"
+                  value={fmtInt(
+                    rankOverview.tracked ?? 0,
+                  )}
+                  detail="keywords with history"
+                />
+                <Metric
+                  label="Gaining"
+                  value={fmtInt(
+                    rankOverview.gaining ?? 0,
+                  )}
+                  detail="observed improvement"
+                />
+                <Metric
+                  label="Losing"
+                  value={fmtInt(
+                    rankOverview.losing ?? 0,
+                  )}
+                  detail="observed decline"
+                />
+                <Metric
+                  label="Top 10"
+                  value={fmtInt(
+                    rankOverview.top10 ?? 0,
+                  )}
+                  detail="currently top-10"
+                />
+              </div>
+              {Array.isArray(
+                rankOverview.keywords,
+              ) &&
+              rankOverview.keywords.length > 0 ? (
+                <div className="mt-3">
+                  <EvidenceList
+                    items={rankOverview.keywords
+                      .slice(0, 5)
+                      .map((row: any) => ({
+                        text: `“${row.keyword}” ${row.current === null ? 'not observed' : `#${row.current}`} ${row.change !== null && row.change !== 0 ? `(${row.change > 0 ? '+' : ''}${row.change})` : ''} [${row.source}]`,
+                        source: row.movement,
+                      }))}
+                  />
+                </div>
+              ) : null}
+              <div className="mt-3">
+                <NextAction
+                  label="Open rank tracking"
+                  detail="Positions, changes and ranking URLs live under Keywords."
+                  href="/keywords"
+                />
+              </div>
+            </Panel>
+          ) : null}
+
+          <Panel
+            eyebrow="Monitoring"
+            title="What changed since your last run?"
+            description="Continuous prompt monitoring with append-only history — baseline first, never interpolated, never invented."
+          >
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <Metric
+                  label="Monitoring"
+                  value={String(
+                    monitorStatus?.status ??
+                      'NOT_CONFIGURED',
+                  )}
+                  detail={
+                    monitorStatus?.nextRunAt
+                      ? `Next run ${fmtDate(monitorStatus.nextRunAt)}`
+                      : 'No schedule yet'
+                  }
+                />
+                <Metric
+                  label="Last run"
+                  value={String(
+                    monitorStatus?.lastRun?.status ??
+                      '—',
+                  )}
+                  detail={
+                    monitorStatus?.lastRun?.completedAt
+                      ? `Finished ${fmtDate(monitorStatus.lastRun.completedAt)}`
+                      : 'No runs yet'
+                  }
+                />
+                <Metric
+                  label="Citations gained / lost"
+                  value={
+                    monitorChanges?.summary
+                      ? `${fmtInt(monitorChanges.summary.citationsGained)} / ${fmtInt(monitorChanges.summary.citationsLost)}`
+                      : '—'
+                  }
+                  detail="Latest vs previous observations"
+                />
+                <Metric
+                  label="Credit used (last run)"
+                  value={fmtInt(
+                    monitorStatus?.lastRun?.creditUsed ??
+                      0,
+                  )}
+                  detail="Successful runs only — failures free"
+                />
+              </div>
+              {monitorHealth ? (
+                <div className="space-y-2">
+                  <p className="rk-body">
+                    {monitorHealth.lastSuccessfulRun
+                      ? `Last successful run ${fmtDate(monitorHealth.lastSuccessfulRun.completedAt)}.`
+                      : 'No successful run yet.'}{' '}
+                    {monitorHealth.consecutiveFailures >
+                    0
+                      ? `${monitorHealth.consecutiveFailures} consecutive failure(s) — check the last run reason.`
+                      : 'No failure streak.'}{' '}
+                    {monitorHealth.staleRuns > 0
+                      ? `${monitorHealth.staleRuns} stale run(s) recovered as FAILED — retry safely, completed work is kept.`
+                      : 'No stale runs.'}
+                  </p>
+                  {monitorHealth.credits?.blocked ? (
+                    <ErrorState
+                      title="Credits blocked"
+                      description={String(
+                        monitorHealth.credits
+                          ?.reason ??
+                          'Allowance exhausted.',
+                      )}
+                      onRetry={() =>
+                        void handleRefresh()
+                      }
+                    />
+                  ) : null}
+                  {monitorHealth.lastRun &&
+                  (monitorHealth.lastRun.status ===
+                    'FAILED' ||
+                    monitorHealth.lastRun.status ===
+                      'PARTIAL') ? (
+                    <p className="rk-body">
+                      Current run state:{' '}
+                      {monitorHealth.lastRun.status}.
+                      Partial runs keep successful
+                      observations — only failed work
+                      retries.
+                    </p>
+                  ) : null}
+                  {monitorHealth.currentRunning ? (
+                    <p className="rk-body">
+                      Running — last heartbeat{' '}
+                      {monitorHealth.currentRunning
+                        .heartbeatAgeMs === null
+                        ? 'just now'
+                        : `${Math.max(0, Math.round(monitorHealth.currentRunning.heartbeatAgeMs / 1000))}s ago`}
+                      . Long runs keep beating; only
+                      silent workers are recovered.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+              {monitorChanges?.baseline ? (
+                <EmptyState
+                  title="Baseline established"
+                  description={monitorChanges.baseline}
+                />
+              ) : monitorChanges?.summary ? (
+                <div className="space-y-2">
+                  <p className="rk-body">
+                    {monitorChanges.summary.headline}
+                  </p>
+                  {monitorChanges.summary.biggestWin ? (
+                    <NextAction
+                      label={`Biggest win — ${monitorChanges.summary.biggestWin.prompt.slice(0, 70)}`}
+                      detail={`${monitorChanges.summary.biggestWin.primary} on ${monitorChanges.summary.biggestWin.surface}`}
+                      href="/roadmap"
+                    />
+                  ) : null}
+                  {monitorChanges.summary.biggestLoss ? (
+                    <NextAction
+                      label={`Biggest loss — ${monitorChanges.summary.biggestLoss.prompt.slice(0, 70)}`}
+                      detail={`${monitorChanges.summary.biggestLoss.primary} on ${monitorChanges.summary.biggestLoss.surface}`}
+                      href="/roadmap"
+                    />
+                  ) : null}
+                </div>
+              ) : (
+                <EmptyState
+                  title="No change data yet"
+                  description="Run monitoring to establish the baseline."
+                />
+              )}
+              {Array.isArray(
+                monitorHistory?.trend,
+              ) &&
+              monitorHistory.trend.length > 0 ? (
+                <div>
+                  <h3 className="rk-h3">
+                    Mention & citation trend
+                  </h3>
+                  <TrendChart
+                    state="ready"
+                    points={monitorHistory.trend.map(
+                      (b: any) => ({
+                        date: b.day,
+                        value: b.mentions,
+                      }),
+                    )}
+                    summary={`${monitorHistory.observations} observations in window. Missing days remain missing.`}
+                    formatValue={(v) => fmtInt(v)}
+                    emptyTitle="No trend yet"
+                    emptyDescription="Observations accumulate per run."
+                  />
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {([7, 30, 90] as const).map(
+                      (days) => (
+                        <SecondaryButton
+                          key={days}
+                          type="button"
+                          onClick={() =>
+                            void (async () => {
+                              setMonitorHistoryDays(
+                                days,
+                              );
+                              const next =
+                                await getAiMonitorHistory(
+                                  websiteId,
+                                  days,
+                                ).catch(() => null);
+                              if (next)
+                                setMonitorHistory(
+                                  next,
+                                );
+                            })()
+                          }
+                        >
+                          {days}d
+                          {monitorHistoryDays ===
+                          days
+                            ? ' ✓'
+                            : ''}
+                        </SecondaryButton>
+                      ),
+                    )}
+                  </div>
+                </div>
+              ) : null}
+              <div className="space-y-2">
+                <h3 className="rk-h3">
+                  Setup — prompt set → surfaces →
+                  cadence
+                </h3>
+                <FilterBar
+                  selects={[
+                    {
+                      key: 'cadence',
+                      label: 'Cadence',
+                      value: setupCadence,
+                      options: [
+                        {
+                          value: 'DAILY',
+                          label: 'Daily',
+                        },
+                        {
+                          value: 'WEEKLY',
+                          label: 'Weekly',
+                        },
+                      ],
+                      onChange: setSetupCadence,
+                    },
+                    {
+                      key: 'surfaces',
+                      label: 'Surfaces',
+                      value: setupSurfaces,
+                      options: [
+                        {
+                          value: 'GEMINI',
+                          label: 'Gemini',
+                        },
+                        {
+                          value: 'OPENAI',
+                          label: 'OpenAI',
+                        },
+                        {
+                          value: 'GEMINI,OPENAI',
+                          label: 'Gemini + OpenAI',
+                        },
+                      ],
+                      onChange: setSetupSurfaces,
+                    },
+                  ]}
+                  searchValue=""
+                  searchPlaceholder=""
+                  onSearchChange={() => undefined}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <PrimaryButton
+                    type="button"
+                    disabled={setupBusy || !websiteId}
+                    onClick={() =>
+                      void (async () => {
+                        try {
+                          setSetupBusy(true);
+                          setSetupMsg('');
+                          const surfaces =
+                            setupSurfaces
+                              .split(',')
+                              .map((s) =>
+                                s.trim(),
+                              )
+                              .filter(Boolean);
+                          const est =
+                            await estimateAiMonitorRun(
+                              {
+                                websiteId,
+                                surfaces,
+                              },
+                            );
+                          if (!est.guard.allowed) {
+                            setSetupMsg(
+                              est.guard.reason,
+                            );
+                            return;
+                          }
+                          await createAiMonitorSchedule(
+                            {
+                              websiteId,
+                              surfaces,
+                              cadence:
+                                setupCadence,
+                            },
+                          );
+                          setSetupMsg(
+                            `Schedule created — about ${est.perRun.billableEstimate} check(s) per run, ~${est.estimatedMonthlyChecks}/month.`,
+                          );
+                          const sched =
+                            await listAiMonitorSchedules(
+                              websiteId,
+                            ).catch(() => []);
+                          setSchedules(
+                            Array.isArray(sched)
+                              ? sched
+                              : [],
+                          );
+                        } catch (err: any) {
+                          setSetupMsg(
+                            err?.message ||
+                              'Could not create the schedule.',
+                          );
+                        } finally {
+                          setSetupBusy(false);
+                        }
+                      })()
+                    }
+                  >
+                    {setupBusy
+                      ? 'Saving…'
+                      : 'Confirm schedule'}
+                  </PrimaryButton>
+                  <SecondaryButton
+                    type="button"
+                    disabled={runBusy || !websiteId}
+                    onClick={() =>
+                      void (async () => {
+                        try {
+                          setRunBusy(true);
+                          setMonitorRunMsg('');
+                          const run =
+                            await requestAiMonitorRun(
+                              {
+                                websiteId,
+                                surfaces:
+                                  setupSurfaces
+                                    .split(',')
+                                    .map((s) =>
+                                      s.trim(),
+                                    )
+                                    .filter(Boolean),
+                              },
+                            );
+                          setMonitorRunMsg(
+                            `Run ${run.status}: ${run.successCount} succeeded, ${run.failureCount} failed, ${run.creditUsed} credit(s) used.`,
+                          );
+                          const [ms, mc, mh] =
+                            await Promise.all([
+                              getAiMonitoringStatus(
+                                websiteId,
+                              ).catch(() => null),
+                              getAiMonitorChanges(
+                                websiteId,
+                              ).catch(() => null),
+                              getAiMonitoringHealth(
+                                websiteId,
+                              ).catch(() => null),
+                            ]);
+                          if (ms)
+                            setMonitorStatus(ms);
+                          if (mc)
+                            setMonitorChanges(mc);
+                          if (mh)
+                            setMonitorHealth(mh);
+                        } catch (err: any) {
+                          setMonitorRunMsg(
+                            err?.message ||
+                              'Could not start the run.',
+                          );
+                        } finally {
+                          setRunBusy(false);
+                        }
+                      })()
+                    }
+                  >
+                    {runBusy
+                      ? 'Running…'
+                      : 'Run now'}
+                  </SecondaryButton>
+                </div>
+                {setupMsg ? (
+                  <p className="rk-body">{setupMsg}</p>
+                ) : null}
+                {monitorRunMsg ? (
+                  <p className="rk-body">{monitorRunMsg}</p>
+                ) : null}
+                {schedules.length > 0 ? (
+                  <DataTable
+                    caption="Active monitoring schedules"
+                    columns={[
+                      {
+                        key: 'cadence',
+                        label: 'Cadence',
+                      },
+                      {
+                        key: 'surfaces',
+                        label: 'Surfaces',
+                      },
+                      {
+                        key: 'isActive',
+                        label: 'Active',
+                      },
+                    ]}
+                    rows={schedules.map((s: any) => ({
+                      ...s,
+                      surfaces: Array.isArray(
+                        s.surfaces,
+                      )
+                        ? s.surfaces.join(', ')
+                        : String(s.surfaces ?? ''),
+                      isActive: s.isActive
+                        ? 'Yes'
+                        : 'No',
+                    }))}
+                    keyOf={(row: any) =>
+                      String(row?.id ?? row?.cadence)
+                    }
+                    emptyTitle="No schedules"
+                    emptyDescription="Create one above."
+                  />
+                ) : null}
+              </div>
+            </div>
+          </Panel>
+
+          <Panel
+            eyebrow="Official data"
+            title="Google & Bing, labeled honestly"
+            description="First-party data only. VERIFIED = Search Console API. OBSERVED = your exported UI rows. Third-party answers stay separate below."
+          >
+            {!official ? (
+              <EmptyState
+                title="No official data yet"
+                description="Sync Search Console demand or import exported UI rows to unlock first-party evidence."
+              />
+            ) : (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <DataSourceBadge
+                    source="Google Search Console"
+                    connected={
+                      (official.demand?.topQueries
+                        ?.length ?? 0) > 0
+                    }
+                  />
+                  <DataSourceBadge
+                    source="Bing Webmaster"
+                    connected={
+                      (official.aiVisibility
+                        ?.importCount ?? 0) > 0
+                    }
+                  />
+                </div>
+                <p className="rk-body">
+                  {official.demand?.semantics}
+                </p>
+                {Array.isArray(
+                  official.demand?.topQueries,
+                ) &&
+                official.demand.topQueries.length >
+                  0 ? (
+                  <div>
+                    <h3 className="rk-h3">
+                      Verified demand queries
+                    </h3>
+                    <EvidenceList
+                      items={official.demand.topQueries
+                        .slice(0, 5)
+                        .map((q: any) => ({
+                          text: `${q.query} — ${fmtInt(q.impressions)} impressions`,
+                          source: 'VERIFIED',
+                        }))}
+                    />
+                  </div>
+                ) : null}
+                <p className="rk-body">
+                  {official.aiVisibility?.note}
+                </p>
+                {Array.isArray(
+                  official.unavailable,
+                ) &&
+                official.unavailable.length > 0 ? (
+                  <EvidenceList
+                    items={official.unavailable.map(
+                      (u: any) => ({
+                        text: u.reason,
+                        source: 'UNAVAILABLE',
+                      }),
+                    )}
+                  />
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <SecondaryButton
+                    type="button"
+                    disabled={
+                      officialBusy || !websiteId
+                    }
+                    onClick={() =>
+                      void (async () => {
+                        try {
+                          setOfficialBusy(true);
+                          setOfficialMsg('');
+                          const res =
+                            await syncOfficialGoogle(
+                              {
+                                websiteId,
+                                days: 30,
+                              },
+                            );
+                          setOfficialMsg(
+                            `Synced ${res.stored} rows (${res.skipped} unchanged). ${res.semantics}`,
+                          );
+                          const next =
+                            await getOfficialSummary(
+                              websiteId,
+                            ).catch(() => null);
+                          if (next)
+                            setOfficial(next);
+                        } catch (err: any) {
+                          setOfficialMsg(
+                            err?.message ||
+                              'Connect Search Console first.',
+                          );
+                        } finally {
+                          setOfficialBusy(false);
+                        }
+                      })()
+                    }
+                  >
+                    {officialBusy
+                      ? 'Syncing…'
+                      : 'Sync Search Console'}
+                  </SecondaryButton>
+                </div>
+                {officialMsg ? (
+                  <p className="rk-body">
+                    {officialMsg}
+                  </p>
+                ) : null}
+              </div>
+            )}
+          </Panel>
+
+          {/* Phase 8D — AI Agent Activity (first-party logs only). */}
+          <Panel
+            eyebrow="Agent activity"
+            title="AI Agent Activity"
+            description="Observed crawler requests from your own logs. A visit is never a citation, mention, ranking or traffic signal."
+          >
+            {!agentActivity ||
+            agentActivity.connected === false ? (
+              <EmptyState
+                title="Connect access logs to see which AI/search agents are visiting your site."
+                description="Import a CSV of server or CDN access logs. IPs are hashed, tracking parameters stripped, nothing sensitive stored."
+              />
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <Metric
+                    label="Observed agents"
+                    value={fmtInt(
+                      agentActivity.summary?.families
+                        ?.length ?? 0,
+                    )}
+                    detail="User-Agent signatures"
+                  />
+                  <Metric
+                    label="Requests"
+                    value={fmtInt(
+                      agentActivity.summary?.requests ??
+                        0,
+                    )}
+                    detail="Imported log rows"
+                  />
+                  <Metric
+                    label="Pages reached"
+                    value={fmtInt(
+                      agentActivity.summary?.pages ??
+                        0,
+                    )}
+                    detail="Distinct normalized URLs"
+                  />
+                  <Metric
+                    label="Last activity"
+                    value={
+                      agentActivity.summary
+                        ?.lastSeen
+                        ? fmtDate(
+                            agentActivity.summary
+                              .lastSeen,
+                          )
+                        : '—'
+                    }
+                    detail="OBSERVED_USER_AGENT"
+                  />
+                </div>
+                <p className="rk-body">
+                  {agentActivity.verificationNote}
+                </p>
+                {Array.isArray(
+                  agentActivity.topAgents,
+                ) &&
+                agentActivity.topAgents.length > 0 ? (
+                  <div>
+                    <h3 className="rk-h3">
+                      Top agents
+                    </h3>
+                    <DataTable
+                      caption="Agents observed in imported logs"
+                      columns={[
+                        {
+                          key: 'family',
+                          label: 'Agent',
+                        },
+                        {
+                          key: 'requests',
+                          label: 'Requests',
+                        },
+                        {
+                          key: 'pages',
+                          label: 'Pages',
+                        },
+                      ]}
+                      rows={agentActivity.topAgents.slice(
+                        0,
+                        8,
+                      )}
+                      keyOf={(row: any) =>
+                        String(row?.family)
+                      }
+                      onRowClick={(row: any) =>
+                        void (async () => {
+                          try {
+                            const detail =
+                              await getAgentDetail(
+                                websiteId,
+                                String(row.family),
+                              );
+                            setAgentDetail(detail);
+                          } catch {
+                            setAgentDetail(null);
+                          }
+                        })()
+                      }
+                      emptyTitle="No agents"
+                      emptyDescription="Import logs first."
+                    />
+                  </div>
+                ) : null}
+                {Array.isArray(
+                  agentActivity.accessIssues,
+                ) &&
+                agentActivity.accessIssues.length >
+                  0 ? (
+                  <div>
+                    <h3 className="rk-h3">
+                      Access issues
+                    </h3>
+                    <EvidenceList
+                      items={agentActivity.accessIssues
+                        .slice(0, 5)
+                        .map((issue: any) => ({
+                          text: issue.evidence,
+                          source: issue.aiRelated
+                            ? 'AI agent'
+                            : 'Crawler',
+                        }))}
+                    />
+                  </div>
+                ) : null}
+                {agentCoverage?.headline ? (
+                  <div>
+                    <h3 className="rk-h3">
+                      Page coverage
+                    </h3>
+                    <p className="rk-body">
+                      {agentCoverage.headline}
+                    </p>
+                  </div>
+                ) : null}
+                {Array.isArray(
+                  agentActivity.changes,
+                ) &&
+                agentActivity.changes.length > 0 ? (
+                  <div>
+                    <h3 className="rk-h3">
+                      Recent changes
+                    </h3>
+                    <EvidenceList
+                      items={agentActivity.changes
+                        .slice(0, 5)
+                        .map((change: any) => ({
+                          text: `${change.kind}: ${change.evidence}`,
+                          source: 'Change',
+                        }))}
+                    />
+                  </div>
+                ) : null}
+                <div className="space-y-2">
+                  <h3 className="rk-h3">
+                    Import logs (CSV, max 10MB)
+                  </h3>
+                  <p className="rk-body">
+                    Columns: timestamp, method,
+                    path/url, status, user-agent,
+                    bytes, referrer, country. Preview
+                    before import — malformed rows
+                    never import silently.
+                  </p>
+                  <textarea
+                    className="rk-input min-h-[120px] w-full font-mono text-xs"
+                    placeholder="timestamp,method,path,status,user-agent&#10;2026-09-01T10:00:00Z,GET,/pricing,200,GPTBot/1.0"
+                    value={agentCsv}
+                    onChange={(event) =>
+                      setAgentCsv(
+                        event.target.value,
+                      )
+                    }
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <SecondaryButton
+                      type="button"
+                      disabled={
+                        agentBusy || !agentCsv.trim()
+                      }
+                      onClick={() =>
+                        void (async () => {
+                          try {
+                            setAgentBusy(true);
+                            setAgentMsg('');
+                            const preview =
+                              await previewAgentImport(
+                                {
+                                  csv: agentCsv,
+                                  source:
+                                    'MANUAL_IMPORT',
+                                },
+                              );
+                            setAgentPreview(preview);
+                            setAgentMsg(
+                              `Detected ${preview.parsed} valid rows (${preview.rejected} rejected) across ${preview.families.join(', ') || 'no agents'}.`,
+                            );
+                          } catch (err: any) {
+                            setAgentMsg(
+                              err?.message ||
+                                'Preview failed.',
+                            );
+                          } finally {
+                            setAgentBusy(false);
+                          }
+                        })()
+                      }
+                    >
+                      Preview
+                    </SecondaryButton>
+                    <PrimaryButton
+                      type="button"
+                      disabled={
+                        agentBusy ||
+                        !agentPreview ||
+                        !websiteId
+                      }
+                      onClick={() =>
+                        void (async () => {
+                          try {
+                            setAgentBusy(true);
+                            setAgentMsg('');
+                            const res =
+                              await confirmAgentImport(
+                                {
+                                  websiteId,
+                                  csv: agentCsv,
+                                  source:
+                                    'MANUAL_IMPORT',
+                                },
+                              );
+                            setAgentMsg(
+                              `Imported ${res.imported} rows.${res.baseline ? ` ${res.baseline}` : ''}`,
+                            );
+                            setAgentCsv('');
+                            setAgentPreview(null);
+                            const [act, cov] =
+                              await Promise.all([
+                                getAgentActivity(
+                                  websiteId,
+                                ).catch(() => null),
+                                getAgentCoverage(
+                                  websiteId,
+                                ).catch(() => null),
+                              ]);
+                            if (act)
+                              setAgentActivity(act);
+                            if (cov)
+                              setAgentCoverage(cov);
+                          } catch (err: any) {
+                            setAgentMsg(
+                              err?.message ||
+                                'Import failed.',
+                            );
+                          } finally {
+                            setAgentBusy(false);
+                          }
+                        })()
+                      }
+                    >
+                      Confirm import
+                    </PrimaryButton>
+                  </div>
+                  {agentMsg ? (
+                    <p className="rk-body">
+                      {agentMsg}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            )}
+          </Panel>
+
+          <Panel
+            eyebrow="Prompt Lab"
+            title="Prompt universe"
+            description="Every prompt names its evidence — generated from tracked keywords, SERP terms, content and competitors. Never random."
+          >            <FilterBar
+              selects={[
+                {
+                  key: 'lab-group',
+                  label: 'Group',
+                  value: labGroup,
+                  options: [
+                    { value: 'ALL', label: 'All groups' },
+                    ...((lab?.groups ?? []) as string[]).map(
+                      (g: string) => ({
+                        value: g,
+                        label: g,
+                      }),
+                    ),
+                  ],
+                  onChange: setLabGroup,
+                },
+              ]}
+              searchValue={labQuery}
+              searchPlaceholder="Search prompts, topics…"
+              onSearchChange={setLabQuery}
+            />
+            {!lab ||
+            !Array.isArray(lab.prompts) ||
+            lab.prompts.length === 0 ? (
+              <EmptyState
+                title="No lab prompts yet"
+                description="Generate a prompt set to populate the universe."
+              />
+            ) : (
+              <DataTable
+                caption="Prompt universe from real evidence"
+                columns={[
+                  { key: 'prompt', label: 'Prompt' },
+                  { key: 'intent', label: 'Intent' },
+                  { key: 'topic', label: 'Topic' },
+                ]}
+                rows={(lab.prompts as any[])
+                  .filter(
+                    (p: any) =>
+                      (labGroup === 'ALL' ||
+                        (p.groups ?? []).includes(
+                          labGroup,
+                        )) &&
+                      (!labQuery ||
+                        String(p.prompt)
+                          .toLowerCase()
+                          .includes(
+                            labQuery.toLowerCase(),
+                          )),
+                  )
+                  .slice(0, 10)
+                  .map((p: any) => ({
+                    ...p,
+                    prompt:
+                      String(p.prompt).slice(0, 80) ||
+                      '—',
+                  }))}
+                keyOf={(row: any, index: number) =>
+                  String(row?.prompt ?? index)
+                }
+                onRowClick={(row: any) =>
+                  void (async () => {
+                    try {
+                      setDetailLoading(true);
+                      setPromptTimeline(null);
+                      const fullPrompt = String(
+                        (lab.prompts as any[]).find(
+                          (p: any) =>
+                            String(
+                              p.prompt,
+                            ).slice(0, 80) ===
+                            row.prompt,
+                        )?.prompt ?? row.prompt,
+                      );
+                      const [detail, timeline] =
+                        await Promise.all([
+                          getAiPromptDetail(
+                            websiteId,
+                            fullPrompt,
+                          ),
+                          getAiMonitorPromptHistory(
+                            websiteId,
+                            fullPrompt,
+                          ).catch(() => null),
+                        ]);
+                      setPromptDetail(detail);
+                      setPromptTimeline(timeline);
+                    } catch {
+                      setPromptDetail(null);
+                    } finally {
+                      setDetailLoading(false);
+                    }
+                  })()
+                }
+                emptyTitle="No prompts match"
+                emptyDescription="Adjust the group filter or search."
+              />
+            )}
+          </Panel>
+
           <Panel
             eyebrow="Context"
             title="Website scope"
@@ -1115,6 +2535,368 @@ export default function AiVisibilityPage() {
             </Panel>
           )}
 
+          {/*
+           * Phase 6 — AI Search Intelligence 1.0.
+           * Unified layer over existing evidence:
+           * prompts → answers → citations → competitors
+           * → diagnoses → roadmap candidates → history.
+           * Every figure carries its evidence state;
+           * missing data renders as designed
+           * UNAVAILABLE, never as broken or faked.
+           */}
+          <Panel
+            eyebrow="Prompt intelligence"
+            title="AI prompt set"
+            description="Bounded, deduplicated prompts generated from your tracked keywords. No provider calls, no credits."
+            actions={
+              <SecondaryButton
+                type="button"
+                onClick={() =>
+                  void handleGeneratePromptSet()
+                }
+                disabled={generating}
+              >
+                {generating
+                  ? 'Generating…'
+                  : 'Generate set'}
+              </SecondaryButton>
+            }
+          >
+            {genMsg ? (
+              <p className="rk-body mb-2">{genMsg}</p>
+            ) : null}
+            {generatedPrompts.length > 0 ? (
+              <ul className="divide-y divide-rk-border">
+                {generatedPrompts
+                  .slice(0, 20)
+                  .map((p: any, i: number) => {
+                    const key = String(p.text || i);
+                    const tracked = queries.some(
+                      (q: any) =>
+                        String(
+                          q.query || q.text || '',
+                        ).toLowerCase() ===
+                        key.toLowerCase(),
+                    );
+                    return (
+                      <li
+                        key={i}
+                        className="flex flex-wrap items-center justify-between gap-2 py-2.5"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-rk-ink">
+                            {key}
+                          </p>
+                          <p className="rk-body mt-0.5">
+                            {String(
+                              p.intent || 'INFORMATIONAL',
+                            ).replace(/_/g, ' ')}{' '}
+                            · {String(p.evidenceSource || 'UNKNOWN')}
+                          </p>
+                        </div>
+                        {tracked ? (
+                          <StatusChip status="TRACKED" />
+                        ) : (
+                          <SecondaryButton
+                            onClick={() =>
+                              void handleTrackPrompt(p)
+                            }
+                            disabled={
+                              trackingPrompt[key]
+                            }
+                          >
+                            {trackingPrompt[key]
+                              ? 'Tracking…'
+                              : 'Track'}
+                          </SecondaryButton>
+                        )}
+                      </li>
+                    );
+                  })}
+              </ul>
+            ) : (
+              <EmptyState
+                title="No generated set yet"
+                description="Generate a bounded prompt set from your existing tracked keywords."
+              />
+            )}
+          </Panel>
+
+          <Panel
+            eyebrow="Source intelligence"
+            title="Citation domains"
+            description="Which sources AI answers actually cite. Extracted from recorded answers, never assumed."
+          >
+            {citations.length > 0 ? (
+              <DataTable
+                caption="Source domains cited by recorded AI answers"
+                columns={[
+                  {
+                    key: 'domain',
+                    label: 'Domain',
+                    priority: 'high',
+                  },
+                  {
+                    key: 'citations',
+                    label: 'Citations',
+                    priority: 'high',
+                  },
+                  {
+                    key: 'queries',
+                    label: 'Prompts',
+                    priority: 'medium',
+                  },
+                ]}
+                rows={citations.slice(0, 10).map(
+                  (c: any, i: number) => ({
+                    id: String(c.domain || i),
+                    domain: String(c.domain || '—'),
+                    citations: fmtInt(c.citations),
+                    queries: Array.isArray(c.queries)
+                      ? String(c.queries.length)
+                      : '—',
+                  }),
+                )}
+                keyOf={(r: any) => r.id}
+                emptyTitle="No citations recorded"
+                emptyDescription="Citations appear once recorded answers contain source links."
+              />
+            ) : (
+              <EmptyState
+                title="Citation data unavailable"
+                description="No recorded AI answer has contained a source link yet. Record an observation with a response to populate this."
+              />
+            )}
+          </Panel>
+
+          <Panel
+            eyebrow="Competitor intelligence"
+            title="Where competitors are winning"
+            description="Brand versus competitor presence across recorded AI answers."
+          >
+            {shareOfVoice ? (
+              <div className="mb-3 flex flex-wrap gap-2">
+                <StatusChip
+                  status={`Brand ${fmtPct(shareOfVoice.brand)}`}
+                />
+                <StatusChip
+                  status={`Competitors ${fmtPct(shareOfVoice.competitors)}`}
+                />
+              </div>
+            ) : null}
+            {competitorTracked.length > 0 ||
+            competitorUnlisted.length > 0 ? (
+              <DataTable
+                caption="Competitor presence across recorded AI answers"
+                columns={[
+                  {
+                    key: 'name',
+                    label: 'Competitor',
+                    priority: 'high',
+                  },
+                  {
+                    key: 'mentions',
+                    label: 'Mentions',
+                    priority: 'high',
+                  },
+                  {
+                    key: 'source',
+                    label: 'Source',
+                    priority: 'medium',
+                  },
+                ]}
+                rows={[
+                  ...competitorTracked.map(
+                    (c: any, i: number) => ({
+                      id: `t-${i}`,
+                      name: String(c.name || '—'),
+                      mentions: fmtInt(c.mentions),
+                      source: 'Tracked',
+                    }),
+                  ),
+                  ...competitorUnlisted
+                    .slice(0, 5)
+                    .map((c: any, i: number) => ({
+                      id: `u-${i}`,
+                      name: String(c.name || '—'),
+                      mentions: fmtInt(c.mentions),
+                      source: 'Observed',
+                    })),
+                ].slice(0, 10)}
+                keyOf={(r: any) => r.id}
+                emptyTitle="No competitor mentions"
+                emptyDescription="Competitors appear here once recorded answers mention them."
+              />
+            ) : (
+              <EmptyState
+                title="Competitor comparison unavailable"
+                description="No recorded AI answer has mentioned a competitor yet."
+              />
+            )}
+          </Panel>
+
+          {matrixRows.length > 0 && (
+            <Panel
+              eyebrow="Prompt comparison"
+              title="Prompt-by-prompt presence"
+              description="Brand and competitor presence per tracked prompt."
+            >
+              <ul className="divide-y divide-rk-border">
+                {matrixRows.slice(0, 10).map(
+                  (row: any, i: number) => (
+                    <li key={i} className="py-2.5">
+                      <p className="text-sm font-semibold text-rk-ink">
+                        {String(row.prompt || 'Prompt')}
+                      </p>
+                      <p className="rk-body mt-0.5">
+                        {row.brandPresent
+                          ? row.brandCited
+                            ? 'Mentioned and cited.'
+                            : 'Mentioned, not cited.'
+                          : 'Not mentioned.'}{' '}
+                        {Array.isArray(
+                          row.competitorsPresent,
+                        ) &&
+                        row.competitorsPresent.length >
+                          0
+                          ? `Competitors seen: ${row.competitorsPresent.slice(0, 3).join(', ')}.`
+                          : 'No competitors seen.'}{' '}
+                        {row.evidenceState === 'UNAVAILABLE'
+                          ? 'No observations recorded.'
+                          : `${num(row.prompts)} observation(s).`}
+                      </p>
+                    </li>
+                  ),
+                )}
+              </ul>
+            </Panel>
+          )}
+
+          {diagnoses.length > 0 && (
+            <Panel
+              eyebrow="Why are we losing"
+              title="Evidence-backed diagnoses"
+              description="Each diagnosis carries its evidence. No unsupported claims."
+            >
+              <ul className="divide-y divide-rk-border">
+                {diagnoses.slice(0, 8).map(
+                  (d: any, i: number) => (
+                    <li key={i} className="py-2.5">
+                      <p className="text-sm font-semibold text-rk-ink">
+                        {String(
+                          d.headline || d.diagnosis || 'Diagnosis',
+                        )}
+                      </p>
+                      <p className="rk-body mt-0.5">
+                        {String(d.prompt || '')}
+                        {d.evidenceState
+                          ? ` · Evidence: ${String(d.evidenceState)}`
+                          : ''}
+                      </p>
+                      {d?.action?.href ? (
+                        <Link
+                          href={String(d.action.href)}
+                          className="rk-link text-sm"
+                        >
+                          {String(
+                            d.action.label ||
+                              'Take action',
+                          )}{' '}
+                          →
+                        </Link>
+                      ) : null}
+                    </li>
+                  ),
+                )}
+              </ul>
+            </Panel>
+          )}
+
+          {candidates.length > 0 && (
+            <Panel
+              eyebrow="Roadmap input"
+              title="AI actions for your #1 roadmap"
+              description="These extend the existing roadmap — same priorities, same horizons. Open the roadmap to schedule them."
+              actions={
+                <Link href="/roadmap">
+                  <SecondaryButton type="button">
+                    Open roadmap
+                  </SecondaryButton>
+                </Link>
+              }
+            >
+              <ul className="divide-y divide-rk-border">
+                {candidates
+                  .slice(0, 6)
+                  .map((c: any, i: number) => (
+                    <li key={i} className="py-2.5">
+                      <p className="text-sm font-semibold text-rk-ink">
+                        {String(c.title || 'Action')}
+                      </p>
+                      <p className="rk-body mt-0.5">
+                        {String(c.why || '').slice(0, 220)}
+                      </p>
+                      <p className="rk-body mt-0.5">
+                        Priority {String(c.strategyPriority || '—')} ·
+                        Impact {String(c.impact || '—')} ·
+                        Effort {String(c.effort || '—')}
+                      </p>
+                    </li>
+                  ))}
+              </ul>
+            </Panel>
+          )}
+
+          <Panel
+            eyebrow="Historical movement"
+            title="Prompt movement"
+            description="First observation sets the baseline. Movement is measured only against recorded observations."
+            actions={
+              <div className="flex gap-2">
+                {[7, 30, 90].map((days) => (
+                  <SecondaryButton
+                    key={days}
+                    type="button"
+                    onClick={() =>
+                      void handleHistoryDays(days)
+                    }
+                    disabled={historyDays === days}
+                  >
+                    {days}d
+                  </SecondaryButton>
+                ))}
+              </div>
+            }
+          >
+            {trends.length > 0 ? (
+              <ul className="divide-y divide-rk-border">
+                {trends.slice(0, 10).map(
+                  (t: any, i: number) => (
+                    <li key={i} className="py-2.5">
+                      <p className="text-sm font-semibold text-rk-ink">
+                        {String(t.prompt || 'Prompt')}
+                      </p>
+                      <p className="rk-body mt-0.5">
+                        {String(
+                          t.status || 'INSUFFICIENT_DATA',
+                        ).replace(/_/g, ' ')}
+                        {' — '}
+                        {String(
+                          t.note || 'No movement recorded.',
+                        )}
+                      </p>
+                    </li>
+                  ),
+                )}
+              </ul>
+            ) : (
+              <InsufficientHistoryState
+                title="No prompt history yet"
+                description="Record observations for a prompt twice to start measuring movement."
+              />
+            )}
+          </Panel>
+
           <RecommendationCallout
             title="Outcome"
             text="Close the loop: gaps become opportunities, opportunities become actions, monitoring measures the change."
@@ -1249,6 +3031,294 @@ export default function AiVisibilityPage() {
             </DrawerSection>
           </>
         )}
+      </Drawer>
+
+      {/* Phase 6 — AI Search detail view: prompt → visibility → why → what-to-do. */}
+      <Drawer
+        open={Boolean(promptDetail) || detailLoading}
+        onClose={() => {
+          setPromptDetail(null);
+          setPromptTimeline(null);
+        }}
+        title={promptDetail?.prompt ?? 'AI prompt detail'}
+        description={
+          promptDetail
+            ? `Visibility: ${promptDetail.visibilityState} · Intent: ${promptDetail.intent}`
+            : 'Loading the strongest screen in RENKOO…'
+        }
+      >
+        {detailLoading && !promptDetail ? (
+          <LoadingBlock title="Loading prompt evidence" />
+        ) : promptDetail ? (
+          <>
+            <DrawerMeta
+              items={[
+                {
+                  label: 'Brand mentioned',
+                  value: promptDetail.brandMentioned
+                    ? 'Yes'
+                    : 'No',
+                },
+                {
+                  label: 'Brand cited',
+                  value: promptDetail.brandCited
+                    ? 'Yes'
+                    : 'No',
+                },
+                {
+                  label: 'Competitors',
+                  value: String(
+                    promptDetail.competitorMentions
+                      ?.length ?? 0,
+                  ),
+                },
+              ]}
+            />
+            {Array.isArray(promptDetail.why) &&
+            promptDetail.why.length > 0 ? (
+              <DrawerSection title="Why you are / aren't visible">
+                <EvidenceList
+                  items={promptDetail.why.map(
+                    (w: any) => ({
+                      text: `${w.label}: ${w.evidence}`,
+                      source:
+                        w.passed === false
+                          ? 'Gap'
+                          : 'Evidence',
+                    }),
+                  )}
+                />
+              </DrawerSection>
+            ) : null}
+            {Array.isArray(promptDetail.whatToDo) &&
+            promptDetail.whatToDo.length > 0 ? (
+              <DrawerSection title="What to do">
+                <div className="space-y-2">
+                  {promptDetail.whatToDo.map(
+                    (todo: any) => (
+                      <div
+                        key={todo.kind}
+                        className="flex flex-col gap-2"
+                      >
+                        <NextAction
+                          label={todo.title}
+                          detail={`${todo.why} Measure: ${todo.measurement}`}
+                          href="/roadmap"
+                        />
+                        <SecondaryButton
+                          type="button"
+                          disabled={Boolean(
+                            oppBusy[todo.kind],
+                          )}
+                          onClick={() =>
+                            void (async () => {
+                              try {
+                                setOppBusy((prev) => ({
+                                  ...prev,
+                                  [todo.kind]: true,
+                                }));
+                                setOppMsg('');
+                                await createAiOpportunity({
+                                  websiteId,
+                                  kind: todo.kind,
+                                  title: todo.title,
+                                  prompt:
+                                    promptDetail.prompt,
+                                  topic:
+                                    promptDetail.prompt,
+                                  priority:
+                                    todo.priority,
+                                  why: todo.why,
+                                });
+                                setOppMsg(
+                                  `Recommendation created for ${todo.kind}. Convert it to an action from Opportunities.`,
+                                );
+                              } catch (err: any) {
+                                setOppMsg(
+                                  err?.message ||
+                                    'Could not create the recommendation.',
+                                );
+                              } finally {
+                                setOppBusy((prev) => ({
+                                  ...prev,
+                                  [todo.kind]: false,
+                                }));
+                              }
+                            })()
+                          }
+                        >
+                          {oppBusy[todo.kind]
+                            ? 'Creating…'
+                            : 'Create recommendation'}
+                        </SecondaryButton>
+                      </div>
+                    ),
+                  )}
+                </div>
+              </DrawerSection>
+            ) : null}
+            <DrawerSection title="Trust">
+              <p className="rk-body">
+                Recorded observations only. INSUFFICIENT
+                DATA is shown instead of 0% when evidence
+                is missing.
+              </p>
+            </DrawerSection>
+            {promptTimeline &&
+            Array.isArray(promptTimeline.rows) &&
+            promptTimeline.rows.length > 0 ? (
+              <DrawerSection title="History timeline">
+                <EvidenceList
+                  items={promptTimeline.rows
+                    .slice(0, 10)
+                    .map((entry: any) => ({
+                      text: `${entry.surface} · ${entry.status} · mentioned ${entry.mentioned ? 'yes' : 'no'} · cited ${entry.citationFound ? 'yes' : 'no'} — ${entry.observedAt ? fmtDate(entry.observedAt) : 'date unavailable'}`,
+                      source: 'Observation',
+                    }))}
+                />
+                {Array.isArray(
+                  promptTimeline.changes,
+                ) &&
+                promptTimeline.changes.length > 0 ? (
+                  <p className="rk-body">
+                    {promptTimeline.changes
+                      .map(
+                        (c: any) =>
+                          `${c.surface}: ${c.primary}`,
+                      )
+                      .join(' · ')}
+                  </p>
+                ) : null}
+              </DrawerSection>
+            ) : null}
+          </>
+        ) : null}
+      </Drawer>
+      {/* Phase 8D — agent detail (first-party evidence only). */}
+      <Drawer
+        open={Boolean(agentDetail)}
+        onClose={() => setAgentDetail(null)}
+        title={
+          agentDetail
+            ? `${agentDetail.family} — agent detail`
+            : 'Agent detail'
+        }
+        description="Observed requests from imported logs. Never traffic, never citations."
+      >
+        {agentDetail ? (
+          <>
+            <DrawerMeta
+              items={[
+                {
+                  label: 'Type',
+                  value: String(
+                    agentDetail.category ?? 'UNKNOWN',
+                  ),
+                },
+                {
+                  label: 'Verification',
+                  value: String(
+                    agentDetail.verificationState ??
+                      'OBSERVED_USER_AGENT',
+                  ),
+                },
+                {
+                  label: 'Requests',
+                  value: String(
+                    agentDetail.requests ?? 0,
+                  ),
+                },
+              ]}
+            />
+            <DrawerSection title="Top requested pages">
+              <EvidenceList
+                items={(
+                  agentDetail.pagesDetail ?? []
+                )
+                  .slice(0, 10)
+                  .map((page: any) => ({
+                    text: `${page.url} — ${page.requests} request(s), statuses ${(page.statuses ?? []).join('/') || '—'}`,
+                    source: 'Observation',
+                  }))}
+              />
+            </DrawerSection>
+            <DrawerSection title="Trust">
+              <p className="rk-body">
+                Identity from User-Agent signature
+                (spoofable). No reverse-DNS
+                verification in this phase — rows
+                stay OBSERVED_USER_AGENT.
+              </p>
+            </DrawerSection>
+          </>
+        ) : null}
+      </Drawer>
+      {/* Phase 8E — evidence drawer (why this recommendation). */}
+      <Drawer
+        open={evidenceOpen}
+        onClose={() => setEvidenceOpen(false)}
+        title="Why this recommendation?"
+        description="Every claim names its source and evidence state. Long URLs wrap safely."
+      >
+        {nextBest?.action ? (
+          <>
+            <DrawerMeta
+              items={[
+                {
+                  label: 'Category',
+                  value: String(
+                    nextBest.action.category ?? '—',
+                  ),
+                },
+                {
+                  label: 'Priority',
+                  value: String(
+                    nextBest.action.priority ?? '—',
+                  ),
+                },
+                {
+                  label: 'Execution',
+                  value: String(
+                    nextBest.traceability
+                      ?.actionStatus ??
+                      'NOT_STARTED',
+                  ),
+                },
+              ]}
+            />
+            <DrawerSection title="Evidence">
+              <EvidenceList
+                items={(
+                  nextBest.evidence ?? []
+                ).map((item: any) => ({
+                  text: `[${item.source} · ${item.state}] ${item.summary}${item.page ? ` — ${item.page}` : ''}${item.keyword ? ` — “${item.keyword}”` : ''}`,
+                  source: item.state,
+                }))}
+              />
+            </DrawerSection>
+            <DrawerSection title="Measurement">
+              <p className="rk-body break-words">
+                {String(
+                  nextBest.action.measurement ?? '',
+                )}
+              </p>
+            </DrawerSection>
+            <DrawerSection title="Traceability">
+              <NextAction
+                label={
+                  nextBest.traceability
+                    ?.recommendationId
+                    ? 'Open existing recommendation'
+                    : 'No execution action available.'
+                }
+                detail={String(
+                  nextBest.traceability?.note ?? '',
+                )}
+                href="/roadmap"
+              />
+            </DrawerSection>
+          </>
+        ) : null}
       </Drawer>
     </AppShell>
   );

@@ -19,6 +19,11 @@ import {
 } from '../common/crypto/token-cipher';
 
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  DEFAULT_OAUTH_RETURN_ORIGIN,
+  normalizeOAuthOrigin,
+  type OAuthReturnOrigin,
+} from './oauth-return';
 
 /*
  * Integration health states. Derived from stored
@@ -514,9 +519,12 @@ export class GoogleService {
    * =========================================================
    */
 
-  private createOAuthState(organizationId: string) {
+  private createOAuthState(
+    organizationId: string,
+    origin: OAuthReturnOrigin = DEFAULT_OAUTH_RETURN_ORIGIN,
+  ) {
     const timestamp = Date.now().toString();
-    const payload = `${organizationId}.${timestamp}`;
+    const payload = `${organizationId}.${timestamp}.${normalizeOAuthOrigin(origin)}`;
 
     const secret = process.env.JWT_ACCESS_SECRET;
 
@@ -533,7 +541,10 @@ export class GoogleService {
     return Buffer.from(`${payload}.${signature}`).toString('base64url');
   }
 
-  verifyOAuthState(state: string) {
+  verifyOAuthState(state: string): {
+    organizationId: string;
+    origin: OAuthReturnOrigin;
+  } {
     const secret = process.env.JWT_ACCESS_SECRET;
 
     if (!secret) {
@@ -552,12 +563,25 @@ export class GoogleService {
 
     const parts = decoded.split('.');
 
-    if (parts.length !== 3) {
+    /* Legacy 3-part states (pre-Phase-41) carry no
+     * origin — verified identically, routed to the
+     * safe default. Anything else is rejected. */
+    if (parts.length !== 3 && parts.length !== 4) {
       throw new UnauthorizedException('Invalid OAuth state');
     }
 
-    const [organizationId, timestamp, signature] = parts;
-    const payload = `${organizationId}.${timestamp}`;
+    const [organizationId, timestamp, signatureOrOrigin, maybeSignature] =
+      parts;
+    const signature =
+      parts.length === 4 ? maybeSignature : signatureOrOrigin;
+    const origin =
+      parts.length === 4
+        ? normalizeOAuthOrigin(signatureOrOrigin)
+        : DEFAULT_OAUTH_RETURN_ORIGIN;
+    const payload =
+      parts.length === 4
+        ? `${organizationId}.${timestamp}.${origin}`
+        : `${organizationId}.${timestamp}`;
 
     const expectedSignature = createHmac('sha256', secret)
       .update(payload)
@@ -573,11 +597,28 @@ export class GoogleService {
       throw new UnauthorizedException('OAuth state has expired');
     }
 
-    return organizationId;
+    return { organizationId, origin };
+  }
+
+  /*
+   * Best-effort origin for error redirects (user-denied
+   * flows still carry state). Never throws — invalid
+   * state routes to the safe default.
+   */
+  peekOAuthOrigin(state: unknown): OAuthReturnOrigin {
+    try {
+      if (typeof state !== 'string' || !state) {
+        return DEFAULT_OAUTH_RETURN_ORIGIN;
+      }
+      return this.verifyOAuthState(state).origin;
+    } catch {
+      return DEFAULT_OAUTH_RETURN_ORIGIN;
+    }
   }
 
   getAuthorizationUrl(
     organizationId: string,
+    origin: unknown = DEFAULT_OAUTH_RETURN_ORIGIN,
   ) {
     const client =
       this.getOAuthClient();
@@ -589,7 +630,10 @@ export class GoogleService {
 
       include_granted_scopes: true,
 
-      state: this.createOAuthState(organizationId),
+      state: this.createOAuthState(
+        organizationId,
+        normalizeOAuthOrigin(origin),
+      ),
 
       scope: [
         'openid',
@@ -1371,17 +1415,27 @@ export class GoogleService {
           position * impressions;
       }
 
+      /* Phase 41 (Group F): an empty window is
+       * missing data, never measured zero. Position 0
+       * is invalid (real positions start at 1) and 0%
+       * CTR would imply observed non-performance.
+       * Totals stay numeric; ratios become null with
+       * an explicit INSUFFICIENT_DATA state. */
+      const measurable =
+        rows.length > 0 &&
+        totals.impressions > 0;
+
       const ctr =
-        totals.impressions > 0
+        measurable
           ? totals.clicks /
             totals.impressions
-          : 0;
+          : null;
 
       const averagePosition =
-        totals.impressions > 0
+        measurable
           ? totals.positionWeightedSum /
             totals.impressions
-          : 0;
+          : null;
 
       return this.liveResult(
         organizationId,
@@ -1402,6 +1456,10 @@ export class GoogleService {
           ctr,
 
           averagePosition,
+
+          state: measurable
+            ? ('MEASURED' as const)
+            : ('INSUFFICIENT_DATA' as const),
 
           rows,
         },
@@ -1825,6 +1883,208 @@ export class GoogleService {
       this.handleGoogleApiError(
         error,
         'Unable to load Google Analytics report. Please try again.',
+      );
+    }
+  }
+
+  /*
+   * =========================================================
+   * PHASE 33 — GA4 CHANNEL × LANDING PAGE ATTRIBUTION PULL.
+   *
+   * Additive read-only report beside the date-series
+   * report above: sessionDefaultChannelGroup (which
+   * natively includes the AI Assistant channel since
+   * May 2026) × landingPagePlusQueryString with
+   * sessions, conversions (key events) and
+   * totalRevenue. GA4 classification is used exactly
+   * as provided — RENKOO never reclassifies channels
+   * or attaches GSC queries to individual sessions.
+   * Bounded (500 rows); failures surface, never zero.
+   * =========================================================
+   */
+
+  async getAnalyticsChannelReport(
+    organizationId: string,
+    startDate: string,
+    endDate: string,
+  ) {
+    if (
+      !startDate ||
+      !endDate
+    ) {
+      throw new BadRequestException(
+        'startDate and endDate are required',
+      );
+    }
+
+    const connection =
+      await this.prisma.googleConnection.findUnique(
+        {
+          where: {
+            organizationId,
+          },
+        },
+      );
+
+    if (!connection) {
+      throw new UnauthorizedException(
+        'Google Analytics is not connected',
+      );
+    }
+
+    if (
+      !connection.selectedAnalyticsProperty
+    ) {
+      throw new UnauthorizedException(
+        'No Google Analytics property selected',
+      );
+    }
+
+    const client =
+      await this.getAuthenticatedClient(
+        organizationId,
+      );
+
+    try {
+      const analytics =
+        google.analyticsdata({
+          version: 'v1beta',
+          auth: client,
+        });
+
+      const property =
+        `properties/${connection.selectedAnalyticsProperty}`;
+
+      const response =
+        await this.withGoogleRetry(
+          () =>
+            analytics.properties.runReport(
+              {
+                property,
+
+                requestBody: {
+                  dateRanges: [
+                    {
+                      startDate,
+                      endDate,
+                    },
+                  ],
+
+                  metrics: [
+                    {
+                      name:
+                        'sessions',
+                    },
+
+                    {
+                      name:
+                        'conversions',
+                    },
+
+                    {
+                      name:
+                        'totalRevenue',
+                    },
+                  ],
+
+                  dimensions: [
+                    {
+                      name:
+                        'sessionDefaultChannelGroup',
+                    },
+
+                    {
+                      name:
+                        'landingPagePlusQueryString',
+                    },
+
+                    {
+                      name:
+                        'sessionSourceMedium',
+                    },
+                  ],
+
+                  orderBys: [
+                    {
+                      metric: {
+                        metricName:
+                          'sessions',
+                      },
+
+                      desc: true,
+                    },
+                  ],
+
+                  limit: '500',
+                },
+              },
+            ),
+        );
+
+      const rows =
+        response.data.rows ?? [];
+
+      return this.liveResult(
+        organizationId,
+        {
+          property:
+            connection.selectedAnalyticsProperty,
+
+          startDate,
+
+          endDate,
+
+          attributionNote:
+            'Channel and landing-page rows exactly as GA4 provides them. ' +
+            'AI Assistant is GA4-native (ai-assistant medium); ' +
+            'Google AI Overview/Mode clicks arrive as Organic Search. ' +
+            'No GSC query is attached to any session.',
+
+          rows: rows.map(
+            (row) => ({
+              channelGroup:
+                row
+                  .dimensionValues?.[0]
+                  ?.value ?? '',
+
+              landingPage:
+                row
+                  .dimensionValues?.[1]
+                  ?.value ?? '',
+
+              sourceMedium:
+                row
+                  .dimensionValues?.[2]
+                  ?.value ?? '',
+
+              sessions:
+                Number(
+                  row
+                    .metricValues?.[0]
+                    ?.value ?? 0,
+                ),
+
+              conversions:
+                Number(
+                  row
+                    .metricValues?.[1]
+                    ?.value ?? 0,
+                ),
+
+              revenue:
+                Number(
+                  row
+                    .metricValues?.[2]
+                    ?.value ?? 0,
+                ),
+            }),
+          ),
+        },
+      );
+    } catch (error: any) {
+      this.handleGoogleApiError(
+        error,
+        'Unable to load Google Analytics channel report. Please try again.',
       );
     }
   }

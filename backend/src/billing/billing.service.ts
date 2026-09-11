@@ -10,6 +10,7 @@ import { StripeService } from './stripe.service';
 import {
   COMMERCIAL_PLANS,
   FREE_AI_GENERATIONS_PER_MONTH,
+  PLAN_FEATURE_TIERS,
   TRIAL_DAYS,
   TRIAL_PLAN_CODE,
   getCommercialPlan,
@@ -38,6 +39,39 @@ export class BillingService {
     private readonly config: ConfigService,
     private readonly stripeService: StripeService,
   ) {}
+
+  /*
+   * Fresh role check for money-moving billing mutations.
+   * Never trusts the JWT role claim (stale up to token
+   * expiry after a demotion) — reads membership per call.
+   */
+  async requireOrgAdmin(
+    organizationId: string,
+    userId: string,
+  ): Promise<void> {
+    const membership =
+      await this.prisma.organizationMember.findUnique(
+        {
+          where: {
+            userId_organizationId: {
+              userId,
+              organizationId,
+            },
+          },
+          select: { role: true },
+        },
+      );
+
+    if (
+      !membership ||
+      (membership.role !== 'OWNER' &&
+        membership.role !== 'ADMIN')
+    ) {
+      throw new ForbiddenException(
+        'Only organization owners and admins can change billing.',
+      );
+    }
+  }
 
   async getPlans() {
     return this.prisma.plan.findMany({
@@ -940,16 +974,13 @@ export class BillingService {
     AI_GROWTH_ACTIONS: 3,
   };
 
+  /* Phase 41 (Group H): single authoritative
+   * source — plans.config.ts PLAN_FEATURE_TIERS. Never
+   * a local literal that can drift. */
   private static readonly FEATURE_TIERS: Record<
     string,
     string[]
-  > = {
-    whiteLabel: ['AGENCY', 'SCALE'],
-    scheduledReports: ['AGENCY', 'SCALE'],
-    agency: ['AGENCY', 'SCALE'],
-    api: ['SCALE'],
-    advancedMonitoring: ['PRO', 'AGENCY', 'SCALE'],
-  };
+  > = PLAN_FEATURE_TIERS;
 
   static readonly ENTERPRISE_PLANS = [
     'ENTERPRISE',

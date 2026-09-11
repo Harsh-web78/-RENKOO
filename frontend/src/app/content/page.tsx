@@ -18,6 +18,7 @@ import {
 } from 'react';
 import Link from 'next/link';
 import ContentWorkspace from './workspace';
+import AgentReadinessPanel from './agent-readiness';
 import {
   analyzeGoogleOpportunity,
   generateContentBrief,
@@ -80,7 +81,8 @@ function rangeFor(days: number) {
 type Section =
   | 'opportunities'
   | 'workspace'
-  | 'refresh';
+  | 'refresh'
+  | 'readiness';
 
 export default function ContentPage() {
   const [navOpen, setNavOpen] = useState(false);
@@ -548,6 +550,10 @@ export default function ContentPage() {
                       value: 'refresh',
                       label: 'Refresh queue',
                     },
+                    {
+                      value: 'readiness',
+                      label: 'Agent readiness',
+                    },
                   ],
                   onChange: (v) =>
                     setSection(v as Section),
@@ -669,6 +675,10 @@ export default function ContentPage() {
             >
               <ContentWorkspace websiteId={websiteId} />
             </Panel>
+          )}
+
+          {section === 'readiness' && (
+            <AgentReadinessPanel websiteId={websiteId} />
           )}
 
           {section === 'refresh' && (

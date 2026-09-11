@@ -15,10 +15,12 @@
  *   `/` (public landing page), /login, /signup,
  *   /verify-email, /reset-password, /privacy,
  *   /terms, /snapshot, /invite/*, /share/*.
- * - Signed-in visitors at `/` are redirected to
- *   `/dashboard` by <HomeRedirect /> (see
- *   components/HomeRedirect), after the token is
- *   validated via GET /auth/me.
+ * - Signed-in visitors at `/` are redirected by
+ *   <HomeRedirect /> (see components/HomeRedirect)
+ *   to the Command Center (`/command-center`) when
+ *   first value is ready, or `/first-value` while
+ *   setup remains — after the token is validated
+ *   via GET /auth/me.
  * - Protected routes with no token redirect to
  *   /login?next=<path>, preserving return URL.
  * - Protected routes with a token validate it

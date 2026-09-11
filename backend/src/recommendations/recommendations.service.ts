@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ComparisonService } from '../comparison/comparison.service';
 import { GoogleService } from '../google/google.service';
 import { BusinessBrainService } from '../business-brain/business-brain.service';
+import { BillingService } from '../billing/billing.service';
 
 type Priority = 'HIGH' | 'MEDIUM' | 'LOW';
 
@@ -120,6 +121,7 @@ export class RecommendationsService {
     private readonly comparisonService: ComparisonService,
     private readonly googleService: GoogleService,
     private readonly businessBrainService: BusinessBrainService,
+    private readonly billingService: BillingService,
   ) {}
 
   private async getBusinessGoal(
@@ -1537,6 +1539,20 @@ export class RecommendationsService {
       );
     }
 
+    /*
+     * Dismissed or completed recommendations stay final —
+     * re-running them would resurrect decided work. Only
+     * OPEN and IN_PROGRESS recommendations can seed actions.
+     */
+    if (
+      recommendation.status !== 'OPEN' &&
+      recommendation.status !== 'IN_PROGRESS'
+    ) {
+      throw new NotFoundException(
+        'This recommendation is already decided and cannot seed a new action',
+      );
+    }
+
     const existing =
       await this.prisma.action.findFirst({
         where: {
@@ -1548,6 +1564,14 @@ export class RecommendationsService {
     if (existing) {
       return existing;
     }
+
+    /*
+     * Monthly AI Growth Action allowance applies to this
+     * creation path too (same gate as POST /actions).
+     */
+    await this.billingService.checkActionAllowance(
+      organizationId,
+    );
 
     const action =
       await this.prisma.$transaction(

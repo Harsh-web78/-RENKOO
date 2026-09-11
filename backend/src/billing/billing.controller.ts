@@ -39,6 +39,31 @@ export class BillingController {
     return id;
   }
 
+  /*
+   * Billing mutations move money or rewrite plan rows —
+   * OWNER/ADMIN only, verified fresh per request (never
+   * the possibly-stale JWT role claim). Read endpoints,
+   * checkout verification, and provider sync stay open so
+   * in-flight checkouts can complete.
+   */
+  private requireBillingAdmin(
+    req: any,
+  ): Promise<void> {
+    const organizationId = this.organizationId(req);
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      throw new ForbiddenException(
+        'Only organization owners and admins can change billing.',
+      );
+    }
+
+    return this.billingService.requireOrgAdmin(
+      organizationId,
+      userId,
+    );
+  }
+
   private assertOrganization(
     req: any,
     organizationId: string,
@@ -118,7 +143,8 @@ export class BillingController {
     default: { limit: 20, ttl: 60000 },
   })
   @Post('plans/sync')
-  syncPlans() {
+  async syncPlans(@Req() req: any) {
+    await this.requireBillingAdmin(req);
     return this.billingService.syncPlansFromConfig();
   }
 
@@ -130,16 +156,18 @@ export class BillingController {
   }
 
   @Post('portal')
-  billingPortal(@Req() req: any) {
+  async billingPortal(@Req() req: any) {
+    await this.requireBillingAdmin(req);
     return this.billingService.billingPortal(
       req.user.organizationId,
     );
   }
 
   @Post('subscription/cancel')
-  cancelSubscription(
+  async cancelSubscription(
     @Req() req: any,
   ) {
+    await this.requireBillingAdmin(req);
     return this.billingService.cancelSubscription(
       req.user.organizationId,
     );
@@ -199,6 +227,8 @@ export class BillingController {
       );
     }
 
+    await this.requireBillingAdmin(req);
+
     return this.billingService.createTrial(
       authenticatedOrganizationId,
     );
@@ -215,7 +245,8 @@ export class BillingController {
     default: { limit: 5, ttl: 60000 },
   })
   @Post('stripe/sync-plans')
-  syncStripePlans(@Req() req: any) {
+  async syncStripePlans(@Req() req: any) {
+    await this.requireBillingAdmin(req);
     const query = (req as any)?.query ?? {};
     const dryRun =
       query?.dryRun === true ||
@@ -253,6 +284,8 @@ export class BillingController {
       );
     }
 
+    await this.requireBillingAdmin(req);
+
     return this.stripeService.createCheckout(
       authenticatedOrganizationId,
       planCode,
@@ -289,6 +322,8 @@ export class BillingController {
       );
     }
 
+    await this.requireBillingAdmin(req);
+
     return this.stripeService.createCheckout(
       authenticatedOrganizationId,
       planCode,
@@ -309,7 +344,7 @@ export class BillingController {
     default: { limit: 10, ttl: 60000 },
   })
   @Post('razorpay/subscription')
-  createRazorpaySubscription(
+  async createRazorpaySubscription(
     @Req() req: any,
     @Body()
     body: {
@@ -318,6 +353,7 @@ export class BillingController {
       currency?: string;
     },
   ) {
+    await this.requireBillingAdmin(req);
     return this.razorpayService.createSubscription(
       this.organizationId(req),
       { email: req.user?.email ?? null },
@@ -371,9 +407,10 @@ export class BillingController {
     default: { limit: 10, ttl: 60000 },
   })
   @Post('razorpay/cancel')
-  cancelRazorpaySubscription(
+  async cancelRazorpaySubscription(
     @Req() req: any,
   ) {
+    await this.requireBillingAdmin(req);
     return this.razorpayService.cancel(
       this.organizationId(req),
     );
@@ -383,9 +420,10 @@ export class BillingController {
     default: { limit: 10, ttl: 60000 },
   })
   @Post('razorpay/reactivate')
-  reactivateRazorpaySubscription(
+  async reactivateRazorpaySubscription(
     @Req() req: any,
   ) {
+    await this.requireBillingAdmin(req);
     return this.razorpayService.reactivate(
       this.organizationId(req),
     );
@@ -395,7 +433,7 @@ export class BillingController {
     default: { limit: 10, ttl: 60000 },
   })
   @Post('razorpay/change-plan')
-  changeRazorpayPlan(
+  async changeRazorpayPlan(
     @Req() req: any,
     @Body()
     body: {
@@ -403,6 +441,7 @@ export class BillingController {
       atCycleEnd?: boolean;
     },
   ) {
+    await this.requireBillingAdmin(req);
     return this.razorpayService.changePlan(
       this.organizationId(req),
       body?.planCode ?? '',
@@ -414,7 +453,7 @@ export class BillingController {
     default: { limit: 10, ttl: 60000 },
   })
   @Post('razorpay/refund')
-  refundRazorpayPayment(
+  async refundRazorpayPayment(
     @Req() req: any,
     @Body()
     body: {
@@ -422,6 +461,7 @@ export class BillingController {
       amount?: number;
     },
   ) {
+    await this.requireBillingAdmin(req);
     return this.razorpayService.refund(
       this.organizationId(req),
       body?.paymentId ?? '',

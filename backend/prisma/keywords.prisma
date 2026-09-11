@@ -1,0 +1,143 @@
+// Keyword Research 3.0 — provider cache + usage ledger.
+//
+// KeywordMetricCache: server-side cache for paid provider
+// rows. Key = provider|metric|country|language|keyword.
+// Payload is the normalized provider row (JSON). TTLs are
+// enforced by expiresAt per metric type. Never stores
+// secrets, never stores tenant PII beyond the keyword.
+//
+// KeywordResearchLog: one row per fresh (uncached)
+// provider-backed research. Free workspaces are measured
+// from these rows (mirrors the crawl-credit pattern);
+// paid workspaces consume API_CALLS usage after success.
+// Failed provider requests never write a log row, so
+// failures never consume credits.
+
+model KeywordMetricCache {
+  id        String   @id @default(cuid())
+  cacheKey  String   @unique
+  provider  String
+  metric    String
+  country   String
+  language  String
+  keyword   String
+  payload   Json
+  fetchedAt DateTime @default(now())
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([provider, metric, country, language])
+  @@index([expiresAt])
+}
+
+model KeywordResearchLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  websiteId      String?
+  seed           String
+  provider       String
+  providerCalls  Int      @default(0)
+  cacheHits      Int      @default(0)
+  resultCount    Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
+// Keyword Strategy 5.0 — AI strategist brief ledger.
+//
+// One row per generated strategy brief. Doubles as the
+// free-workspace AI spend ledger together with
+// ContentDraft (shared monthly AI allowance). Paid
+// workspaces consume AI_CREDITS via BillingService.
+// No secrets stored — brief text only.
+
+model StrategyBrief {
+  id             String   @id @default(cuid())
+  organizationId String
+  websiteId      String
+  provider       String
+  model          String?
+  itemCount      Int      @default(0)
+  brief          String
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([websiteId, createdAt])
+}
+
+// RENKOO 6.0 — Content Strategy Foundation (persistence +
+// composition). Two link tables connecting the three
+// parallel stacks (Strategy 5.0, Content Engine,
+// Recommendation/Action queue).
+//
+// Deliberately NO foreign keys — consistent with
+// StrategyBrief and the Content* app-scoped pattern:
+// there is no canonical Page/Keyword master table, so
+// keywords, topics and pages join on stable normalized
+// strings (keyword = trim().toLowerCase(), URLs compared
+// case-insensitively with trailing slash stripped).
+// Scoring data is NOT duplicated here beyond the small
+// snapshot needed to answer "what was decided": the
+// strategy engine remains the source of truth and is
+// re-run for fresh scores; these rows persist the
+// relationship (keyword -> topic -> page -> decision ->
+// item -> brief -> draft -> action) plus execution ids.
+//
+// Idempotency: one row per (organization, website,
+// keyword). Strategy recalculation upserts — never
+// inserts duplicates. Link ids (contentItemId, briefId,
+// draftId, actionId, recommendationId) are only ever
+// filled, never cleared, by sync; deleting the target
+// row surfaces as a dangling id resolved to null at
+// composition time (never auto-deleted).
+
+model ContentCluster {
+  id                  String   @id @default(cuid())
+  organizationId      String
+  websiteId           String
+  topic               String
+  primaryKeyword      String
+  supportingKeywords  Json
+  intent              String?
+  pillarPage          String?
+  targetPage          String?
+  priority            String   @default("LOW")
+  size                Int      @default(1)
+  missingPages        Int      @default(0)
+  cannibalizationRisk Boolean  @default(false)
+  recommendedPageType String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([organizationId, websiteId, topic])
+  @@index([organizationId, websiteId])
+}
+
+model ContentStrategyLink {
+  id               String   @id @default(cuid())
+  organizationId   String
+  websiteId        String
+  keyword          String
+  topic            String?
+  targetPage       String?
+  pageMapping      String?
+  bucket           String?
+  priority         String?
+  priorityScore    Int?
+  intent           String?
+  contentAction    String?
+  contentItemId    String?
+  briefId          String?
+  draftId          String?
+  actionId         String?
+  recommendationId String?
+  evidence         Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([organizationId, websiteId, keyword])
+  @@index([organizationId, websiteId])
+  @@index([contentItemId])
+  @@index([actionId])
+}

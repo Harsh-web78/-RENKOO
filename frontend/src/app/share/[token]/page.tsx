@@ -277,5 +277,61 @@ function SharedSectionBody({
     );
   }
 
+  if (sectionKey === 'narrative') {
+    return (
+      <ul className="mt-2 space-y-1">
+        {(section.summary ?? []).map(
+          (line: string, i: number) => (
+            <li
+              key={i}
+              className="text-xs leading-5 text-slate-600"
+            >
+              · {line}
+            </li>
+          ),
+        )}
+      </ul>
+    );
+  }
+
+  if (
+    sectionKey === 'changes' ||
+    sectionKey === 'wins' ||
+    sectionKey === 'risks' ||
+    sectionKey === 'priorities' ||
+    sectionKey === 'completed' ||
+    sectionKey === 'nextPlan' ||
+    sectionKey === 'limitations'
+  ) {
+    const items: any[] =
+      section.rows ??
+      section.items ??
+      [];
+    return (
+      <ul className="mt-2 space-y-1">
+        {items.map((item: any, i: number) => (
+          <li
+            key={i}
+            className="text-xs leading-5 text-slate-600"
+          >
+            ·{' '}
+            <b>
+              {item.label ??
+                item.title ??
+                (typeof item === 'string'
+                  ? item
+                  : '')}
+            </b>
+            {item.statement || item.detail
+              ? ` — ${item.statement ?? item.detail}`
+              : typeof item === 'string'
+                ? ''
+                : ''}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
   return null;
 }

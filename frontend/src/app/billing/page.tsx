@@ -378,7 +378,10 @@ function buildComparison(
   ): boolean =>
     getCatalogPlan(code)?.flags[key] ?? false;
   const agencyReporting = (code: string): boolean =>
-    code === "AGENCY";
+    /* Phase 41 (Group H): single flag source — the
+     * catalog mirror of PLAN_FEATURE_TIERS.agency
+     * (AGENCY + SCALE), never a local code rule. */
+    getCatalogPlan(code)?.flags.agency ?? false;
 
   const uniform = (
     label: string,
@@ -498,14 +501,16 @@ function buildComparison(
         perPlan("Reports / month", (plan) =>
           liveCount(plan, "maxReports"),
         ),
+        /* Phase 40 paid-tier honesty: runtime answers
+         * supported:false for scheduled delivery, so the
+         * comparison must not print "Yes". Runtime
+         * truth wins over entitlement flags. */
         {
           label: "Scheduled reports",
           values: Object.fromEntries(
             codes.map((code) => [
               code,
-              flag(code, "scheduledReports")
-                ? "Yes"
-                : "—",
+              "Coming soon",
             ]),
           ),
         },
@@ -544,9 +549,16 @@ function buildComparison(
       ],
     },
     {
-      group: "API & integrations",
+      /* Phase 41 (Group H): apiCalls is internal
+       * provider/data metering (DataForSEO + Google
+       * reads RENKOO performs), NOT a customer-facing
+       * public API — no public API exists
+       * (deliveryTruth.apiAccess is UNAVAILABLE).
+       * Never label this row as API access. */
+      group: "Data & provider usage",
+      hint: "Internal metering for data RENKOO fetches — not a public API",
       rows: [
-        perPlan("API calls / month", (plan) =>
+        perPlan("Provider data credits / month", (plan) =>
           liveCount(plan, "maxApiCalls"),
         ),
       ],
@@ -1697,19 +1709,38 @@ export default function BillingPage() {
                 <div className="mt-3 flex flex-wrap gap-2">
                   {Object.entries(
                     entitlements.features,
-                  ).map(([feature, allowed]) => (
-                    <span
-                      key={feature}
-                      className={`rounded-full px-3 py-1 text-xs font-bold ${
-                        allowed
-                          ? "bg-emerald-50 text-emerald-700"
-                          : "bg-slate-100 text-rk-secondary"
-                      }`}
-                    >
-                      {FEATURE_LABELS[feature] || feature}:{" "}
-                      {allowed ? "ON" : "OFF"}
-                    </span>
-                  ))}
+                  ).map(([feature, allowed]) => {
+                    /* Phase 40 paid-tier honesty: these
+                     * entitlements have no runtime
+                     * delivery (see /first-value delivery
+                     * truth). Never render them ON. */
+                    const undelivered =
+                      feature === "whiteLabel" ||
+                      feature === "scheduledReports" ||
+                      feature === "api";
+                    return (
+                      <span
+                        key={feature}
+                        className={`rounded-full px-3 py-1 text-xs font-bold ${
+                          allowed && !undelivered
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-slate-100 text-rk-secondary"
+                        }`}
+                        title={
+                          undelivered
+                            ? "Entitled on this plan; delivery coming soon — not marketed as available."
+                            : undefined
+                        }
+                      >
+                        {FEATURE_LABELS[feature] || feature}:{" "}
+                        {undelivered
+                          ? "Coming soon"
+                          : allowed
+                            ? "ON"
+                            : "OFF"}
+                      </span>
+                    );
+                  })}
                 </div>
                 {entitlements.customPricing && (
                   <p className="mt-3 text-xs text-rk-secondary">

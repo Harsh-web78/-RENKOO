@@ -5,10 +5,20 @@
  * Mirror of the backend commercial config. The backend
  * remains authoritative for billing and enforcement:
  *   backend/src/billing/plans.config.ts      (prices, limits,
- *     feature capability lists, trial, plan order)
+ *     feature capability lists, trial, plan order,
+ *     PLAN_FEATURE_TIERS — the single flag source)
  *   backend/src/billing/billing.service.ts   (FEATURE_TIERS —
- *     the enforced whiteLabel / scheduledReports / agency /
- *     api / advancedMonitoring flags)
+ *     imported verbatim from PLAN_FEATURE_TIERS)
+ *
+ * RULES:
+ * - Update this file together with the backend config.
+ *   Never invent prices or limits here.
+ * - `frontend/scripts/verify-plans-mirror.mjs` checks that
+ *   every number AND every flag below still matches the
+ *   backend config (flags included since Phase 41).
+ * - `api` is false on every plan until a customer-facing
+ *   public API ships. `apiCalls` limits are internal
+ *   provider/data metering, never a public API promise.
  *
  * RULES:
  * - Update this file together with the backend config.
@@ -258,7 +268,7 @@ export const CATALOG_PLANS: CatalogPlan[] = [
       whiteLabel: true,
       scheduledReports: true,
       agency: true,
-      api: true,
+      api: false,
       advancedMonitoring: true,
     },
     capabilities: [
