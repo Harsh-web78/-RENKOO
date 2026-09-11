@@ -3541,6 +3541,7 @@ export default function KeywordsPage() {
                 )}
               </Panel>
 
+              <div data-tour="discover-keywords">
               <Panel
                 eyebrow="Opportunities"
                 title="Top opportunities"
@@ -3782,6 +3783,7 @@ export default function KeywordsPage() {
                   />
                 </div>
               </Panel>
+              </div>
 
               <Panel
                 eyebrow="Topic strategy"
@@ -3856,6 +3858,7 @@ export default function KeywordsPage() {
                 )}
               </Panel>
 
+              <div data-tour="discover-orphans">
               <Panel
                 eyebrow="Link graph"
                 title="Potential orphans"
@@ -3918,6 +3921,7 @@ export default function KeywordsPage() {
                   </div>
                 )}
               </Panel>
+              </div>
 
               <Panel
                 eyebrow="AI strategist"

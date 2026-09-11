@@ -15,15 +15,24 @@ export default function PageHeader({
   description,
   meta,
   actions,
+  tourAnchor,
 }: {
   eyebrow: string;
   title: string;
   description?: string;
   meta?: ReactNode;
   actions?: ReactNode;
+  /**
+   * Stable product-tour anchor (Tour 1.0). Renders
+   * data-tour on the header root; no visual change.
+   */
+  tourAnchor?: string;
 }) {
   return (
-    <div className="rk-page flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div
+      className="rk-page flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"
+      data-tour={tourAnchor}
+    >
       <div className="min-w-0">
         <p className="rk-label">{eyebrow}</p>
 

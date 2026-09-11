@@ -451,7 +451,10 @@ export default function GrowthPlanPage() {
                           : '/growth-work'
                       }
                     >
-                      <PrimaryButton type="button">
+                      <PrimaryButton
+                        type="button"
+                        data-tour="growth-work"
+                      >
                         Open in work queue
                       </PrimaryButton>
                     </Link>

@@ -533,6 +533,7 @@ export default function CompetitorsPage() {
       onMenu={() => setNavOpen(true)}
     >
       <PageHeader
+        tourAnchor="discover-competitors"
         eyebrow="Market"
         title="Competitor War Room"
         description="Tracked competitors with measured crawl signals. Open one for the full comparison."

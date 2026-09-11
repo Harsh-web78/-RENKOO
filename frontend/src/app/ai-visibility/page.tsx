@@ -818,6 +818,7 @@ export default function AiVisibilityPage() {
       onMenu={() => setNavOpen(true)}
     >
       <PageHeader
+        tourAnchor="discover-ai-visibility"
         eyebrow="AI search"
         title="AI Search Visibility"
         description="Measured AI-search observations with evidence — never a chatbot, never invented coverage."

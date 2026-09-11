@@ -168,6 +168,7 @@ export default function SourceIntelligencePage() {
       onMenu={() => setNavOpen(true)}
     >
       <PageHeader
+        tourAnchor="discover-sources"
         eyebrow="Source intelligence"
         title="Source intelligence"
         description="Understand which sources shape search and AI answers — and where your brand is missing."

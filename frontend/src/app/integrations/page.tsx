@@ -861,6 +861,7 @@ export default function IntegrationsPage() {
               <div className="shrink-0">
                 {!connected ? (
                   <PrimaryButton
+                    data-tour="connect-gsc"
                     onClick={() =>
                       void handleConnectGoogle()
                     }
@@ -965,7 +966,10 @@ export default function IntegrationsPage() {
             </div>
 
             {connected && (
-              <div className="mt-6 border-t border-rk-border pt-5">
+              <div
+                className="mt-6 border-t border-rk-border pt-5"
+                data-tour="select-gsc-property"
+              >
                 <h3 className="text-[15px] font-extrabold tracking-[-0.015em] text-rk-ink">
                   Search Console properties
                 </h3>
@@ -1083,7 +1087,7 @@ export default function IntegrationsPage() {
                       </span>
                     </div>
 
-                    <div>
+                    <div data-tour="select-ga4-property">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="text-[15px] font-extrabold tracking-[-0.015em] text-rk-ink">
                           Google Analytics 4

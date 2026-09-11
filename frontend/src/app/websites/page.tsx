@@ -290,6 +290,7 @@ export default function WebsitesPage() {
 
           <button
             type="button"
+            data-tour="add-website"
             onClick={() => {
               setError("");
               setLimitError(null);
@@ -403,6 +404,7 @@ export default function WebsitesPage() {
 
               <button
                 type="button"
+                data-tour="add-website"
                 onClick={() => setAddOpen(true)}
                 className="rk-focusable mt-4 inline-flex items-center gap-2 rounded-rk-md bg-rk-ink px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
               >

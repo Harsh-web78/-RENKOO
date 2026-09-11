@@ -1129,6 +1129,7 @@ export default function LeadsPage() {
     >
       <div className="rk-page">
         <PageHeader
+          tourAnchor="discover-leads"
           eyebrow="Business impact"
           title="Leads & Revenue"
           description="Track leads, pipeline value, conversions, revenue and acquisition sources."

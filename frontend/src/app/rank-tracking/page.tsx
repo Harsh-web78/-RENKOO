@@ -410,6 +410,7 @@ export default function RankTrackingPage() {
       onMenu={() => setNavOpen(true)}
     >
       <PageHeader
+        tourAnchor="discover-ranks"
         eyebrow="Search visibility"
         title="Rank Intelligence"
         description="Where you rank, what changed, and which page is responsible — observed, never fabricated."

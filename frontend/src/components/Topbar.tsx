@@ -9,6 +9,7 @@ import {
   Menu,
   Search,
   Settings,
+  Sparkles,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -16,6 +17,7 @@ import {
   logout,
   type CurrentAccount,
 } from "@/lib/api";
+import { TOUR_RESTART_EVENT } from "./tour/tourEvents";
 import { PERSONA_META, usePersona } from "@/lib/persona";
 import WebsiteSelector from "./WebsiteSelector";
 
@@ -179,6 +181,23 @@ export default function Topbar({
                     <Settings size={15} aria-hidden />
                     Settings
                   </Link>
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      window.dispatchEvent(
+                        new CustomEvent(
+                          TOUR_RESTART_EVENT,
+                        ),
+                      );
+                    }}
+                    className="rk-focusable flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm text-rk-secondary hover:bg-rk-soft hover:text-rk-ink"
+                  >
+                    <Sparkles size={15} aria-hidden />
+                    Restart guided tour
+                  </button>
 
                   <button
                     type="button"

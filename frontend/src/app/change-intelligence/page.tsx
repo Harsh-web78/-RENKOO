@@ -99,6 +99,7 @@ export default function ChangeIntelligencePage() {
       onMenu={() => setNavOpen(true)}
     >
       <PageHeader
+        tourAnchor="discover-changes"
         eyebrow="Change intelligence"
         title="What changed?"
         description="Page, search, AI and business changes with an evidence timeline. Observed after — never caused by."

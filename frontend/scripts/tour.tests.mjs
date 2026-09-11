@@ -1,0 +1,292 @@
+/*
+ * RENKOO — Product Tour 1.0 tests (node, no runner).
+ *
+ * Static wiring validation for the guided tour:
+ * step config shape, route existence, data-tour
+ * anchor coverage, copy bounds, await semantics and
+ * telemetry vocabulary. Run from frontend/:
+ *   node scripts/tour.tests.mjs
+ *
+ * Style mirrors backend/scripts/*.tests.mjs.
+ */
+
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const src = join(root, 'src');
+
+let passed = 0;
+let failed = 0;
+
+function check(name, cond, detail = '') {
+  if (cond) {
+    passed++;
+    console.log(`PASS ${name}`);
+  } else {
+    failed++;
+    console.log(`FAIL ${name}${detail ? ` — ${detail}` : ''}`);
+  }
+}
+
+function read(rel) {
+  return readFileSync(join(src, rel), 'utf8');
+}
+
+/* ---------- parse step blocks ---------- */
+
+function extractArray(source, constName) {
+  const start = source.indexOf(`export const ${constName}`);
+  if (start < 0) return null;
+  /* Skip the TourStep[] type annotation: the array
+   * literal starts at the first '[' after '='. */
+  const eq = source.indexOf('=', start);
+  if (eq < 0) return null;
+  const open = source.indexOf('[', eq);
+  let depth = 0;
+  for (let i = open; i < source.length; i++) {
+    if (source[i] === '[') depth++;
+    if (source[i] === ']') {
+      depth--;
+      if (depth === 0) return source.slice(open + 1, i);
+    }
+  }
+  return null;
+}
+
+function splitObjects(body) {
+  const out = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of body) {
+    if (ch === '{') {
+      if (depth === 0) current = '';
+      depth++;
+    }
+    if (depth > 0) current += ch;
+    if (ch === '}') {
+      depth--;
+      if (depth === 0) out.push(current);
+    }
+  }
+  return out;
+}
+
+function field(block, name) {
+  const m = block.match(new RegExp(`${name}:\\s*'((?:[^'\\\\]|\\\\.)*)'`, 's'));
+  return m ? m[1] : null;
+}
+
+function hasProp(block, name) {
+  return new RegExp(`\\b${name}:`).test(block);
+}
+
+const stepsSource = read('components/tour/tourSteps.ts');
+const coreBody = extractArray(stepsSource, 'CORE_STEPS');
+const discBody = extractArray(stepsSource, 'DISCOVERY_STEPS');
+
+check('core steps array parses', typeof coreBody === 'string');
+check('discovery steps array parses', typeof discBody === 'string');
+
+const core = splitObjects(coreBody ?? '').map((b) => ({
+  raw: b,
+  id: field(b, 'id'),
+  tour: field(b, 'tour'),
+  route: field(b, 'route'),
+  target: field(b, 'target'),
+  title: field(b, 'title'),
+  body: field(b, 'body'),
+  await: field(b, 'await'),
+  awaitRoute: field(b, 'awaitRoute'),
+  group: field(b, 'group'),
+  skippable: /skippable:\s*true/.test(b),
+}));
+
+const disc = splitObjects(discBody ?? '').map((b) => ({
+  raw: b,
+  id: field(b, 'id'),
+  tour: field(b, 'tour'),
+  route: field(b, 'route'),
+  target: field(b, 'target'),
+  title: field(b, 'title'),
+  body: field(b, 'body'),
+  await: field(b, 'await'),
+  awaitRoute: field(b, 'awaitRoute'),
+  group: field(b, 'group'),
+  skippable: /skippable:\s*true/.test(b),
+}));
+
+const all = [...core, ...disc];
+
+/* ---------- journey shape ---------- */
+
+const expectedCore = [
+  'website', 'crawl', 'connect-gsc', 'gsc-property',
+  'connect-ga4', 'ga4-property', 'baseline', 'command-center',
+  'top-actions', 'growth-plan', 'growth-work', 'verification',
+  'outcomes', 'complete',
+];
+
+check('core tour has 14 steps', core.length === 14, `got ${core.length}`);
+check(
+  'core step order matches activation journey',
+  JSON.stringify(core.map((s) => s.id)) === JSON.stringify(expectedCore),
+  core.map((s) => s.id).join(','),
+);
+check(
+  'all core steps declare tour core',
+  core.every((s) => s.tour === 'core'),
+);
+check('discovery tour has 12 steps', disc.length === 12, `got ${disc.length}`);
+check(
+  'all discovery steps declare tour discovery',
+  disc.every((s) => s.tour === 'discovery'),
+);
+
+const groups = ['A', 'B', 'C', 'D', 'E', 'F'];
+for (const g of groups) {
+  const inGroup = disc.filter((s) => s.group === g);
+  check(`discovery group ${g} has 2 steps`, inGroup.length === 2, `got ${inGroup.length}`);
+}
+
+const ids = all.map((s) => s.id);
+check('step ids unique', new Set(ids).size === ids.length);
+check('every step has id + title + body + route', all.every((s) => s.id && s.title && s.body && s.route));
+
+/* ---------- copy bounds (concise, no docs) ---------- */
+
+function sentences(text) {
+  return text.split(/[.!?]+/).map((s) => s.trim()).filter(Boolean);
+}
+
+for (const s of all) {
+  check(
+    `copy bounds ${s.id}`,
+    s.title.length <= 60 && s.body.length <= 400 && sentences(s.body).length >= 1 && sentences(s.body).length <= 3,
+    `title=${s.title?.length} body=${s.body?.length} sentences=${s.body ? sentences(s.body).length : 0}`,
+  );
+}
+
+check(
+  'welcome copy present',
+  stepsSource.includes("Welcome to RENKOO") &&
+    stepsSource.includes("Let's get your Search Growth system set up"),
+);
+check(
+  'completion copy present',
+  stepsSource.includes('You are ready') &&
+    stepsSource.includes('Search Visibility → Decisions → Action → Verification → Outcomes'),
+);
+
+/* ---------- routes exist ---------- */
+
+const appDir = join(src, 'app');
+for (const s of all) {
+  const page = join(appDir, s.route.replace(/^\//, ''), 'page.tsx');
+  check(`route exists ${s.id} → ${s.route}`, existsSync(page), page);
+}
+
+/* ---------- data-tour anchor coverage ---------- */
+
+const tsxFiles = [];
+(function walk(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) walk(full);
+    else if (/\.tsx?$/.test(entry.name)) tsxFiles.push(full);
+  }
+})(src);
+
+const anchored = new Set();
+for (const file of tsxFiles) {
+  const text = readFileSync(file, 'utf8');
+  for (const m of text.matchAll(/data-tour="([^"]+)"/g)) anchored.add(m[1]);
+  for (const m of text.matchAll(/tourAnchor="([^"]+)"/g)) anchored.add(m[1]);
+  for (const m of text.matchAll(/'data-tour':\s*'([^']+)'/g)) anchored.add(m[1]);
+}
+
+for (const s of all) {
+  if (!s.target) continue;
+  check(`anchor coverage ${s.id} → ${s.target}`, anchored.has(s.target), 'no data-tour/tourAnchor found');
+}
+
+for (const anchor of ['restart-tour']) {
+  check(`restart anchor exists (${anchor})`, anchored.has(anchor));
+}
+
+/* ---------- await semantics ---------- */
+
+const knownAwaits = new Set([
+  'websites', 'crawl', 'gsc', 'gsc-property',
+  'ga4', 'ga4-property', 'baseline', 'route',
+]);
+
+for (const s of all) {
+  if (!s.await) continue;
+  check(`known await ${s.id}:${s.await}`, knownAwaits.has(s.await));
+  if (s.await === 'route') {
+    check(
+      `route await has awaitRoute ${s.id}`,
+      typeof s.awaitRoute === 'string' && s.awaitRoute.startsWith('/'),
+    );
+    check(
+      `route await target exists ${s.id}`,
+      existsSync(join(appDir, s.awaitRoute.replace(/^\//, ''), 'page.tsx')),
+    );
+  }
+}
+
+const optionalGa4 = core.filter((s) => s.id === 'connect-ga4' || s.id === 'ga4-property');
+check(
+  'GA4 steps optional + skippable',
+  optionalGa4.length === 2 && optionalGa4.every((s) => s.skippable && /optional:\s*true/.test(s.raw)),
+);
+check(
+  'website step not skippable (tour-level Skip tour always available)',
+  core.some((s) => s.id === 'website' && !hasProp(s.raw, 'skip') && /skippable:\s*false/.test(s.raw)),
+);
+
+/* ---------- telemetry vocabulary ---------- */
+
+const storageSource = read('components/tour/tourStorage.ts');
+for (const ev of ['TOUR_STARTED', 'TOUR_STEP_VIEWED', 'TOUR_STEP_COMPLETED', 'TOUR_STEP_SKIPPED', 'TOUR_COMPLETED', 'TOUR_DISMISSED']) {
+  check(`telemetry event ${ev}`, storageSource.includes(`'${ev}'`));
+}
+check('telemetry bounded (no unbounded growth)', /slice\(-\w+\)|slice\(-\d+\)/.test(storageSource));
+check('no PII in telemetry record', !/email|token|password/i.test(storageSource));
+
+/* ---------- engine reuses existing APIs ---------- */
+
+const apiSource = read('lib/api.ts');
+for (const fn of ['getWebsites', 'getFirstValueStatus', 'getGoogleHealth', 'getGoogleConnectionStatus', 'getCurrentAccount', 'invalidateSessionCache', 'isAuthenticated']) {
+  check(
+    `engine API exists: ${fn}`,
+    new RegExp(`export (async )?function ${fn}`).test(apiSource),
+  );
+}
+
+const providerSource = read('components/tour/TourProvider.tsx');
+check('provider polls only (no new endpoints)', !/fetch\(|axios/.test(providerSource));
+check(
+  'provider imports tourEvents (no bundle duplication)',
+  providerSource.includes("from './tourEvents'"),
+);
+
+/* ---------- overlay accessibility ---------- */
+
+const overlaySource = read('components/tour/TourOverlay.tsx');
+check('dialog semantics', overlaySource.includes('role="dialog"'));
+check('escape handling', overlaySource.includes("'Escape'") || overlaySource.includes('"Escape"'));
+check('step counter with live region', overlaySource.includes('aria-live'));
+check('overlay never blocks target (pointer-events-none)', overlaySource.includes('pointer-events-none'));
+check('mobile bottom sheet', overlaySource.includes('isMobile'));
+
+/* ---------- layout mount is lazy ---------- */
+
+const layoutSource = read('app/layout.tsx');
+check('tour loads via next/dynamic ssr:false', /dynamic\(/.test(layoutSource) && /ssr:\s*false/.test(layoutSource));
+check('tour mounts inside AuthGate', /<AuthGate>[\s\S]*TourRoot[\s\S]*<\/AuthGate>/.test(layoutSource));
+
+console.log(`\n${passed} passed, ${failed} failed`);
+process.exit(failed === 0 ? 0 : 1);

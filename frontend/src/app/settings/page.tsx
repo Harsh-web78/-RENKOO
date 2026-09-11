@@ -39,6 +39,10 @@ import {
   type CurrentAccount,
 } from '@/lib/api';
 import { limitTitle } from '@/lib/plans';
+import {
+  TOUR_DISCOVERY_EVENT,
+  TOUR_RESTART_EVENT,
+} from '@/components/tour/tourEvents';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -464,6 +468,42 @@ const [open, setOpen] = useState(false);
               description="What best describes your role? RENKOO re-orders dashboards, navigation and suggestions around it."
             >
               <PersonaSelector />
+            </Panel>
+
+            <Panel
+              eyebrow="Guide"
+              title="Product tour"
+              description="Replay the guided setup tour, or browse short highlights per area. Skipping never blocks the product."
+            >
+              <div className="flex flex-wrap gap-2">
+                <SecondaryButton
+                  type="button"
+                  data-tour="restart-tour"
+                  onClick={() => {
+                    window.dispatchEvent(
+                      new CustomEvent(
+                        TOUR_RESTART_EVENT,
+                      ),
+                    );
+                    router.push('/first-value');
+                  }}
+                >
+                  Restart guided tour
+                </SecondaryButton>
+
+                <SecondaryButton
+                  type="button"
+                  onClick={() =>
+                    window.dispatchEvent(
+                      new CustomEvent(
+                        TOUR_DISCOVERY_EVENT,
+                      ),
+                    )
+                  }
+                >
+                  Explore RENKOO
+                </SecondaryButton>
+              </div>
             </Panel>
 
             <div id="settings-billing" className="scroll-mt-24">

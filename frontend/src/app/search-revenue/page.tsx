@@ -188,6 +188,7 @@ export default function SearchRevenuePage() {
   return (
     <AppShell mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} onMenu={() => setMobileOpen(true)}>
       <PageHeader
+        tourAnchor="discover-revenue"
         eyebrow="Business outcomes"
         title="Search-to-Revenue"
         description="What search actually did for the business — observed, attributed, or unavailable. Never causal, never zero-filled."

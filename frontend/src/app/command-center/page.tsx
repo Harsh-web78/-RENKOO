@@ -15,6 +15,7 @@ import {
   useState,
 } from 'react';
 import AppShell from '@/components/AppShell';
+import LearnTip from '@/components/tour/LearnTip';
 import Drawer, {
   DrawerSection,
 } from '@/components/ui/Drawer';
@@ -434,6 +435,7 @@ export default function CommandCenterPage() {
           ) : null}
 
           {/* DO THIS FIRST */}
+          <div data-tour="command-center">
           <Panel
             eyebrow="Do this first"
             title={
@@ -483,8 +485,10 @@ export default function CommandCenterPage() {
               </Link>
             </div>
           </Panel>
+          </div>
 
           {/* TOP 5 */}
+          <div data-tour="top-actions">
           <Panel
             eyebrow="Your next growth decisions"
             title={
@@ -493,6 +497,14 @@ export default function CommandCenterPage() {
                 : 'Your next growth decisions'
             }
             description="Unified WHAT → WHY → EVIDENCE → NEXT STEP → STATUS from the growth plan. Deterministic ordering, never scored."
+            actions={
+              <LearnTip
+                label="Growth decisions"
+                what="The highest-priority growth decisions, ordered by available evidence."
+                why="Focus beats coverage: the top items carry the most observed upside."
+                next="Open Evidence on a card to see its reasoning, then send it to the work queue."
+              />
+            }
           >
             {growthNow.length === 0 ? (
               <div className="flex flex-wrap items-center gap-2">
@@ -554,6 +566,7 @@ export default function CommandCenterPage() {
               </ol>
             )}
           </Panel>
+          </div>
 
           {/* TOP 5 */}
           <Panel

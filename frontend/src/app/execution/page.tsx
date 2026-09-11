@@ -212,6 +212,7 @@ export default function ExecutionPage() {
       onMenu={() => setNavOpen(true)}
     >
       <PageHeader
+        tourAnchor="discover-execution"
         eyebrow="Execution"
         title="Search growth work"
         description="Evidence-backed proposals with human approval. RENKOO never modifies websites on its own."

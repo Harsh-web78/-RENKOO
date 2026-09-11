@@ -39,6 +39,7 @@ import {
   type DataTableColumn,
 } from '@/components/ui';
 import DataTable from '@/components/ui/DataTable';
+import LearnTip from '@/components/tour/LearnTip';
 
 const STORAGE_KEY = 'renkoo_website_id';
 
@@ -297,7 +298,11 @@ export default function GrowthWorkPage() {
         </div>
       ) : queue ? (
         <>
-          <section aria-label="Today" className="mt-6">
+          <section
+            aria-label="Today"
+            className="mt-6"
+            data-tour="growth-work"
+          >
             <Panel
               eyebrow="Today — maximum 5"
               title="What to pick up now"
@@ -334,11 +339,23 @@ export default function GrowthWorkPage() {
             </Panel>
           </section>
 
-          <section aria-label="Outcomes" className="mt-4">
+          <section
+            aria-label="Outcomes"
+            className="mt-4"
+            data-tour="outcomes"
+          >
             <Panel
               eyebrow="Outcome loop"
               title="After the work — what actually changed"
               description="Observed outcomes with evidence states. Execution is never confused with outcome."
+              actions={
+                <LearnTip
+                  label="Outcome loop"
+                  what="Observed results after executed work, each with an evidence state."
+                  why="Execution is never confused with outcome: only evidence closes the loop."
+                  next="Open an outcome to see the evidence and the next decision."
+                />
+              }
             >
               {recent.length === 0 && pending.length === 0 ? (
                 <EmptyState
@@ -405,7 +422,15 @@ export default function GrowthWorkPage() {
             if (rows.length === 0) return null;
             const meta = SECTION_TITLES[section];
             return (
-              <div className="mt-4" key={section}>
+              <div
+                className="mt-4"
+                key={section}
+                {...(section === 'VERIFY'
+                  ? { 'data-tour': 'verification' }
+                  : section === 'AWAITING_APPROVAL'
+                    ? { 'data-tour': 'approval' }
+                    : null)}
+              >
                 <Panel
                   eyebrow={section.replace(/_/g, ' ')}
                   title={`${meta.title} — ${rows.length}`}

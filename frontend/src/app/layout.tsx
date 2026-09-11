@@ -1,8 +1,23 @@
 import './globals.css';
 import type { Metadata } from 'next';
+import dynamic from 'next/dynamic';
 import { SITE_URL } from '@/lib/site';
 import AuthGate from '../components/AuthGate';
 import MonitoringInit from '../components/MonitoringInit';
+
+/*
+ * Product Tour 1.0 loads lazily (never in the
+ * login bundle) and mounts inside AuthGate so it
+ * only ever runs for authenticated sessions. The
+ * authenticated shell renders independently of it.
+ */
+const TourRoot = dynamic(
+  () =>
+    import(
+      '../components/tour/TourRoot'
+    ).then((m) => m.default),
+  { ssr: false },
+);
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -32,4 +47,4 @@ export const metadata: Metadata = {
     follow: true,
   },
 };
-export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="en"><body><MonitoringInit /><AuthGate>{children}</AuthGate></body></html>}
+export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="en"><body><MonitoringInit /><AuthGate><TourRoot>{children}</TourRoot></AuthGate></body></html>}

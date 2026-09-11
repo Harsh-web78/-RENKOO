@@ -449,6 +449,7 @@ export default function ContentPage() {
       onMenu={() => setNavOpen(true)}
     >
       <PageHeader
+        tourAnchor="discover-content"
         eyebrow="Grow"
         title="Content Engine"
         description="Content intelligence and execution — from measured opportunity to brief to draft."

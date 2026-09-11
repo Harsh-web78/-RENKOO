@@ -431,6 +431,7 @@ export default function FirstValuePage() {
               />
               <PrimaryButton
                 type="button"
+                data-tour="add-website"
                 onClick={() => void handleCreateWebsite()}
               >
                 {busy === 'website' ? 'Creating…' : 'Create website'}
@@ -502,6 +503,9 @@ export default function FirstValuePage() {
                 <li
                   key={s.step}
                   className="flex flex-wrap items-center gap-2 rounded-rk-md border border-rk-border p-3"
+                  {...(s.step === 'BASELINE'
+                    ? { 'data-tour': 'baseline' }
+                    : null)}
                 >
                   <span className="text-sm font-semibold">
                     {STEP_LABELS[s.step] ?? s.step}
@@ -529,6 +533,7 @@ export default function FirstValuePage() {
                       />
                       <PrimaryButton
                         type="button"
+                        data-tour="add-website"
                         onClick={() => void handleCreateWebsite()}
                       >
                         {busy === 'website' ? 'Creating…' : 'Create'}
@@ -539,6 +544,7 @@ export default function FirstValuePage() {
                   (s.state === 'NOT_STARTED' || s.state === 'FAILED') ? (
                     <SecondaryButton
                       type="button"
+                      data-tour="start-crawl"
                       onClick={() => void handleCrawl()}
                     >
                       {busy === 'crawl'
@@ -552,6 +558,7 @@ export default function FirstValuePage() {
                     <span className="flex gap-2">
                       <PrimaryButton
                         type="button"
+                        data-tour="connect-gsc"
                         onClick={() => void handleGoogleConnect()}
                       >
                         {busy === 'gsc' ? 'Connecting…' : 'Connect Google'}
@@ -569,6 +576,7 @@ export default function FirstValuePage() {
                     <span className="flex flex-wrap items-center gap-2">
                       <select
                         aria-label="Search Console property"
+                        data-tour="select-gsc-property"
                         className="input"
                         defaultValue=""
                         onChange={(e) => {
@@ -597,6 +605,7 @@ export default function FirstValuePage() {
                       {s.step === 'GA4_CONNECT' ? (
                         <SecondaryButton
                           type="button"
+                          data-tour="connect-ga4"
                           onClick={() => void handleGoogleConnect()}
                         >
                           {busy === 'gsc' ? 'Connecting…' : 'Connect Google'}
@@ -605,6 +614,7 @@ export default function FirstValuePage() {
                       {s.step === 'GA4_PROPERTY' && gaProperties.length > 0 ? (
                         <select
                           aria-label="Analytics property"
+                          data-tour="select-ga4-property"
                           className="input"
                           defaultValue=""
                           onChange={(e) => {
