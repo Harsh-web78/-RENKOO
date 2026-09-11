@@ -181,44 +181,60 @@ export default function CommandCenterPage() {
       } finally {
         setLoading(false);
       }
-      try {
-        const now = await getGrowthNow(siteId);
+      /*
+       * Login TTI: the five secondary panels are
+       * independent reads (siteId only) — one parallel
+       * wave instead of five sequential round trips.
+       * Each leg still degrades alone, exactly as
+       * before; primary content already rendered above
+       * and is never gated on these.
+       */
+      const [nowRes, todayRes, outcomesRes, landscapeRes, firstValueRes] =
+        await Promise.allSettled([
+          getGrowthNow(siteId),
+          getGrowthToday(siteId),
+          getRecentOutcomes(siteId),
+          getSourceLandscape(siteId),
+          getFirstValueStatus(siteId),
+        ]);
+      if (nowRes.status === 'fulfilled') {
+        const now = nowRes.value;
         setGrowthNow(Array.isArray(now?.now) ? now.now : []);
-      } catch {
+      } else {
         setGrowthNow([]);
       }
-      try {
-        const today = await getGrowthToday(siteId);
+      if (todayRes.status === 'fulfilled') {
+        const today = todayRes.value;
         setGrowthToday(
           Array.isArray(today?.today) ? today.today.slice(0, 3) : [],
         );
-      } catch {
+      } else {
         setGrowthToday([]);
       }
-      try {
-        const outcomes = await getRecentOutcomes(siteId);
+      if (outcomesRes.status === 'fulfilled') {
+        const outcomes = outcomesRes.value;
         setGrowthOutcomes(
           Array.isArray((outcomes as any)?.items)
             ? (outcomes as any).items.slice(0, 3)
             : [],
         );
-      } catch {
+      } else {
         setGrowthOutcomes([]);
       }
-      try {
-        const landscape = await getSourceLandscape(siteId);
+      if (landscapeRes.status === 'fulfilled') {
+        const landscape = landscapeRes.value;
         const gaps = [
           ...((landscape as any)?.competitorOnly ?? []),
           ...((landscape as any)?.shared ?? []),
         ].slice(0, 3);
         setSourceGaps(gaps);
-      } catch {
+      } else {
         setSourceGaps([]);
       }
-      try {
-        setFirstValue(await getFirstValueStatus(siteId));
+      if (firstValueRes.status === 'fulfilled') {
+        setFirstValue(firstValueRes.value);
         setFirstValueFailed(false);
-      } catch {
+      } else {
         /* Degraded, not hidden: the setup panel below
          * renders retry + setup guidance from here. */
         setFirstValue(null);
