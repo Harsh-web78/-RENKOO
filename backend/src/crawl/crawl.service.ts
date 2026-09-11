@@ -377,10 +377,12 @@ export class CrawlService {
        * Resource blocking (same policy the
        * competitor crawler already uses).
        * SEO extraction reads the DOM, never the
-       * bytes of images/fonts/media — blocking
-       * them only removes network wait, never
-       * evidence (img counts and alt attributes
-       * come from the HTML markup itself).
+       * bytes of images/fonts/media/stylesheets
+       * — blocking them only removes network
+       * wait, never evidence (img counts and alt
+       * attributes come from the HTML markup
+       * itself; scripts still execute so
+       * JS-rendered DOM evidence is unchanged).
        */
       await context.route(
         '**/*',
@@ -398,7 +400,9 @@ export class CrawlService {
               resourceType ===
                 'media' ||
               resourceType ===
-                'font'
+                'font' ||
+              resourceType ===
+                'stylesheet'
             ) {
               await route.abort();
               return;
@@ -562,6 +566,14 @@ export class CrawlService {
             continue;
           }
 
+          if (
+            this.isProbablyNonHtmlUrl(
+              normalized,
+            )
+          ) {
+            continue;
+          }
+
           try {
             const hostname =
               this.normalizeHostname(
@@ -631,6 +643,14 @@ export class CrawlService {
             );
 
           if (!normalized) {
+            continue;
+          }
+
+          if (
+            this.isProbablyNonHtmlUrl(
+              normalized,
+            )
+          ) {
             continue;
           }
 
@@ -1727,47 +1747,55 @@ export class CrawlService {
 
     /*
      * =======================================================
-     * SEO AUDIT
-     * =======================================================
-     */
-
-    await this.seoAuditService.auditPage(
-      crawlPage,
-    );
-
-    /*
-     * =======================================================
-     * LINK GRAPH (Phase 2B)
+     * SEO AUDIT + LINK GRAPH (Phase 2B)
      * =======================================================
      *
-     * Batched per page: one createMany for the page's
-     * deduplicated edges — never one insert per link.
-     * Edge persistence must never fail the page: audit
-     * evidence above already stands on its own.
+     * Audit rows and link-graph rows touch disjoint
+     * tables keyed by the same crawlPage, so the two
+     * write tails overlap instead of paying two
+     * serial DB round trips per page. Audit errors
+     * still propagate exactly as before (page
+     * failure path in crawlOneUrl); edge
+     * persistence stays best-effort. Batched per
+     * page: audit uses deleteMany + one createMany,
+     * edges use one createMany — never one insert
+     * per issue or per link.
      */
 
-    try {
-      await this.crawlLinkService.persistPageEdges(
-        {
-          organizationId:
-            linkCtx.organizationId,
-          websiteId:
-            linkCtx.websiteId,
-          crawlId,
-          sourceUrl: finalUrl,
-          edges: linkEdges,
-        },
+    const auditPromise =
+      this.seoAuditService.auditPage(
+        crawlPage,
       );
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error(
-        `[RENKOO] Crawl ${crawlId} link edges skipped for ${finalUrl}: ${
-          error instanceof Error
-            ? error.message
-            : 'Unknown error'
-        }`,
-      );
-    }
+
+    const linksPromise = (async () => {
+      try {
+        await this.crawlLinkService.persistPageEdges(
+          {
+            organizationId:
+              linkCtx.organizationId,
+            websiteId:
+              linkCtx.websiteId,
+            crawlId,
+            sourceUrl: finalUrl,
+            edges: linkEdges,
+          },
+        );
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[RENKOO] Crawl ${crawlId} link edges skipped for ${finalUrl}: ${
+            error instanceof Error
+              ? error.message
+              : 'Unknown error'
+          }`,
+        );
+      }
+    })();
+
+    await Promise.all([
+      auditPromise,
+      linksPromise,
+    ]);
 
     return {
       crawlPage,
@@ -1983,6 +2011,39 @@ export class CrawlService {
     input: string,
   ): string {
     return normalizeCrawlUrl(input);
+  }
+
+  /*
+   * Pre-dispatch non-HTML filter (same extension
+   * policy the competitor crawler already uses).
+   * Skips whole page cycles (newPage → goto →
+   * content → row → audit → edges) for bytes the
+   * DOM extractor cannot read meaningfully anyway
+   * (title/meta/headings/JSON-LD come from HTML
+   * markup). Sitemap discovery itself is
+   * unaffected: fetchSitemap reads sitemap XML
+   * over plain fetch, never through this gate —
+   * and nested sitemap indexes were never
+   * followed recursively, so nothing stops being
+   * discovered. Applied at every queue ingress;
+   * the start URL is never filtered.
+   */
+
+  private isProbablyNonHtmlUrl(
+    input: string,
+  ): boolean {
+    try {
+      const pathname =
+        new URL(
+          input,
+        ).pathname.toLowerCase();
+
+      return /\.(pdf|jpg|jpeg|png|gif|webp|svg|ico|mp4|mp3|avi|mov|zip|rar|7z|css|js|xml|json|csv|doc|docx|xls|xlsx|ppt|pptx|woff|woff2|ttf|eot)$/i.test(
+        pathname,
+      );
+    } catch {
+      return true;
+    }
   }
 
   /*

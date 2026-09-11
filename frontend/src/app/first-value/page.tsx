@@ -554,6 +554,16 @@ export default function FirstValuePage() {
                           : 'Run crawl'}
                     </SecondaryButton>
                   ) : null}
+                  {s.step === 'CRAWL' &&
+                  s.state === 'IN_PROGRESS' ? (
+                    <span className="w-full text-sm text-rk-muted">
+                      Crawling your website… pages are
+                      being discovered and analyzed.
+                      You can continue setup below —
+                      no step is marked complete
+                      before the crawl finishes.
+                    </span>
+                  ) : null}
                   {s.step === 'GSC_CONNECT' && s.state !== 'COMPLETED' ? (
                     <span className="flex gap-2">
                       <PrimaryButton
