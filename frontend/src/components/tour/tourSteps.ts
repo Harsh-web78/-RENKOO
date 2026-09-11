@@ -11,6 +11,19 @@
 
 export type TourId = 'core' | 'discovery';
 
+/*
+ * Explicit progression states. Polling only moves
+ * waiting → working → done/blocked. Advancing the
+ * step index requires the user's own Next/Skip
+ * click — the engine never advances alone.
+ */
+export type StepPhase =
+  | 'idle'
+  | 'waiting'
+  | 'working'
+  | 'done'
+  | 'blocked';
+
 export type AwaitCondition =
   | 'websites'
   | 'crawl'
@@ -42,6 +55,28 @@ export interface TourStep {
    * tooltip never renders a duplicate of it.
    */
   hint?: string;
+  /**
+   * Label for the action button that activates the
+   * REAL highlighted control (e.g. “Start Crawl”).
+   * The button clicks the actual target element —
+   * it never duplicates product functionality.
+   * Absent = no action button (user acts directly
+   * on the UI, or the step resolves on its own).
+   */
+  ctaLabel?: string;
+  /**
+   * Shown while the step is genuinely processing
+   * (e.g. crawl running). Falls back to title/body.
+   */
+  workingTitle?: string;
+  workingBody?: string;
+  /**
+   * Shown after real completion is detected. The
+   * tour NEVER auto-advances — the user must click
+   * Next. Required on every awaited step.
+   */
+  completedTitle?: string;
+  completedBody?: string;
   /** Label for the manual advance button (default Next). */
   nextLabel?: string;
   /** Completion condition. Undefined = manual advance. */
@@ -74,7 +109,11 @@ export const CORE_STEPS: TourStep[] = [
     target: 'add-website',
     title: 'Start with your website',
     body: 'RENKOO uses your website as the foundation for Search Growth analysis. Add it to unlock everything downstream.',
-    hint: 'Fill in the highlighted form and click “Create”.',
+    hint: 'Fill in the highlighted form, then use the highlighted “Create” button (or the button below).',
+    ctaLabel: 'Add Website',
+    completedTitle: '✓ Website added',
+    completedBody:
+      'Your website is now the foundation for Search Growth analysis. Continue when you are ready.',
     await: 'websites',
     skippable: false,
   },
@@ -85,7 +124,14 @@ export const CORE_STEPS: TourStep[] = [
     target: 'start-crawl',
     title: 'Scan your website',
     body: 'Your crawl helps RENKOO understand pages, content, technical issues and internal links.',
-    hint: 'Click “Run crawl”. If a crawl fails, “Retry crawl” appears in the same place.',
+    hint: 'Use the highlighted “Run crawl” button. If a crawl fails, “Retry crawl” appears in the same place.',
+    ctaLabel: 'Start Crawl',
+    workingTitle: 'Crawling your website…',
+    workingBody:
+      'RENKOO is working on this step. You can continue when it is complete.',
+    completedTitle: '✓ Crawl complete',
+    completedBody:
+      'Your website has been successfully analyzed. Continue when you are ready.',
     await: 'crawl',
     skippable: true,
   },
@@ -96,7 +142,11 @@ export const CORE_STEPS: TourStep[] = [
     target: 'connect-gsc',
     title: 'Connect Google Search Console',
     body: 'Bring your real Google search performance into RENKOO — queries, clicks, impressions, CTR and position.',
-    hint: 'Click “Connect Google”. You return here automatically after Google authorization.',
+    hint: 'Use the highlighted “Connect Google” button. You return here automatically after Google authorization.',
+    ctaLabel: 'Connect Google',
+    completedTitle: '✓ Search Console connected',
+    completedBody:
+      'Your real Google search performance is now flowing into RENKOO. Continue when you are ready.',
     await: 'gsc',
     skippable: true,
   },
@@ -108,6 +158,10 @@ export const CORE_STEPS: TourStep[] = [
     title: 'Choose your Search Console property',
     body: 'Select the property that represents the website you are analyzing. RENKOO only reads the property you pick.',
     hint: 'Pick a property from the highlighted selector.',
+    ctaLabel: 'Choose Property',
+    completedTitle: '✓ Property selected',
+    completedBody:
+      'RENKOO now reads the property you picked. Continue when you are ready.',
     await: 'gsc-property',
     skippable: true,
   },
@@ -118,7 +172,11 @@ export const CORE_STEPS: TourStep[] = [
     target: 'connect-ga4',
     title: 'Connect Google Analytics',
     body: 'Use GA4 to understand organic traffic, conversions and available revenue signals. This step is optional.',
-    hint: 'Click “Connect Google”, or skip to continue without GA4.',
+    hint: 'Use the highlighted “Connect Google” button, or skip to continue without GA4.',
+    ctaLabel: 'Connect Google',
+    completedTitle: '✓ Analytics connected',
+    completedBody:
+      'Your GA4 connection is active. Continue when you are ready.',
     await: 'ga4',
     skippable: true,
     optional: true,
@@ -131,6 +189,10 @@ export const CORE_STEPS: TourStep[] = [
     title: 'Choose your Analytics property',
     body: 'Select the GA4 property that belongs to this website. GA4 is never marked complete just because Search Console is connected.',
     hint: 'Pick a GA4 property, or skip — it stays optional.',
+    ctaLabel: 'Choose Property',
+    completedTitle: '✓ Analytics property selected',
+    completedBody:
+      'RENKOO now reads the GA4 property you picked. Continue when you are ready.',
     await: 'ga4-property',
     skippable: true,
     optional: true,
@@ -142,7 +204,13 @@ export const CORE_STEPS: TourStep[] = [
     target: 'baseline',
     title: 'Build your baseline',
     body: 'RENKOO now combines your available website, Google and analytics data to establish your starting point. Nothing is fabricated — this resolves on its own.',
-    hint: 'Wait for the ready state. The tour continues automatically.',
+    hint: 'RENKOO is working on this step. You can continue when it is complete.',
+    workingTitle: 'Building your baseline…',
+    workingBody:
+      'RENKOO is working on this step. You can continue when it is complete.',
+    completedTitle: '✓ Baseline ready',
+    completedBody:
+      'Your starting point is established from real data. Continue when you are ready.',
     await: 'baseline',
     skippable: true,
   },
@@ -164,6 +232,9 @@ export const CORE_STEPS: TourStep[] = [
     title: 'These are your highest-priority opportunities',
     body: 'Start with the actions RENKOO recommends based on available evidence. Open the first card to see its reasoning.',
     hint: 'Click “Evidence” on the first highlighted card.',
+    completedTitle: '✓ Action opened',
+    completedBody:
+      'You opened a recommended action with its reasoning. Continue when you are ready.',
     await: 'route',
     awaitRoute: '/growth-plan',
     skippable: true,
@@ -176,6 +247,9 @@ export const CORE_STEPS: TourStep[] = [
     title: 'Turn insights into a plan',
     body: 'Your Growth Plan connects business goals with SEO, search visibility, AI visibility and execution priorities.',
     hint: 'Click “Open in work queue” on a NOW card.',
+    completedTitle: '✓ Work queue opened',
+    completedBody:
+      'The decision is now in your work queue. Continue when you are ready.',
     await: 'route',
     awaitRoute: '/growth-work',
     skippable: true,
@@ -405,5 +479,5 @@ export function stepsForGroup(groupId: string): TourStep[] {
 /* Welcome / completion copy (single source for tests). */
 export const WELCOME_TITLE = 'Welcome to RENKOO 👋';
 export const WELCOME_SUBTITLE =
-  "Let's get your Search Growth system set up and find your first opportunities.";
+  "Let's get your first Search Growth insight.";
 export const COMPLETE_TITLE = 'You are ready 🚀';

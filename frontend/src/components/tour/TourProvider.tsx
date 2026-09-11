@@ -48,6 +48,7 @@ import {
   CORE_STEPS,
   stepsForGroup,
   stepsForTour,
+  type StepPhase,
   type TourId,
   type TourStep,
 } from './tourSteps';
@@ -112,24 +113,41 @@ async function resolveWebsiteId(): Promise<string | null> {
 }
 
 /*
- * Single source for "is this await condition met
- * right now", read from existing product APIs only.
+ * Single source for step truth, read from existing
+ * product APIs only. The tour NEVER advances on its
+ * own: polling only reports {done, working,
+ * blocked} and the overlay enables [Next] solely on
+ * done. Clicking the button is never completion —
+ * only real product state completes a step.
  */
-async function checkAwait(
+interface StepTruth {
+  done: boolean;
+  working: boolean;
+  blocked: boolean;
+}
+
+async function checkStepState(
   step: TourStep,
-  pathname: string,
-): Promise<boolean> {
+): Promise<StepTruth> {
+  const idle = {
+    done: false,
+    working: false,
+    blocked: false,
+  };
+
   switch (step.await) {
     case 'websites': {
       const sites = await getWebsites();
-      return (
-        Array.isArray(sites) && sites.length > 0
-      );
+      return {
+        ...idle,
+        done:
+          Array.isArray(sites) && sites.length > 0,
+      };
     }
 
     case 'crawl': {
       const id = await resolveWebsiteId();
-      if (!id) return false;
+      if (!id) return idle;
       const status = await getFirstValueStatus(
         id,
         true,
@@ -137,10 +155,13 @@ async function checkAwait(
       const crawl = status.steps.find(
         (s) => s.step === 'CRAWL',
       );
-      return (
-        crawl?.state === 'COMPLETED' ||
-        crawl?.state === 'IN_PROGRESS'
-      );
+      return {
+        done: crawl?.state === 'COMPLETED',
+        working: crawl?.state === 'IN_PROGRESS',
+        blocked:
+          crawl?.state === 'FAILED' ||
+          crawl?.state === 'BLOCKED',
+      };
     }
 
     case 'gsc': {
@@ -150,33 +171,42 @@ async function checkAwait(
       invalidateSessionCache('google-status');
       try {
         const health = await getGoogleHealth();
-        if (health?.gsc?.connected) return true;
+        if (health?.gsc?.connected)
+          return { ...idle, done: true };
       } catch {
         /* Fall through to status API. */
       }
       const status =
         await getGoogleConnectionStatus();
-      return status?.connected === true;
+      return {
+        ...idle,
+        done: status?.connected === true,
+      };
     }
 
     case 'gsc-property': {
       invalidateSessionCache('google-status');
       try {
         const health = await getGoogleHealth();
-        if (health?.gsc?.property) return true;
+        if (health?.gsc?.property)
+          return { ...idle, done: true };
       } catch {
         /* Fall through to status API. */
       }
       const status =
         await getGoogleConnectionStatus();
-      return Boolean(status?.selectedProperty);
+      return {
+        ...idle,
+        done: Boolean(status?.selectedProperty),
+      };
     }
 
     case 'ga4': {
       invalidateSessionCache('google-status');
       try {
         const health = await getGoogleHealth();
-        if (health?.ga4?.connected) return true;
+        if (health?.ga4?.connected)
+          return { ...idle, done: true };
       } catch {
         /* Fall through to status API. */
       }
@@ -184,42 +214,60 @@ async function checkAwait(
         await getGoogleConnectionStatus();
       /* OAuth alone never completes GA4 — only a
        * selected analytics property counts. */
-      return Boolean(
-        status?.selectedAnalyticsProperty,
-      );
+      return {
+        ...idle,
+        done: Boolean(
+          status?.selectedAnalyticsProperty,
+        ),
+      };
     }
 
     case 'ga4-property': {
       invalidateSessionCache('google-status');
       try {
         const health = await getGoogleHealth();
-        if (health?.ga4?.property) return true;
+        if (health?.ga4?.property)
+          return { ...idle, done: true };
       } catch {
         /* Fall through to status API. */
       }
       const status =
         await getGoogleConnectionStatus();
-      return Boolean(
-        status?.selectedAnalyticsProperty,
-      );
+      return {
+        ...idle,
+        done: Boolean(
+          status?.selectedAnalyticsProperty,
+        ),
+      };
     }
 
     case 'baseline': {
       const id = await resolveWebsiteId();
-      if (!id) return false;
+      if (!id) return idle;
       const status = await getFirstValueStatus(
         id,
         true,
       );
-      return status.baseline?.ready === true;
+      const ready =
+        status.baseline?.ready === true;
+      return {
+        done: ready,
+        /* Baseline resolves server-side once its
+         * inputs exist — genuinely processing. */
+        working: !ready,
+        blocked: false,
+      };
     }
 
     case 'route': {
-      return pathname === (step.awaitRoute ?? '');
+      /* Resolved by the pathname effect below
+       * (the user arrives via a real CTA click),
+       * never by polling. */
+      return idle;
     }
 
     default:
-      return false;
+      return idle;
   }
 }
 
@@ -280,6 +328,14 @@ export default function TourProvider({
     useState(false);
   const [awaitError, setAwaitError] =
     useState(false);
+  /*
+   * Explicit progression state machine. Polling
+   * only moves waiting → working → done/blocked.
+   * NOTHING here advances the step index except
+   * the user's own Next/Skip click.
+   */
+  const [phase, setPhase] =
+    useState<StepPhase>('idle');
 
   const navigatedForStep = useRef<string | null>(
     null,
@@ -599,6 +655,26 @@ export default function TourProvider({
     setTargetEl(null);
     setTargetMissing(false);
     setAwaitError(false);
+    setPhase('idle');
+  }
+
+  /*
+   * The action button activates the REAL
+   * highlighted control (targetEl.click()) —
+   * the product performs the work, the tour only
+   * observes. Clicking is never completion.
+   */
+  function fireCta() {
+    const el = targetEl;
+
+    if (el instanceof HTMLElement) {
+      try {
+        el.focus();
+      } catch {
+        /* Focus is best-effort. */
+      }
+      el.click();
+    }
   }
 
   function skipStep() {
@@ -664,20 +740,7 @@ export default function TourProvider({
     setShowPicker(false);
     setTargetEl(null);
     setTargetMissing(false);
-  }
-
-  function completeCoreStep(
-    tour: TourId,
-    index: number,
-    stepId: string,
-  ) {
-    recordTourEvent(
-      'TOUR_STEP_COMPLETED',
-      tour,
-      stepId,
-      window.location.pathname,
-    );
-    advance(tour, index);
+    setPhase('idle');
   }
 
   /* ---------- welcome gate (genuinely new users) ---------- */
@@ -711,8 +774,12 @@ export default function TourProvider({
     showWelcome,
   ]);
 
-  /* Route-change completion (e.g. user clicks the
-   * real “Evidence” / “Open in work queue” CTA). */
+  /*
+   * Route-change detection (e.g. user clicks the
+   * real “Evidence” / “Open in work queue” CTA).
+   * Marks the step done and waits for the user's
+   * explicit Next click — NEVER advances alone.
+   */
   useEffect(() => {
     if (
       !activeEntry ||
@@ -723,11 +790,8 @@ export default function TourProvider({
     }
 
     if (pathname === activeEntry.step.awaitRoute) {
-      completeCoreStep(
-        activeEntry.tour,
-        activeEntry.index,
-        activeEntry.step.id,
-      );
+      setPhase('done');
+      setAwaitError(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
@@ -830,43 +894,61 @@ export default function TourProvider({
     }
 
     let cancelled = false;
-    const { tour, index, step } = activeEntry;
+    const { step } = activeEntry;
 
+    /*
+     * Polling reports truth only: waiting →
+     * working → done/blocked. Advancing the step
+     * index happens exclusively in the Next/Skip
+     * click handlers below.
+     */
     async function poll() {
       try {
-        const done = await checkAwait(
-          step,
-          window.location.pathname,
-        );
+        const truth = await checkStepState(step);
 
         if (cancelled) return;
 
-        if (done) {
-          completeCoreStep(tour, index, step.id);
+        setAwaitError(false);
+
+        if (truth.done) {
+          setPhase('done');
+        } else if (truth.blocked) {
+          setPhase('blocked');
+        } else if (truth.working) {
+          setPhase('working');
         } else {
-          setAwaitError(false);
+          setPhase('waiting');
         }
       } catch {
         /* Honest degraded state: keep waiting,
          * say verification is pending, keep Skip. */
         if (!cancelled) {
           setAwaitError(true);
+          setPhase((prev) =>
+            prev === 'done' ? prev : 'waiting',
+          );
         }
       }
     }
 
     void poll();
-    const timer = window.setInterval(
-      poll,
-      POLL_MS,
-    );
+    const timer = window.setInterval(() => {
+      /*
+       * A completed step holds its [Next] state —
+       * no further polling needed. The user
+       * decides when to continue.
+       */
+      if (phase !== 'done') {
+        void poll();
+      }
+    }, POLL_MS);
 
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeEntry, pathname]);
+  }, [activeEntry, pathname, phase]);
 
   /* ---------- render decisions ---------- */
 
@@ -883,10 +965,16 @@ export default function TourProvider({
     !!activeEntry &&
     activeEntry.step.route === pathname;
 
+  /*
+   * The pill waits while the user is elsewhere —
+   * except when the step just completed off-route,
+   * which gets its own explicit [Next] card.
+   */
   const showResumePill =
     !!tourState &&
     !!activeEntry &&
     !onStepRoute &&
+    phase !== 'done' &&
     !showWelcome &&
     !showPicker;
 
@@ -897,15 +985,16 @@ export default function TourProvider({
         <TourOverlay
           showWelcome={showWelcome}
           showPicker={showPicker}
-          activeEntry={
-            onStepRoute ? activeEntry : null
-          }
+          activeEntry={activeEntry}
+          onStepRoute={onStepRoute}
           showResumePill={showResumePill}
           resumeEntry={activeEntry}
           targetEl={targetEl}
           targetMissing={targetMissing}
           awaitError={awaitError}
           pathname={pathname}
+          phase={phase}
+          onCta={fireCta}
           onStartCore={() => startTour('core')}
           onSkipWelcome={dismissTour}
           onClosePicker={() =>

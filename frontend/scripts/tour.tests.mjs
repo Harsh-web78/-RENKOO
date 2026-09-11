@@ -171,7 +171,7 @@ for (const s of all) {
 check(
   'welcome copy present',
   stepsSource.includes("Welcome to RENKOO") &&
-    stepsSource.includes("Let's get your Search Growth system set up"),
+    stepsSource.includes("Let's get your first Search Growth insight."),
 );
 check(
   'completion copy present',
@@ -266,11 +266,11 @@ for (const fn of ['getWebsites', 'getFirstValueStatus', 'getGoogleHealth', 'getG
   );
 }
 
-const providerSource = read('components/tour/TourProvider.tsx');
-check('provider polls only (no new endpoints)', !/fetch\(|axios/.test(providerSource));
+const tourEngineSource = read('components/tour/TourProvider.tsx');
+check('provider polls only (no new endpoints)', !/fetch\(|axios/.test(tourEngineSource));
 check(
   'provider imports tourEvents (no bundle duplication)',
-  providerSource.includes("from './tourEvents'"),
+  tourEngineSource.includes("from './tourEvents'"),
 );
 
 /* ---------- overlay accessibility ---------- */
@@ -281,6 +281,115 @@ check('escape handling', overlaySource.includes("'Escape'") || overlaySource.inc
 check('step counter with live region', overlaySource.includes('aria-live'));
 check('overlay never blocks target (pointer-events-none)', overlaySource.includes('pointer-events-none'));
 check('mobile bottom sheet', overlaySource.includes('isMobile'));
+
+/* ---------- user-controlled progression (Part A) ---------- */
+
+const tourProviderSource = read('components/tour/TourProvider.tsx');
+
+check(
+  'no auto-advance helper remains',
+  !tourProviderSource.includes('completeCoreStep'),
+);
+check(
+  'phase state machine exists',
+  tourProviderSource.includes("useState<StepPhase>('idle')") &&
+    tourProviderSource.includes("setPhase('done')") &&
+    tourProviderSource.includes("setPhase('working')") &&
+    tourProviderSource.includes("setPhase('blocked')"),
+);
+check(
+  'poll reports truth only (no advance/router in poll)',
+  (() => {
+    const start = tourProviderSource.indexOf('async function poll()');
+    if (start < 0) return false;
+    const block = tourProviderSource.slice(start, start + 1800);
+    return !block.includes('advance(') && !block.includes('router.push');
+  })(),
+);
+check(
+  'route effect marks done without advancing',
+  (() => {
+    const start = tourProviderSource.indexOf('Route-change detection');
+    if (start < 0) return false;
+    const block = tourProviderSource.slice(start, start + 1200);
+    return block.includes("setPhase('done')") && !block.includes('advance(');
+  })(),
+);
+check(
+  'explicit Next records completion then advances',
+  tourProviderSource.includes("'TOUR_STEP_COMPLETED'") &&
+    tourProviderSource.includes('advance('),
+);
+check(
+  'no automatic-progression copy',
+  !overlaySource.includes('continues automatically') &&
+    !tourProviderSource.includes('continues automatically') &&
+    !stepsSource.includes('continues automatically'),
+);
+check(
+  'waiting copy is explicit',
+  overlaySource.includes("Complete this step in RENKOO. We'll detect when it's ready.") ||
+    overlaySource.includes('Complete this step in RENKOO. We will'),
+);
+check(
+  'working copy is explicit',
+  overlaySource.includes('RENKOO is working on this step'),
+);
+check(
+  'Next gated on done in overlay',
+  overlaySource.includes("phase === 'done'"),
+);
+check(
+  'welcome offers Start Tour / Skip Tour',
+  overlaySource.includes('Start Tour') && overlaySource.includes('Skip Tour'),
+);
+check(
+  'welcome does not auto-start (gate only shows)',
+  tourProviderSource.includes('setShowWelcome(true)') &&
+    !/welcome[\s\S]{0,400}startTour\('core'\)/.test(
+      tourProviderSource.slice(tourProviderSource.indexOf('welcome gate')),
+    ),
+);
+check(
+  'resume pill copy restores current step',
+  overlaySource.includes('Resume your guided tour'),
+);
+check(
+  'final step has no auto-redirect',
+  (() => {
+    const start = overlaySource.indexOf('Core completion card');
+    if (start < 0) return false;
+    const block = overlaySource.slice(start, start + 2500);
+    return block.includes('Go to Command Center') && !block.includes('router.push');
+  })(),
+);
+check(
+  'CTA activates the real target (click-through)',
+  tourProviderSource.includes('el.click()') && overlaySource.includes('onCta'),
+);
+check(
+  'blocked phase renders honestly',
+  overlaySource.includes("phase === 'blocked'") && overlaySource.includes('hit a problem'),
+);
+
+/* Every awaited step needs completion copy; action
+ * steps need a CTA label for the real control. */
+const awaitedSteps = all.filter((s) => s.await);
+for (const s of awaitedSteps) {
+  const block = s.raw;
+  check(
+    `completion copy ${s.id}`,
+    /completedTitle:\s*'/.test(block) && /completedBody:\s*'/.test(block),
+  );
+}
+const ctaExpected = ['website', 'crawl', 'connect-gsc', 'gsc-property', 'connect-ga4', 'ga4-property'];
+for (const id of ctaExpected) {
+  const s = all.find((x) => x.id === id);
+  check(
+    `action CTA label ${id}`,
+    !!s && /ctaLabel:\s*'/.test(s.raw),
+  );
+}
 
 /* ---------- layout mount is lazy ---------- */
 

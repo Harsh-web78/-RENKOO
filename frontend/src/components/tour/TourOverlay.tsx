@@ -26,6 +26,7 @@ import {
   DISCOVERY_GROUPS,
   WELCOME_SUBTITLE,
   WELCOME_TITLE,
+  type StepPhase,
   type TourStep,
 } from './tourSteps';
 
@@ -40,18 +41,21 @@ interface TourOverlayProps {
   showWelcome: boolean;
   showPicker: boolean;
   activeEntry: ActiveEntry | null;
+  onStepRoute: boolean;
   showResumePill: boolean;
   resumeEntry: ActiveEntry | null;
   targetEl: Element | null;
   targetMissing: boolean;
   awaitError: boolean;
   pathname: string;
+  phase: StepPhase;
   onStartCore: () => void;
   onSkipWelcome: () => void;
   onClosePicker: () => void;
   onPickGroup: (groupId: string) => void;
   onNext: () => void;
   onBack: () => void;
+  onCta: () => void;
   onSkipStep: () => void;
   onSkipTour: () => void;
   onResume: () => void;
@@ -97,17 +101,20 @@ export default function TourOverlay(
     showWelcome,
     showPicker,
     activeEntry,
+    onStepRoute,
     showResumePill,
     resumeEntry,
     targetEl,
     targetMissing,
     awaitError,
+    phase,
     onStartCore,
     onSkipWelcome,
     onClosePicker,
     onPickGroup,
     onNext,
     onBack,
+    onCta,
     onSkipStep,
     onSkipTour,
     onResume,
@@ -249,8 +256,27 @@ export default function TourOverlay(
     };
   }
 
+  /*
+   * Explicit progression rules — the user always
+   * drives:
+   * - manual step ......... [Back] [Next] [Skip Step] [Skip Tour]
+   * - action step ......... [Actual CTA] [Skip Step] [Skip Tour]
+   * - working/blocked ..... status + [Skip Step] [Skip Tour]
+   * - completed ........... [Next] [Skip Step] [Skip Tour]
+   * [Next] appears ONLY on manual steps and on
+   * genuinely completed steps. Nothing advances
+   * without an explicit click.
+   */
   function renderStepActions() {
     if (!activeEntry || !step) return null;
+
+    const showCta =
+      isAwaitStep &&
+      phase !== 'done' &&
+      phase !== 'working' &&
+      Boolean(step.ctaLabel) &&
+      Boolean(targetEl) &&
+      !targetMissing;
 
     return (
       <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -263,7 +289,17 @@ export default function TourOverlay(
           </SecondaryButton>
         ) : null}
 
-        {!isAwaitStep && !isCompleteStep ? (
+        {showCta ? (
+          <PrimaryButton
+            type="button"
+            onClick={onCta}
+          >
+            {step.ctaLabel}
+          </PrimaryButton>
+        ) : null}
+
+        {(!isAwaitStep || phase === 'done') &&
+        !isCompleteStep ? (
           <PrimaryButton
             type="button"
             onClick={onNext}
@@ -272,21 +308,41 @@ export default function TourOverlay(
           </PrimaryButton>
         ) : null}
 
-        {isAwaitStep ? (
+        {isAwaitStep && phase === 'working' ? (
           <span className="inline-flex items-center gap-2 text-[13px] font-semibold text-rk-secondary">
             <span
               aria-hidden
               className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-rk-border-strong border-t-transparent"
             />
+            RENKOO is working on this step…
+          </span>
+        ) : null}
+
+        {isAwaitStep &&
+        (phase === 'waiting' || phase === 'idle') ? (
+          <span className="text-[13px] font-medium leading-5 text-rk-secondary">
+            Complete this step in RENKOO. We will
+            detect when it is ready.
             {awaitError
-              ? 'Verification is pending — connection trouble. Still watching.'
-              : 'Waiting for this step — continues automatically.'}
+              ? ' Verification is pending — connection trouble. Still watching.'
+              : null}
+          </span>
+        ) : null}
+
+        {isAwaitStep && phase === 'blocked' ? (
+          <span className="text-[13px] font-medium leading-5 text-rk-secondary">
+            This step hit a problem in RENKOO. Retry
+            using the highlighted control, or skip
+            for now — nothing is marked complete.
           </span>
         ) : null}
 
         {step.skippable && !isCompleteStep ? (
-          <GhostButton type="button" onClick={onSkipStep}>
-            {isAwaitStep ? 'Skip step' : 'Skip'}
+          <GhostButton
+            type="button"
+            onClick={onSkipStep}
+          >
+            Skip step
           </GhostButton>
         ) : null}
 
@@ -295,6 +351,49 @@ export default function TourOverlay(
         </GhostButton>
       </div>
     );
+  }
+
+  /*
+   * Phase-aware copy. Working overrides the guide
+   * text; done swaps in the completion text. The
+   * underlying step config never changes.
+   */
+  function stepTitle(): string {
+    if (!step) return '';
+    if (
+      isAwaitStep &&
+      phase === 'done' &&
+      step.completedTitle
+    ) {
+      return step.completedTitle;
+    }
+    if (
+      isAwaitStep &&
+      phase === 'working' &&
+      step.workingTitle
+    ) {
+      return step.workingTitle;
+    }
+    return step.title;
+  }
+
+  function stepBody(): string {
+    if (!step) return '';
+    if (
+      isAwaitStep &&
+      phase === 'done' &&
+      step.completedBody
+    ) {
+      return step.completedBody;
+    }
+    if (
+      isAwaitStep &&
+      phase === 'working' &&
+      step.workingBody
+    ) {
+      return step.workingBody;
+    }
+    return step.body;
   }
 
   return (
@@ -347,7 +446,7 @@ export default function TourOverlay(
       ) : null}
 
       {/* Anchored tooltip / mobile bottom sheet. */}
-      {spotlight && step && activeEntry ? (
+      {onStepRoute && spotlight && step && activeEntry ? (
         <div
           role="dialog"
           aria-modal="false"
@@ -377,17 +476,18 @@ export default function TourOverlay(
             tabIndex={-1}
             className="rk-focusable mt-1 text-[17px] font-extrabold leading-snug tracking-[-0.01em] text-rk-ink outline-none"
           >
-            {step.title}
+            {stepTitle()}
           </h2>
 
           <p
             id="rk-tour-body"
             className="mt-1.5 text-sm leading-6 text-rk-secondary"
           >
-            {step.body}
+            {stepBody()}
           </p>
 
-          {step.hint ? (
+          {step.hint &&
+          (!isAwaitStep || phase !== 'done') ? (
             <p className="mt-2 rounded-rk-sm border border-rk-border bg-rk-soft px-2.5 py-1.5 text-[13px] font-medium leading-5 text-rk-ink">
               {step.hint}
             </p>
@@ -397,12 +497,62 @@ export default function TourOverlay(
         </div>
       ) : null}
 
+      {/* Off-route completion card: the user reached
+       * the awaited route via a real CTA click. The
+       * step is done, but ONLY an explicit [Next]
+       * moves the tour forward (and navigates). */}
+      {activeEntry &&
+      step &&
+      !isCompleteStep &&
+      !onStepRoute &&
+      phase === 'done' ? (
+        <div className="fixed inset-0 z-[71] grid place-items-center bg-rk-ink/55 px-4">
+          <div
+            role="dialog"
+            aria-modal="false"
+            aria-labelledby="rk-tour-title"
+            aria-describedby="rk-tour-body"
+            className="w-full max-w-md rounded-rk-lg border border-rk-border bg-rk-surface p-5 shadow-rk-md"
+          >
+            <p className="rk-label">
+              {step.tour === 'core'
+                ? 'Guided tour'
+                : 'Explore RENKOO'}{' '}
+              ·{' '}
+              <StepCounter
+                index={activeEntry.index}
+                total={activeEntry.total}
+              />
+            </p>
+
+            <h2
+              id="rk-tour-title"
+              ref={titleRef}
+              tabIndex={-1}
+              className="rk-focusable mt-1 text-[17px] font-extrabold leading-snug text-rk-ink outline-none"
+            >
+              {stepTitle()}
+            </h2>
+
+            <p
+              id="rk-tour-body"
+              className="mt-1.5 text-sm leading-6 text-rk-secondary"
+            >
+              {stepBody()}
+            </p>
+
+            {renderStepActions()}
+          </div>
+        </div>
+      ) : null}
+
       {/* Fallback centered card when the anchor is
        * not on screen — same guidance, no fake
        * tooltip against a missing element. */}
       {activeEntry &&
       step &&
       !isCompleteStep &&
+      onStepRoute &&
       (targetMissing ||
         (!targetEl && step.target)) ? (
         <div className="fixed inset-0 z-[71] grid place-items-center bg-rk-ink/55 px-4">
@@ -430,14 +580,14 @@ export default function TourOverlay(
               tabIndex={-1}
               className="rk-focusable mt-1 text-[17px] font-extrabold leading-snug text-rk-ink outline-none"
             >
-              {step.title}
+              {stepTitle()}
             </h2>
 
             <p
               id="rk-tour-body"
               className="mt-1.5 text-sm leading-6 text-rk-secondary"
             >
-              {step.body} This highlight is not
+              {stepBody()} This highlight is not
               available on the current screen —
               continue below without losing progress.
             </p>
@@ -529,14 +679,14 @@ export default function TourOverlay(
                 type="button"
                 onClick={onStartCore}
               >
-                Start Guided Tour
+                Start Tour
               </PrimaryButton>
 
               <SecondaryButton
                 type="button"
                 onClick={onSkipWelcome}
               >
-                Skip for now
+                Skip Tour
               </SecondaryButton>
             </div>
 
@@ -619,12 +769,13 @@ export default function TourOverlay(
         </div>
       ) : null}
 
-      {/* Resume pill — the tour waits; it never
+      {/* Resume pill — the tour waits on the
+       * persisted step; it never jumps forward or
        * yanks the user across routes. */}
       {showResumePill && resumeEntry ? (
         <div className="fixed bottom-4 left-4 z-[71] flex max-w-[calc(100vw-2rem)] items-center gap-2.5 rounded-rk-md border border-rk-border bg-rk-surface py-2 pl-3.5 pr-2 shadow-rk-md">
           <p className="truncate text-[13px] font-semibold text-rk-ink">
-            Guided tour ·{' '}
+            Resume your guided tour ·{' '}
             <StepCounter
               index={resumeEntry.index}
               total={resumeEntry.total}
