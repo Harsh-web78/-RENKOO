@@ -91,6 +91,7 @@ import { KeywordCacheService } from './keyword-cache.service';
     RankIntelligenceService,
     SearchChangeService,
     TopicIntelligenceService,
+    KeywordCacheService,
   ],
 })
 export class KeywordsModule {}
