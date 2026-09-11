@@ -270,12 +270,54 @@ checkTrue(
 }
 
 // 21. Prisma schema unchanged
+//
+// The override is env + membership evaluated, never
+// persisted — so identity/billing models must carry
+// no internal-test marker. Crawl link-graph models
+// legitimately use INTERNAL/isInternal vocabulary
+// (linkType="INTERNAL" on CrawlLink etc.), which is
+// unrelated to entitlements and must not trip this.
 {
   const schema = readB('prisma/schema.prisma');
+  const blocks = {};
+  const lines = schema.split('\n');
+  let current = null;
+  for (const line of lines) {
+    const model = line.match(/^model\s+(\w+)/);
+    if (model) current = model[1];
+    if (current) {
+      blocks[current] = (blocks[current] ?? '') + line + '\n';
+    }
+    if (current && line.trim() === '}') current = null;
+  }
+  const guarded = [
+    'User',
+    'Organization',
+    'OrganizationMember',
+    'Website',
+    'Plan',
+    'Subscription',
+    'UsageCounter',
+    'BillingEvent',
+    'Payment',
+  ];
+  const offender = guarded.find(
+    (m) =>
+      blocks[m] &&
+      (blocks[m].includes('INTERNAL_TEST') ||
+        blocks[m].includes('isInternalTest') ||
+        blocks[m].includes('INTERNAL')),
+  );
   checkTrue(
     '21 no schema model/field for internal override',
-    !schema.includes('INTERNAL') &&
-      !schema.includes('isInternal'),
+    offender === undefined,
+    offender ? `model=${offender}` : '',
+  );
+  checkTrue(
+    '21b no InternalTest model added',
+    !Object.keys(blocks).some((m) =>
+      m.toLowerCase().includes('internaltest'),
+    ),
   );
 }
 
