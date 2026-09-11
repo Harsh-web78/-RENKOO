@@ -26,6 +26,7 @@ import {
   DISCOVERY_GROUPS,
   WELCOME_SUBTITLE,
   WELCOME_TITLE,
+  resolveStepView,
   type StepPhase,
   type TourStep,
 } from './tourSteps';
@@ -236,23 +237,36 @@ export default function TourOverlay(
   const isAwaitStep = Boolean(step?.await);
   const isCompleteStep =
     step?.tour === 'core' && step?.id === 'complete';
-  const spotlight = Boolean(
-    targetEl &&
+
+  /*
+   * Single branch decision: completion truth
+   * outranks anchor visibility (see
+   * resolveStepView). Every render block below
+   * keys off `view`, never off raw flags.
+   */
+  const view = activeEntry
+    ? resolveStepView({
+        navigating,
+        isCompleteStep,
+        onStepRoute,
+        phase,
+        hasTargetAnchor: Boolean(step?.target),
+        targetFound: Boolean(targetEl),
+        observing,
+        targetMissing,
+      })
+    : 'idle';
+
+  const showAnchored = Boolean(
+    (view === 'ready' || view === 'completed') &&
+      targetEl &&
       rect &&
       step &&
-      !isCompleteStep &&
-      !navigating,
+      !isCompleteStep,
   );
-  const showWaitingCard = Boolean(
-    onStepRoute &&
-      observing &&
-      !targetEl &&
-      !targetMissing &&
-      step?.target &&
-      !isCompleteStep &&
-      phase !== 'done' &&
-      !navigating,
-  );
+  const spotlight = showAnchored;
+  const showWaitingCard =
+    view === 'waiting-for-target';
 
   /* Tooltip placement: below the target when it
    * fits, above otherwise, clamped to viewport. */
@@ -479,8 +493,10 @@ export default function TourOverlay(
         </div>
       ) : null}
 
-      {/* Anchored tooltip / mobile bottom sheet. */}
-      {onStepRoute && spotlight && step && activeEntry ? (
+      {/* Anchored tooltip / mobile bottom sheet.
+       * Shown for READY steps and for COMPLETED
+       * steps whose anchor still exists. */}
+      {showAnchored && step && activeEntry ? (
         <div
           role="dialog"
           aria-modal="false"
@@ -531,15 +547,65 @@ export default function TourOverlay(
         </div>
       ) : null}
 
+      {/* On-route completion without an anchor
+       * (e.g. creation controls unmount once the
+       * thing they create exists): completed UI +
+       * [Next], NEVER Retry, NEVER "couldn't find
+       * this step". Completion truth outranks
+       * target visibility. */}
+      {view === 'completed' &&
+      !targetEl &&
+      activeEntry &&
+      step &&
+      !isCompleteStep ? (
+        <div className="fixed inset-0 z-[71] grid place-items-center bg-rk-ink/55 px-4">
+          <div
+            role="dialog"
+            aria-modal="false"
+            aria-labelledby="rk-tour-title"
+            aria-describedby="rk-tour-body"
+            className="w-full max-w-md rounded-rk-lg border border-rk-border bg-rk-surface p-5 shadow-rk-md"
+          >
+            <p className="rk-label">
+              {step.tour === 'core'
+                ? 'Guided tour'
+                : 'Explore RENKOO'}{' '}
+              ·{' '}
+              <StepCounter
+                index={activeEntry.index}
+                total={activeEntry.total}
+              />
+            </p>
+
+            <h2
+              id="rk-tour-title"
+              ref={titleRef}
+              tabIndex={-1}
+              className="rk-focusable mt-1 text-[17px] font-extrabold leading-snug text-rk-ink outline-none"
+            >
+              {stepTitle()}
+            </h2>
+
+            <p
+              id="rk-tour-body"
+              className="mt-1.5 text-sm leading-6 text-rk-secondary"
+            >
+              {stepBody()}
+            </p>
+
+            {renderStepActions()}
+          </div>
+        </div>
+      ) : null}
+
       {/* Off-route completion card: the user reached
        * the awaited route via a real CTA click. The
        * step is done, but ONLY an explicit [Next]
        * moves the tour forward (and navigates). */}
-      {activeEntry &&
+      {view === 'completed-off-route' &&
+      activeEntry &&
       step &&
-      !isCompleteStep &&
-      !onStepRoute &&
-      phase === 'done' ? (
+      !isCompleteStep ? (
         <div className="fixed inset-0 z-[71] grid place-items-center bg-rk-ink/55 px-4">
           <div
             role="dialog"
@@ -584,7 +650,9 @@ export default function TourOverlay(
        * after an explicit Next/Back/Resume click
        * until the next route lands. Never
        * advances anything on its own. */}
-      {navigating && activeEntry && step ? (
+      {view === 'transition' &&
+      activeEntry &&
+      step ? (
         <div className="fixed inset-0 z-[71] grid place-items-center px-4">
           <div
             role="status"
@@ -677,16 +745,14 @@ export default function TourOverlay(
         </div>
       ) : null}
 
-      {/* Not-found card when the anchor never
-       * renders — honest, with Retry + skip. */}
-      {activeEntry &&
+      {/* Not-found card: bounded timeout elapsed
+       * AND the step is genuinely incomplete.
+       * Completed steps never reach this branch
+       * (see resolveStepView priority). */}
+      {view === 'target-unavailable' &&
+      activeEntry &&
       step &&
-      !isCompleteStep &&
-      onStepRoute &&
-      !observing &&
-      !navigating &&
-      (targetMissing ||
-        (!targetEl && step.target)) ? (
+      !isCompleteStep ? (
         <div className="fixed inset-0 z-[71] grid place-items-center bg-rk-ink/55 px-4">
           <div
             role="dialog"

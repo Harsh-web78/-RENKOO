@@ -24,6 +24,101 @@ export type StepPhase =
   | 'done'
   | 'blocked';
 
+/*
+ * Tour view states. COMPLETION and TARGET
+ * VISIBILITY are independent axes that must never
+ * be conflated:
+ *
+ * - WAITING_FOR_ROUTE ... user is elsewhere (pill
+ *   or transition card, never the step guide)
+ * - WAITING_FOR_TARGET . route OK, anchor still
+ *   rendering (patient waiting card, no error)
+ * - READY_FOR_USER ... anchor highlighted, guide
+ *   shown (waiting / working / blocked copy varies
+ *   by phase, [Next] only on manual steps)
+ * - COMPLETED_WAIT .... completion truth is true:
+ *   completed UI + [Next], anchor optional, NEVER
+ *   Retry, NEVER "couldn't find this step"
+ * - TARGET_UNAVAIL .... bounded timeout elapsed
+ *   AND step genuinely incomplete (Retry allowed)
+ * - SKIPPED ........... terminal, no UI
+ *
+ * Priority: completion beats visibility. A done
+ * step renders COMPLETED_WAIT even when its DOM
+ * anchor is gone (e.g. creation controls unmount
+ * after the thing they create exists).
+ */
+export type StepView =
+  | 'transition'
+  | 'complete-final'
+  | 'completed-off-route'
+  | 'completed'
+  | 'waiting-for-route'
+  | 'waiting-for-target'
+  | 'ready'
+  | 'target-unavailable'
+  | 'idle';
+
+export interface StepViewInput {
+  navigating: boolean;
+  isCompleteStep: boolean;
+  onStepRoute: boolean;
+  phase: StepPhase;
+  hasTargetAnchor: boolean;
+  targetFound: boolean;
+  observing: boolean;
+  targetMissing: boolean;
+}
+
+export function resolveStepView(
+  input: StepViewInput,
+): StepView {
+  if (input.navigating) {
+    return 'transition';
+  }
+
+  if (input.isCompleteStep) {
+    return 'complete-final';
+  }
+
+  if (!input.onStepRoute) {
+    /*
+     * Off-route arrival via a real CTA click still
+     * deserves its explicit [Next] — but ONLY
+     * after genuine completion, never auto.
+     */
+    return input.phase === 'done'
+      ? 'completed-off-route'
+      : 'waiting-for-route';
+  }
+
+  /* On route from here on. Completion truth has
+   * absolute priority over anchor visibility. */
+  if (input.phase === 'done') {
+    return 'completed';
+  }
+
+  if (input.targetFound) {
+    return 'ready';
+  }
+
+  if (input.observing) {
+    return 'waiting-for-target';
+  }
+
+  if (input.targetMissing) {
+    return 'target-unavailable';
+  }
+
+  /*
+   * Anchorless non-final steps (none exist today):
+   * keep polling rather than erroring.
+   */
+  return input.hasTargetAnchor
+    ? 'waiting-for-target'
+    : 'waiting-for-target';
+}
+
 export type AwaitCondition =
   | 'websites'
   | 'crawl'

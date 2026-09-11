@@ -10,9 +10,11 @@
  * Style mirrors backend/scripts/*.tests.mjs.
  */
 
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const src = join(root, 'src');
@@ -530,6 +532,177 @@ check(
 const layoutSource = read('app/layout.tsx');
 check('tour loads via next/dynamic ssr:false', /dynamic\(/.test(layoutSource) && /ssr:\s*false/.test(layoutSource));
 check('tour mounts inside AuthGate', /<AuthGate>[\s\S]*TourRoot[\s\S]*<\/AuthGate>/.test(layoutSource));
+
+/* ---------- behavioral state-machine tests ----------
+ *
+ * Compiles the REAL pure step module (tourSteps.ts,
+ * zero dependencies) and executes resolveStepView
+ * against the full truth table. Completion truth
+ * must outrank anchor visibility for EVERY step —
+ * never Step 1 only.
+ */
+{
+  const tmp = mkdtempSync(join(tmpdir(), 'tour-verify-'));
+  let compiled = null;
+  try {
+    execSync(
+      `npx tsc src/components/tour/tourSteps.ts --outDir "${tmp}" --module commonjs --target es2020 --esModuleInterop --skipLibCheck`,
+      { cwd: root, stdio: 'pipe' },
+    );
+    compiled = await import(
+      pathToFileURL(join(tmp, 'tourSteps.js')).href
+    );
+  } catch (e) {
+    check('tourSteps compiles standalone', false, String(e).slice(0, 160));
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch {}
+  }
+
+  if (compiled) {
+    const { resolveStepView, CORE_STEPS } = compiled;
+    check('resolveStepView exported', typeof resolveStepView === 'function');
+
+    const base = {
+      navigating: false,
+      isCompleteStep: false,
+      onStepRoute: true,
+      phase: 'waiting',
+      hasTargetAnchor: true,
+      targetFound: false,
+      observing: true,
+      targetMissing: false,
+    };
+
+    /* 1. website exists + target exists → completed */
+    check(
+      'done + target → completed',
+      resolveStepView({ ...base, phase: 'done', targetFound: true, observing: false }) === 'completed',
+    );
+
+    /* 2. website exists + target MISSING → STILL completed, never Retry */
+    check(
+      'done + missing target → completed (never unavailable)',
+      resolveStepView({ ...base, phase: 'done', targetFound: false, targetMissing: true, observing: false }) === 'completed',
+    );
+
+    /* Exact production scenario: /first-value, website added, anchor gone. */
+    const website = CORE_STEPS.find((s) => s.id === 'website');
+    check(
+      'production scenario: website step done + anchor gone → completed',
+      website?.route === '/first-value' &&
+        resolveStepView({
+          ...base,
+          onStepRoute: true,
+          phase: 'done',
+          hasTargetAnchor: true,
+          targetFound: false,
+          observing: false,
+          targetMissing: true,
+        }) === 'completed',
+    );
+    check(
+      'production scenario: completion copy is "Website added"',
+      website?.completedTitle === '✓ Website added' &&
+        typeof website?.completedBody === 'string' &&
+        website.completedBody.length > 0,
+    );
+
+    /* Generic across ALL 14 steps — not Step 1 only. */
+    const allDoneMissing = CORE_STEPS.filter((s) => s.await).every(
+      (s) =>
+        resolveStepView({
+          ...base,
+          onStepRoute: true,
+          phase: 'done',
+          hasTargetAnchor: Boolean(s.target),
+          targetFound: false,
+          observing: false,
+          targetMissing: true,
+        }) === 'completed',
+    );
+    check('every awaited step: done + missing → completed', allDoneMissing);
+
+    /* 3. incomplete + missing + observing → patient wait, never error */
+    check(
+      'incomplete + observing → waiting-for-target',
+      resolveStepView({ ...base, phase: 'waiting' }) === 'waiting-for-target',
+    );
+    check(
+      'incomplete + working + target → ready (not done)',
+      resolveStepView({ ...base, phase: 'working', targetFound: true, observing: false }) === 'ready',
+    );
+
+    /* 4. incomplete + target → ready for user action */
+    check(
+      'incomplete + target → ready',
+      resolveStepView({ ...base, phase: 'waiting', targetFound: true, observing: false }) === 'ready',
+    );
+    check(
+      'blocked + target → ready (blocked copy, no Next)',
+      resolveStepView({ ...base, phase: 'blocked', targetFound: true, observing: false }) === 'ready',
+    );
+
+    /* Timeout policy: error only when genuinely incomplete. */
+    check(
+      'incomplete + timeout → target-unavailable',
+      resolveStepView({ ...base, phase: 'waiting', observing: false, targetMissing: true }) === 'target-unavailable',
+    );
+
+    /* Off-route arrivals. */
+    check(
+      'off-route + done → completed-off-route',
+      resolveStepView({ ...base, onStepRoute: false, phase: 'done' }) === 'completed-off-route',
+    );
+    check(
+      'off-route + incomplete → waiting-for-route',
+      resolveStepView({ ...base, onStepRoute: false, phase: 'waiting' }) === 'waiting-for-route',
+    );
+
+    /* Transition + final take absolute priority. */
+    check(
+      'navigating beats everything',
+      resolveStepView({ ...base, navigating: true, phase: 'done', targetFound: true }) === 'transition',
+    );
+    check(
+      'complete-final beats done/target',
+      resolveStepView({ ...base, isCompleteStep: true, phase: 'done', targetFound: true }) === 'complete-final',
+    );
+
+    /* Completed cards never offer Retry (only the
+     * waiting + not-found branches wire onRetry). */
+    const retryWires = (overlaySource.match(/onClick=\{onRetry\}/g) ?? []).length;
+    check('Retry wired exactly twice (wait + not-found)', retryWires === 2, `got ${retryWires}`);
+  }
+}
+
+/* ---------- Next/Back/resume mechanics ---------- */
+
+check(
+  'Next advances exactly one step',
+  /const nextIndex = index \+ 1;/.test(tourProviderSource) &&
+    /stepIndex:\s*nextIndex,/.test(tourProviderSource),
+);
+check(
+  'Back retreats exactly one step',
+  /stepIndex: index - 1,/.test(tourProviderSource),
+);
+check(
+  'overlay branches off resolveStepView',
+  overlaySource.includes('resolveStepView({') &&
+    overlaySource.includes("view === 'completed'") &&
+    overlaySource.includes("view === 'target-unavailable'") &&
+    overlaySource.includes("view === 'waiting-for-target'"),
+);
+check(
+  'not-found branch excludes done steps',
+  (() => {
+    const start = overlaySource.indexOf('Not-found card');
+    if (start < 0) return false;
+    /* The branch condition is view-gated; the raw
+     * phase-done state can never land here. */
+    return overlaySource.includes("view === 'target-unavailable'");
+  })(),
+);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
