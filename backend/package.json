@@ -60,7 +60,8 @@
     "test:action-verification": "node scripts/action-verification.tests.mjs",
     "test:action-execution": "node scripts/action-execution.tests.mjs",
     "test:activation": "node scripts/activation.tests.mjs",
-    "test:agent-readiness": "node scripts/agent-readiness.tests.mjs"
+    "test:agent-readiness": "node scripts/agent-readiness.tests.mjs",
+    "test:technical-seo": "node scripts/technical-seo-consistency.tests.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.20",

@@ -261,16 +261,27 @@ export default function TechnicalSeoPage() {
             : await reopenSeoIssue(key);
       setData((prev: any) => {
         if (!prev) return prev;
-        const issues = Array.isArray(prev.issues)
-          ? prev.issues
+        const tops = Array.isArray(prev.topIssues)
+          ? prev.topIssues
           : [];
+        const nextTops = tops.map((i: any) =>
+          String(i.id) === key
+            ? { ...i, ...(updated as any) }
+            : i,
+        );
+        const open = nextTops.filter(
+          (i: any) =>
+            String(i.status || 'OPEN').toUpperCase() ===
+            'OPEN',
+        ).length;
+        const counts =
+          prev.issues && typeof prev.issues === 'object'
+            ? { ...prev.issues, open }
+            : prev.issues;
         return {
           ...prev,
-          issues: issues.map((i: any) =>
-            String(i.id) === key
-              ? { ...i, ...(updated as any) }
-              : i,
-          ),
+          topIssues: nextTops,
+          issues: counts,
         };
       });
       setDrawerIssue((prev: any) =>
@@ -322,11 +333,66 @@ export default function TechnicalSeoPage() {
     }
   }
 
+  /*
+   * Rows come from the ONE authoritative response
+   * (TechnicalSeoResponse): topIssues carry the real
+   * per-issue rows, issueGroups carry per-code reach.
+   * data.issues is a counts object, never an array —
+   * reading it as an array rendered every completed
+   * crawl as "No crawl data yet".
+   */
   const issues: any[] = useMemo(() => {
-    const list = Array.isArray((data as any)?.issues)
-      ? (data as any).issues
+    const tops = Array.isArray(
+      (data as any)?.topIssues,
+    )
+      ? (data as any).topIssues
       : [];
-    return list;
+    const groups = Array.isArray(
+      (data as any)?.issueGroups,
+    )
+      ? (data as any).issueGroups
+      : [];
+    const byCode = new Map<string, any>(
+      groups.map((g: any) => [String(g?.code), g]),
+    );
+    const seen =
+      (data as any)?.crawl?.completedAt ||
+      (data as any)?.crawl?.createdAt ||
+      null;
+    return tops.map((t: any) => {
+      const group = byCode.get(String(t?.code));
+      const sampleUrls = Array.isArray(group?.pages)
+        ? group.pages
+            .map((p: any) => String(p?.url || ''))
+            .filter(Boolean)
+            .slice(0, 8)
+        : [];
+      const pageUrl = String(
+        t?.page?.url || sampleUrls[0] || '',
+      );
+      const affectedUrls =
+        sampleUrls.length > 0
+          ? sampleUrls
+          : pageUrl
+            ? [pageUrl]
+            : [];
+      return {
+        id: t?.id,
+        code: t?.code,
+        category: t?.category,
+        title: t?.title,
+        description: t?.description,
+        recommendation: t?.recommendation,
+        severity: t?.severity,
+        status: t?.status || 'OPEN',
+        affectedPages:
+          num(group?.affectedPages, 1),
+        affectedUrls,
+        firstSeenAt: seen,
+        createdAt: seen,
+        page: t?.page,
+      };
+    });
   }, [data]);
 
   const filtered = useMemo(() => {
@@ -372,7 +438,11 @@ export default function TechnicalSeoPage() {
     ).map((k) => ({ severity: k, items: groups[k] }));
   }, [filtered]);
 
-  const score = (data as any)?.score;
+  /* Backend score is { value, label }; pages is
+   * { total, ... } — never bare numbers. */
+  const score = (data as any)?.score?.value;
+  const scoreLabel = (data as any)?.score?.label;
+  const pagesTotal = (data as any)?.pages?.total;
   const crawl = (data as any)?.crawl;
   const openCount = issues.filter(
     (i: any) =>
@@ -600,7 +670,12 @@ export default function TechnicalSeoPage() {
             />
           ) : null}
 
-          {!data || issues.length === 0 ? (
+          {/* No authoritative completed crawl: the
+           * backend says so too (getLatest throws).
+           * A completed crawl with zero open issues
+           * renders the healthy state below — never
+           * this empty state. */}
+          {!data ? (
             <EmptyState
               title="No crawl data yet"
               description="Run an audit to measure this website's technical health. Issues, evidence and fix state will appear here."
@@ -629,16 +704,12 @@ export default function TechnicalSeoPage() {
                   />
                   <Metric
                     label="Pages crawled"
-                    value={(() => {
-                      const raw =
-                        crawl?.pagesCrawled ??
-                        crawl?.pages ??
-                        (data as any)?.pages;
-                      return raw === undefined ||
-                        raw === null
+                    value={
+                      pagesTotal === undefined ||
+                      pagesTotal === null
                         ? '—'
-                        : fmtInt(raw);
-                    })()}
+                        : fmtInt(pagesTotal)
+                    }
                     detail="Coverage"
                   />
                   <Metric
@@ -691,7 +762,12 @@ export default function TechnicalSeoPage() {
                 title="Issue table"
                 description="Open a row for evidence, fix guidance and tracked action."
               >
-                {filtered.length === 0 ? (
+                {issues.length === 0 ? (
+                  <EmptyState
+                    title="No open issues"
+                    description={`This crawl checked ${pagesTotal === undefined || pagesTotal === null ? 'the discovered' : fmtInt(pagesTotal)} pages and found nothing open. Failed page fetches, if any, are listed as evidence above.`}
+                  />
+                ) : filtered.length === 0 ? (
                   <EmptyState
                     title="No issues match"
                     description="Adjust severity or status filters."

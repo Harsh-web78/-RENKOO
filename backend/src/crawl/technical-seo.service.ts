@@ -7,6 +7,11 @@ import { SeoIssueSeverity } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 
+import {
+  hasCrawlPages,
+  isAuthoritativeTechnicalCrawl,
+} from './technical-seo-view';
+
 type TechnicalCategory =
   | 'CRAWLABILITY'
   | 'INDEXABILITY'
@@ -83,6 +88,25 @@ export class TechnicalSeoService {
       );
     }
 
+    /*
+     * Defense in depth: the query above already
+     * selects the latest COMPLETED crawl with pages
+     * for this website/org. Re-assert the authority
+     * invariant so future query drift can never
+     * surface a foreign or incomplete crawl here.
+     */
+    if (
+      !isAuthoritativeTechnicalCrawl(crawl, {
+        websiteId,
+        organizationId,
+      }) ||
+      !hasCrawlPages(crawl)
+    ) {
+      throw new BadRequestException(
+        'No valid completed crawl found. Run a website crawl first.',
+      );
+    }
+
     return this.buildReport(crawl);
   }
 
@@ -120,6 +144,25 @@ export class TechnicalSeoService {
     if (!crawl) {
       throw new BadRequestException(
         'Crawl not found',
+      );
+    }
+
+    /*
+     * Same authority rule as getLatest and the crawl
+     * summary read: Technical SEO results must come
+     * from a COMPLETED crawl with persisted pages.
+     * A RUNNING/FAILED crawl is never presented as
+     * completed results, even when addressed by ID.
+     */
+    if (
+      !isAuthoritativeTechnicalCrawl(crawl, {
+        websiteId: crawl.websiteId,
+        organizationId,
+      }) ||
+      !hasCrawlPages(crawl)
+    ) {
+      throw new BadRequestException(
+        'No valid completed crawl found. Run a website crawl first.',
       );
     }
 
