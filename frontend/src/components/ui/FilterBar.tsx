@@ -18,6 +18,8 @@
 import { useEffect, useState } from 'react';
 import { Check, ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react';
 
+import { countActiveFilters } from '@/lib/filterCount';
+
 export interface FilterOption {
   value: string;
   label: string;
@@ -29,6 +31,19 @@ export interface FilterSelect {
   value: string;
   options: FilterOption[];
   onChange: (value: string) => void;
+  /*
+   * Scope selectors (e.g. Website) are not filters:
+   * pass countable: false so they never inflate the
+   * active count. Defaults to true — pages that omit
+   * it behave exactly as before.
+   */
+  countable?: boolean;
+  /*
+   * Value that counts as inactive. Defaults to 'ALL';
+   * pages whose default differs (e.g. Status=OPEN)
+   * pass it here so the default never counts.
+   */
+  defaultValue?: string;
 }
 
 export interface FilterMultiSelect {
@@ -181,14 +196,12 @@ export default function FilterBar({
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  const derivedCount =
-    selects.filter((s) => s.value !== '' && s.value !== 'ALL').length +
-    multiSelects.reduce(
-      (n, m) => n + m.values.length,
-      0,
-    ) +
-    (dateRange && (dateRange.from || dateRange.to) ? 1 : 0) +
-    (searchValue && searchValue.trim() ? 1 : 0);
+  const derivedCount = countActiveFilters({
+    selects,
+    multiSelects,
+    dateRange,
+    searchValue,
+  });
 
   const count = activeFilterCount ?? derivedCount;
   const showClear = count > 0 && onClearAll;

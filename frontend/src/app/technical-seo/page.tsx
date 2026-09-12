@@ -564,6 +564,8 @@ export default function TechnicalSeoPage() {
                     label: w.name,
                   })),
                   onChange: handleWebsite,
+                  /* Scope selector, not a filter. */
+                  countable: false,
                 },
                 {
                   key: 'severity',
@@ -592,6 +594,8 @@ export default function TechnicalSeoPage() {
                     { value: 'IGNORED', label: 'Ignored' },
                   ],
                   onChange: setStatusFilter,
+                  /* Page default: OPEN counts as inactive. */
+                  defaultValue: 'OPEN',
                 },
               ]}
               onClearAll={() => {
