@@ -9,9 +9,11 @@
  * Style mirrors scripts/tour.tests.mjs.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const backendRoot = join(root, '..', 'backend');
@@ -38,6 +40,7 @@ function readBackend(rel) {
 }
 
 const page = readFrontend('src/app/technical-seo/page.tsx');
+const viewHelper = readFrontend('src/lib/technicalSeoView.ts');
 const service = readBackend('src/crawl/technical-seo.service.ts');
 const crawlService = readBackend('src/crawl/crawl.service.ts');
 const view = readBackend('src/crawl/technical-seo-view.ts');
@@ -46,8 +49,8 @@ const view = readBackend('src/crawl/technical-seo-view.ts');
 
 check(
   'rows derive from topIssues (real report shape)',
-  page.includes('(data as any)?.topIssues') ||
-    page.includes('data?.topIssues'),
+  viewHelper.includes('topIssues') &&
+    page.includes('issueRowsFromReport(data)'),
 );
 
 check(
@@ -212,6 +215,95 @@ check(
   view.includes("'healthy'") &&
     view.includes("'empty-no-crawl'"),
 );
+
+/* ---------- audit-complete gate (root-cause class) ----------
+ *
+ * The header must never claim "Audit complete" while the
+ * persisted view is empty: doRequest resolves 204/empty
+ * bodies without throwing, so the audit path asserts the
+ * authoritative report before publishing data + copy.
+ */
+
+check(
+  'audit asserts authoritative view before success copy',
+  page.includes('hasAuthoritativeReport(technicalSeo)'),
+);
+
+check(
+  'empty gate uses shared helper (header/body agree)',
+  page.includes('!hasAuthoritativeReport(data)'),
+);
+
+check(
+  'rows derive via shared pure helper',
+  page.includes('issueRowsFromReport(data)'),
+);
+
+/* ---------- behavioral truth table ----------
+ *
+ * Compiles the REAL pure view module and executes it
+ * against the production incident shapes: a valid
+ * report (50/50, 49/50, zero issues) must never
+ * resolve to empty; null/204 resolving without a
+ * throw must never back an "Audit complete" claim.
+ */
+{
+  const tmp = mkdtempSync(join(tmpdir(), 'tseoview-verify-'));
+  let compiled = null;
+  try {
+    execSync(
+      `npx tsc src/lib/technicalSeoView.ts --outDir "${tmp}" --module commonjs --target es2020 --esModuleInterop --skipLibCheck`,
+      { cwd: root, stdio: 'pipe' },
+    );
+    compiled = await import(
+      pathToFileURL(join(tmp, 'technicalSeoView.js')).href
+    );
+  } catch (e) {
+    check('technicalSeoView compiles standalone', false, String(e).slice(0, 160));
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch {}
+  }
+
+  if (compiled) {
+    const { hasAuthoritativeReport, issueRowsFromReport, resolveTechnicalSeoUiState } = compiled;
+    check('view helpers exported', typeof hasAuthoritativeReport === 'function' && typeof resolveTechnicalSeoUiState === 'function');
+
+    const report = (tops, groups) => ({
+      crawl: { id: 'crawl-1', status: 'COMPLETED', completedAt: '2026-09-12T10:00:00.000Z', createdAt: '2026-09-12T10:00:00.000Z' },
+      score: { value: 82, label: 'Good' },
+      pages: { total: 50 },
+      issues: { total: tops.length, open: tops.length },
+      topIssues: tops,
+      issueGroups: groups,
+    });
+    const top = (code) => ({ id: `i-${code}`, code, severity: 'HIGH', title: code, description: 'd', recommendation: 'r', page: { id: 'p', url: 'https://example.com/' } });
+    const group = (code, n) => ({ code, severity: 'HIGH', title: code, description: 'd', recommendation: 'r', affectedPages: n, pages: [{ id: 'p', url: 'https://example.com/' }] });
+
+    /* completed 50/50 → results, never empty */
+    const full = report([top('A'), top('B')], [group('A', 30), group('B', 20)]);
+    check('50/50 report is authoritative', hasAuthoritativeReport(full) === true);
+    check('50/50 rows render', issueRowsFromReport(full).length === 2);
+    check('50/50 resolves to results', resolveTechnicalSeoUiState(full) === 'results');
+
+    /* completed 49/50 (failed page row) → results */
+    const withFailed = report([top('A'), { id: 'i-fetch', code: 'PAGE_FETCH_FAILED', severity: 'HIGH', title: 'Page could not be fetched', description: 'd', recommendation: 'r', page: { id: 'pf', url: 'https://example.com/broken' } }], [group('A', 49), group('PAGE_FETCH_FAILED', 1)]);
+    check('49/50 resolves to results', resolveTechnicalSeoUiState(withFailed) === 'results');
+
+    /* zero open issues → healthy, never "No crawl data yet" */
+    const clean = report([], []);
+    check('zero-issue report is still authoritative', hasAuthoritativeReport(clean) === true);
+    check('zero issues resolves to healthy', resolveTechnicalSeoUiState(clean) === 'healthy');
+
+    /* falsy bodies (204/empty resolving without throw) → empty, never complete */
+    for (const [name, body] of [['null', null], ['undefined', undefined], ['envelope w/o crawl', { data: {} }], ['crawl w/o id', { crawl: {} }]]) {
+      check(`falsy body (${name}) is not authoritative`, hasAuthoritativeReport(body) === false);
+      check(`falsy body (${name}) resolves to empty`, resolveTechnicalSeoUiState(body) === 'empty');
+    }
+
+    /* refresh-after-completion + website switching read the same view */
+    check('refreshed report resolves identically', resolveTechnicalSeoUiState(JSON.parse(JSON.stringify(full))) === 'results');
+  }
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

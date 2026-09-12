@@ -27,6 +27,10 @@ import {
   type Website,
 } from '@/lib/api';
 import { limitTitle } from '@/lib/plans';
+import {
+  hasAuthoritativeReport,
+  issueRowsFromReport,
+} from '@/lib/technicalSeoView';
 import AppShell from '@/components/AppShell';
 import { useElapsed } from '@/lib/useElapsed';
 import {
@@ -204,6 +208,19 @@ export default function TechnicalSeoPage() {
         }).catch(() => null),
       ]);
 
+      /*
+       * The header must never claim success while the
+       * persisted view is empty: doRequest resolves
+       * 204/empty bodies without throwing, so assert
+       * the authoritative report identity before
+       * publishing data + success copy.
+       */
+      if (!hasAuthoritativeReport(technicalSeo)) {
+        throw new Error(
+          'Audit finished but the results could not be loaded. Reload the page to retry.',
+        );
+      }
+
       setData(technicalSeo);
 
       setAlertCount(
@@ -335,65 +352,17 @@ export default function TechnicalSeoPage() {
 
   /*
    * Rows come from the ONE authoritative response
-   * (TechnicalSeoResponse): topIssues carry the real
-   * per-issue rows, issueGroups carry per-code reach.
-   * data.issues is a counts object, never an array —
-   * reading it as an array rendered every completed
-   * crawl as "No crawl data yet".
+   * (TechnicalSeoResponse) via the shared pure helper:
+   * topIssues carry the real per-issue rows,
+   * issueGroups carry per-code reach. data.issues is
+   * a counts object, never an array — reading it as
+   * an array rendered every completed crawl as
+   * "No crawl data yet".
    */
-  const issues: any[] = useMemo(() => {
-    const tops = Array.isArray(
-      (data as any)?.topIssues,
-    )
-      ? (data as any).topIssues
-      : [];
-    const groups = Array.isArray(
-      (data as any)?.issueGroups,
-    )
-      ? (data as any).issueGroups
-      : [];
-    const byCode = new Map<string, any>(
-      groups.map((g: any) => [String(g?.code), g]),
-    );
-    const seen =
-      (data as any)?.crawl?.completedAt ||
-      (data as any)?.crawl?.createdAt ||
-      null;
-    return tops.map((t: any) => {
-      const group = byCode.get(String(t?.code));
-      const sampleUrls = Array.isArray(group?.pages)
-        ? group.pages
-            .map((p: any) => String(p?.url || ''))
-            .filter(Boolean)
-            .slice(0, 8)
-        : [];
-      const pageUrl = String(
-        t?.page?.url || sampleUrls[0] || '',
-      );
-      const affectedUrls =
-        sampleUrls.length > 0
-          ? sampleUrls
-          : pageUrl
-            ? [pageUrl]
-            : [];
-      return {
-        id: t?.id,
-        code: t?.code,
-        category: t?.category,
-        title: t?.title,
-        description: t?.description,
-        recommendation: t?.recommendation,
-        severity: t?.severity,
-        status: t?.status || 'OPEN',
-        affectedPages:
-          num(group?.affectedPages, 1),
-        affectedUrls,
-        firstSeenAt: seen,
-        createdAt: seen,
-        page: t?.page,
-      };
-    });
-  }, [data]);
+  const issues: any[] = useMemo(
+    () => issueRowsFromReport(data),
+    [data],
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -672,10 +641,13 @@ export default function TechnicalSeoPage() {
 
           {/* No authoritative completed crawl: the
            * backend says so too (getLatest throws).
+           * Gated on the shared helper — never a bare
+           * truthiness check — so header, results and
+           * empty state always agree on one view.
            * A completed crawl with zero open issues
            * renders the healthy state below — never
            * this empty state. */}
-          {!data ? (
+          {!hasAuthoritativeReport(data) ? (
             <EmptyState
               title="No crawl data yet"
               description="Run an audit to measure this website's technical health. Issues, evidence and fix state will appear here."
